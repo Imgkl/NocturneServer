@@ -301,14 +301,14 @@ final class APIRoutes: @unchecked Sendable {
       return try jsonResponse(TagSuggestionResponse(sugg))
     }
 
-    // GET /admin/movies?q&limit&offset — live Jellyfin fetch + local tag join + pending flag
+    // GET /admin/movies?q&limit&offset — live Jellyfin fetch + local tag join + needs-review flag
     struct AdminMovie: Codable {
       let jellyfinId: String
       let title: String
       let year: Int?
       let posterUrl: String?
       let tags: [String]
-      let pendingSuggestion: Bool
+      let needsReview: Bool
     }
     struct AdminMoviesResponse: Codable {
       let items: [AdminMovie]
@@ -352,7 +352,7 @@ final class APIRoutes: @unchecked Sendable {
           year: item.productionYear,
           posterUrl: self.movieService.jellyfinService.getImageUrl(for: item, imageType: .primary),
           tags: tagsByJellyfinId[jid] ?? [],
-          pendingSuggestion: pending.contains(jid)
+          needsReview: pending.contains(jid)
         )
       }
 

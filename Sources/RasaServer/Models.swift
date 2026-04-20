@@ -158,6 +158,7 @@ final class TagSuggestion: Model, @unchecked Sendable {
 struct ClientTagEntry: Codable, Sendable {
     let jellyfinId: String
     let tags: [String]
+    let needsReview: Bool
 }
 
 struct ClientTagsListResponse: Codable, Sendable {

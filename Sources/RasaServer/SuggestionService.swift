@@ -88,15 +88,33 @@ final class SuggestionService: @unchecked Sendable {
       logger.info("Refine/post-filter emptied the tag set for \(jellyfinId); restoring first-pass top tag: \(fallback)")
     }
 
+    // Apply tags immediately so clients see them right away. A weak run still gets applied;
+    // the status field marks it for admin review.
+    guard let movieService = movieServiceRef else {
+      throw SuggestionError.serviceUnavailable
+    }
+    _ = try await movieService.updateMovieTags(
+      movieId: jellyfinId,
+      tagSlugs: validSuggestions,
+      replaceAll: false,
+      addedByAutoTag: true
+    )
+
+    let isWeak = Double(response.confidence) < 0.72
     let sugg = TagSuggestion(
       jellyfinId: jellyfinId,
       suggestedTags: validSuggestions,
       confidence: Double(response.confidence),
       reasoning: response.reasoning,
-      status: "pending"
+      status: isWeak ? "pending" : "approved"
     )
+    if !isWeak {
+      sugg.resolvedAt = Date()
+    }
     try await sugg.save(on: fluent.db())
-    logger.info("Queued suggestion for \(jellyfinId): \(validSuggestions)")
+    logger.info(
+      "Auto-applied \(isWeak ? "weak" : "strong") tags for \(jellyfinId): \(validSuggestions) (conf=\(response.confidence))"
+    )
     return sugg
   }
 
@@ -111,7 +129,20 @@ final class SuggestionService: @unchecked Sendable {
     }
   }
 
+  /// Tags are already applied by `enqueue`; approve just confirms the review.
   func approve(_ id: UUID) async throws -> TagSuggestion {
+    guard let sugg = try await TagSuggestion.find(id, on: fluent.db()) else {
+      throw SuggestionError.notFound(id)
+    }
+    guard sugg.status == "pending" else { throw SuggestionError.alreadyResolved(id) }
+    sugg.status = "approved"
+    sugg.resolvedAt = Date()
+    try await sugg.save(on: fluent.db())
+    return sugg
+  }
+
+  /// Reject removes the tags that were auto-applied by this suggestion.
+  func reject(_ id: UUID) async throws -> TagSuggestion {
     guard let sugg = try await TagSuggestion.find(id, on: fluent.db()) else {
       throw SuggestionError.notFound(id)
     }
@@ -119,29 +150,29 @@ final class SuggestionService: @unchecked Sendable {
     guard let movieService = movieServiceRef else {
       throw SuggestionError.serviceUnavailable
     }
-    _ = try await movieService.updateMovieTags(
-      movieId: sugg.jellyfinId,
-      tagSlugs: sugg.suggestedTags,
-      replaceAll: false
+    try await movieService.removeAutoTags(
+      jellyfinId: sugg.jellyfinId,
+      tagSlugs: sugg.suggestedTags
     )
-    sugg.status = "approved"
-    sugg.resolvedAt = Date()
-    try await sugg.save(on: fluent.db())
-    return sugg
-  }
-
-  func reject(_ id: UUID) async throws -> TagSuggestion {
-    guard let sugg = try await TagSuggestion.find(id, on: fluent.db()) else {
-      throw SuggestionError.notFound(id)
-    }
-    guard sugg.status == "pending" else { throw SuggestionError.alreadyResolved(id) }
     sugg.status = "rejected"
     sugg.resolvedAt = Date()
     try await sugg.save(on: fluent.db())
     return sugg
   }
 
+  /// Clear previously-auto-applied tags for this movie and re-run the suggestion pipeline.
   func regenerate(jellyfinId: String) async throws -> TagSuggestion {
+    // Remove any auto-tags from prior runs so we don't stack duplicates across regenerates.
+    if let movieService = movieServiceRef {
+      let priorAutoSlugs = try await TagSuggestion.query(on: fluent.db())
+        .filter(\.$jellyfinId == jellyfinId)
+        .all()
+        .flatMap { $0.suggestedTags }
+      let unique = Array(Set(priorAutoSlugs))
+      if !unique.isEmpty {
+        try await movieService.removeAutoTags(jellyfinId: jellyfinId, tagSlugs: unique)
+      }
+    }
     try await TagSuggestion.query(on: fluent.db())
       .filter(\.$jellyfinId == jellyfinId)
       .filter(\.$status == "pending")

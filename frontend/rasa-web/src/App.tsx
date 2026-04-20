@@ -5,8 +5,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 
 type Tag = { id?: string; slug: string; title: string }
-type Movie = { jellyfinId: string; title: string; year?: number; posterUrl?: string; tags?: Tag[]; pendingSuggestion?: boolean }
-type AdminMovieApi = { jellyfinId: string; title: string; year?: number; posterUrl?: string; tags: string[]; pendingSuggestion: boolean }
+type Movie = { jellyfinId: string; title: string; year?: number; posterUrl?: string; tags?: Tag[]; needsReview?: boolean }
+type AdminMovieApi = { jellyfinId: string; title: string; year?: number; posterUrl?: string; tags: string[]; needsReview: boolean }
 type TagSuggestionApi = { id: string; jellyfinId: string; suggestedTags: string[]; confidence: number; reasoning?: string; status: string; createdAt?: string; resolvedAt?: string }
 type MoodBuckets = Record<string, { title: string, description: string }>
 type SyncStatus = {
@@ -125,14 +125,14 @@ export default function App() {
   async function fetchAllMovies() {
     setLoading(true)
     try {
-      // Admin proxy: live Jellyfin fetch enriched with local tags + pending-suggestion flag.
+      // Admin proxy: live Jellyfin fetch enriched with local tags + needs-review flag.
       const data = await api<{ items: AdminMovieApi[]; totalCount: number }>(`/admin/movies?limit=10000&offset=0`)
       const mapped: Movie[] = data.items.map(it => ({
         jellyfinId: it.jellyfinId,
         title: it.title,
         year: it.year,
         posterUrl: it.posterUrl,
-        pendingSuggestion: it.pendingSuggestion,
+        needsReview: it.needsReview,
         tags: it.tags.map(slug => ({ slug, title: moods[slug]?.title || slug })),
       }))
       setMovies(mapped)
@@ -424,11 +424,13 @@ export default function App() {
     return { total, tagged, untagged }
   }, [movies])
 
-  // Untagged first, then alphabetical by title
+  // Needs review first, then untagged, then tagged — all alphabetical within their bucket.
   const ordered = useMemo(() => {
-    const untagged = filtered.filter(m => (m.tags||[]).length === 0).sort((a,b)=>a.title.localeCompare(b.title))
-    const tagged = filtered.filter(m => (m.tags||[]).length > 0).sort((a,b)=>a.title.localeCompare(b.title))
-    return [...untagged, ...tagged]
+    const needsReview = filtered.filter(m => m.needsReview).sort((a,b)=>a.title.localeCompare(b.title))
+    const rest = filtered.filter(m => !m.needsReview)
+    const untagged = rest.filter(m => (m.tags||[]).length === 0).sort((a,b)=>a.title.localeCompare(b.title))
+    const tagged = rest.filter(m => (m.tags||[]).length > 0).sort((a,b)=>a.title.localeCompare(b.title))
+    return [...needsReview, ...untagged, ...tagged]
   }, [filtered])
   
   const currentAutoMovie = useMemo(() => movies.find(m => m.jellyfinId === currentAutoId) || null, [movies, currentAutoId])
@@ -584,8 +586,13 @@ export default function App() {
               <div className="mx-auto w-full max-w-[1600px]">
                 <div className="rounded-2xl bg-white shadow-sm ring-1 ring-black/5 p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <div className="text-sm font-semibold text-[#0f1222]">
-                      Pending AI suggestions ({pendingSuggestions.length})
+                    <div>
+                      <div className="text-sm font-semibold text-[#0f1222]">
+                        Tags needing review ({pendingSuggestions.length})
+                      </div>
+                      <div className="text-[11px] text-black/50 mt-0.5">
+                        These tags are already live. Approve to confirm, or reject to remove them.
+                      </div>
                     </div>
                     <button
                       className="text-xs text-black/60 hover:text-black"
@@ -663,7 +670,14 @@ export default function App() {
                           }}
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-                        {/* removed heart icon */}
+                        {m.needsReview && (
+                          <span
+                            className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/95 text-white shadow"
+                            title="Auto-tagged with low confidence — please review."
+                          >
+                            Needs review
+                          </span>
+                        )}
                       </div>
                       {/* Details strip under image (not covering poster) */}
                       <div className="p-3 border-t border-black/5">

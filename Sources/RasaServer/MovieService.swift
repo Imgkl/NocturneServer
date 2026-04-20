@@ -102,9 +102,12 @@ final class MovieService {
 
   // MARK: - Tag Management
 
-  func updateMovieTags(movieId: String, tagSlugs: [String], replaceAll: Bool) async throws
-    -> ClientTagEntry
-  {
+  func updateMovieTags(
+    movieId: String,
+    tagSlugs: [String],
+    replaceAll: Bool,
+    addedByAutoTag: Bool = false
+  ) async throws -> ClientTagEntry {
     let movie = try await getMovieEntity(id: movieId)
     let validSlugs = try validateTagSlugs(tagSlugs)
 
@@ -125,7 +128,7 @@ final class MovieService {
         let movieTag = MovieTag(
           movieId: try movie.requireID(),
           tagId: try tag.requireID(),
-          addedByAutoTag: false
+          addedByAutoTag: addedByAutoTag
         )
         try await movieTag.save(on: fluent.db())
       }
@@ -142,7 +145,7 @@ final class MovieService {
           let movieTag = MovieTag(
             movieId: try movie.requireID(),
             tagId: tagId,
-            addedByAutoTag: false
+            addedByAutoTag: addedByAutoTag
           )
           try await movieTag.save(on: fluent.db())
         }
@@ -156,10 +159,48 @@ final class MovieService {
       .with(\.$tags)
       .first()!
 
+    // A human just touched the tag set — any outstanding weak-review row is stale.
+    if !addedByAutoTag {
+      let pendingRows = try await TagSuggestion.query(on: fluent.db())
+        .filter(\.$jellyfinId == updatedMovie.jellyfinId)
+        .filter(\.$status == "pending")
+        .all()
+      for row in pendingRows {
+        row.status = "approved"
+        row.resolvedAt = Date()
+        try await row.save(on: fluent.db())
+      }
+    }
+
     return ClientTagEntry(
       jellyfinId: updatedMovie.jellyfinId,
-      tags: updatedMovie.tags.map { $0.slug }
+      tags: updatedMovie.tags.map { $0.slug },
+      needsReview: false
     )
+  }
+
+  /// Remove the specific tags that an auto-tag run added to a movie. Admin-added rows
+  /// (addedByAutoTag=false) are left untouched by the filter.
+  func removeAutoTags(jellyfinId: String, tagSlugs: [String]) async throws {
+    guard !tagSlugs.isEmpty else { return }
+    let movie = try await Movie.query(on: fluent.db())
+      .filter(\.$jellyfinId == jellyfinId)
+      .first()
+      .unwrap(orError: MovieServiceError.movieNotFound(jellyfinId))
+    let movieId = try movie.requireID()
+
+    for slug in tagSlugs {
+      guard
+        let tag = try await Tag.query(on: fluent.db()).filter(\.$slug == slug).first()
+      else { continue }
+      try await MovieTag.query(on: fluent.db())
+        .filter(\.$movie.$id == movieId)
+        .filter(\.$tag.$id == tag.requireID())
+        .filter(\.$addedByAutoTag == true)
+        .delete()
+    }
+
+    try await updateTagUsageCounts(for: tagSlugs)
   }
 
   // MARK: - Clients API helpers
@@ -181,13 +222,18 @@ final class MovieService {
     return movies.map { $0.jellyfinId }
   }
 
-  /// Full {jellyfinId, [tagSlugs]} bulk join for clients.
+  /// Full {jellyfinId, [tagSlugs], needsReview} bulk join for clients.
   func getClientTagMap() async throws -> [ClientTagEntry] {
     let movies = try await Movie.query(on: fluent.db())
       .with(\.$tags)
       .all()
+    let pendingIds = try await pendingReviewJellyfinIds()
     return movies.map { m in
-      ClientTagEntry(jellyfinId: m.jellyfinId, tags: m.tags.map { $0.slug })
+      ClientTagEntry(
+        jellyfinId: m.jellyfinId,
+        tags: m.tags.map { $0.slug },
+        needsReview: pendingIds.contains(m.jellyfinId)
+      )
     }
   }
 
@@ -198,7 +244,23 @@ final class MovieService {
       .with(\.$tags)
       .first()
       .unwrap(orError: MovieServiceError.movieNotFound(jellyfinId))
-    return ClientTagEntry(jellyfinId: movie.jellyfinId, tags: movie.tags.map { $0.slug })
+    let isPending = try await TagSuggestion.query(on: fluent.db())
+      .filter(\.$jellyfinId == jellyfinId)
+      .filter(\.$status == "pending")
+      .first() != nil
+    return ClientTagEntry(
+      jellyfinId: movie.jellyfinId,
+      tags: movie.tags.map { $0.slug },
+      needsReview: isPending
+    )
+  }
+
+  private func pendingReviewJellyfinIds() async throws -> Set<String> {
+    let rows = try await TagSuggestion.query(on: fluent.db())
+      .filter(\.$status == "pending")
+      .field(\.$jellyfinId)
+      .all()
+    return Set(rows.map { $0.jellyfinId })
   }
 
   /// Random mood pick (excluding provided slugs) with all jellyfin IDs for that mood.
