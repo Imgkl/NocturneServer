@@ -15,6 +15,9 @@ final class SuggestionService: @unchecked Sendable {
   /// Set after construction to avoid a circular init between MovieService and SuggestionService.
   weak var movieServiceRef: MovieService?
 
+  // Backfill state lives in an actor so we can mutate it safely from the background worker.
+  private let backfillState = BackfillStateActor()
+
   init(
     fluent: Fluent,
     jellyfinService: JellyfinService,
@@ -195,6 +198,59 @@ final class SuggestionService: @unchecked Sendable {
     return Set(pending.map { $0.jellyfinId })
   }
 
+  // MARK: - Backfill
+
+  /// Current backfill state snapshot.
+  func getBackfillStatus() async -> BackfillStatus {
+    await backfillState.snapshot()
+  }
+
+  /// Enqueue a Claude suggestion for every movie that has no tags and no pending suggestion.
+  /// Runs sequentially in the background with a throttle between calls. Idempotent — if already
+  /// running, returns the current state without starting a second worker.
+  func startBackfill() async throws -> BackfillStatus {
+    guard let apiKey = config.anthropicApiKey, !apiKey.isEmpty else {
+      throw SuggestionError.missingAnthropicKey
+    }
+
+    let allMovies = try await Movie.query(on: fluent.db()).with(\.$tags).all()
+    let pending = try await pendingJellyfinIds()
+    let candidates = allMovies
+      .filter { $0.tags.isEmpty && !pending.contains($0.jellyfinId) }
+      .map { $0.jellyfinId }
+
+    let startedAt = Date()
+    if let existing = await backfillState.claimIfIdle(total: candidates.count, at: startedAt) {
+      // Already running — caller piggy-backs on the in-flight worker.
+      return existing
+    }
+
+    logger.info("Backfill starting for \(candidates.count) untagged movies")
+
+    Task { [weak self] in
+      guard let self else { return }
+      for jid in candidates {
+        do {
+          _ = try await self.enqueue(jellyfinId: jid)
+        } catch {
+          self.logger.warning("Backfill enqueue failed for \(jid): \(error)")
+        }
+        await self.backfillState.tick()
+        // Breather between Claude calls — keeps us well under Anthropic rate limits.
+        try? await Task.sleep(nanoseconds: 500_000_000)
+      }
+      await self.backfillState.finish()
+      self.logger.info("Backfill complete")
+    }
+
+    return BackfillStatus(
+      running: true,
+      total: candidates.count,
+      processed: 0,
+      startedAt: startedAt
+    )
+  }
+
   // MARK: - Heuristic post-filter
 
   /// Drop tags whose textual evidence is thin — same rules as the old MovieService.generateAutoTags.
@@ -240,6 +296,35 @@ final class SuggestionService: @unchecked Sendable {
     let unique = Array(NSOrderedSet(array: result)) as? [String] ?? result
     return Array(unique.prefix(config.maxAutoTags))
   }
+}
+
+/// Serializes reads/writes of the singleton backfill worker state.
+actor BackfillStateActor {
+  private var running: Bool = false
+  private var total: Int = 0
+  private var processed: Int = 0
+  private var startedAt: Date?
+
+  func snapshot() -> BackfillStatus {
+    BackfillStatus(running: running, total: total, processed: processed, startedAt: startedAt)
+  }
+
+  /// If idle, marks the state as running and returns nil. If already running, returns the
+  /// current snapshot and caller should NOT start a second worker.
+  func claimIfIdle(total: Int, at startedAt: Date) -> BackfillStatus? {
+    if running {
+      return BackfillStatus(
+        running: true, total: self.total, processed: processed, startedAt: self.startedAt)
+    }
+    running = true
+    self.total = total
+    processed = 0
+    self.startedAt = startedAt
+    return nil
+  }
+
+  func tick() { processed += 1 }
+  func finish() { running = false }
 }
 
 enum SuggestionError: Error, CustomStringConvertible {

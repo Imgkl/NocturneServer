@@ -208,6 +208,14 @@ struct SuggestionListResponse: Codable, Sendable {
     let items: [TagSuggestionResponse]
 }
 
+// MARK: - Backfill DTO
+struct BackfillStatus: Codable, Sendable {
+    let running: Bool
+    let total: Int
+    let processed: Int
+    let startedAt: Date?
+}
+
 // MARK: - OMDb DTOs
 struct OmdbCacheEntry: Codable, Sendable {
     let imdbId: String

@@ -301,6 +301,19 @@ final class APIRoutes: @unchecked Sendable {
       return try jsonResponse(TagSuggestionResponse(sugg))
     }
 
+    // POST /admin/auto-tag/backfill — kick off a background worker that auto-tags every movie
+    // with no tags and no pending suggestion. Idempotent.
+    admin.post("auto-tag/backfill") { request, context in
+      let status = try await self.suggestionService.startBackfill()
+      return try jsonResponse(status)
+    }
+
+    // GET /admin/auto-tag/backfill/status — current progress snapshot.
+    admin.get("auto-tag/backfill/status") { request, context in
+      let status = await self.suggestionService.getBackfillStatus()
+      return try jsonResponse(status)
+    }
+
     // GET /admin/movies?q&limit&offset — live Jellyfin fetch + local tag join + needs-review flag
     struct AdminMovie: Codable {
       let jellyfinId: String

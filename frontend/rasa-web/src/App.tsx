@@ -8,6 +8,7 @@ type Tag = { id?: string; slug: string; title: string }
 type Movie = { jellyfinId: string; title: string; year?: number; posterUrl?: string; tags?: Tag[]; needsReview?: boolean }
 type AdminMovieApi = { jellyfinId: string; title: string; year?: number; posterUrl?: string; tags: string[]; needsReview: boolean }
 type TagSuggestionApi = { id: string; jellyfinId: string; suggestedTags: string[]; confidence: number; reasoning?: string; status: string; createdAt?: string; resolvedAt?: string }
+type BackfillStatusApi = { running: boolean; total: number; processed: number; startedAt?: string }
 type MoodBuckets = Record<string, { title: string, description: string }>
 type SyncStatus = {
   isRunning: boolean
@@ -58,6 +59,15 @@ export default function App() {
   const [autoTagEnabled, setAutoTagEnabled] = useState(false)
   const [anthInput, setAnthInput] = useState("")
   const [omdbInput, setOmdbInput] = useState("")
+  const [viewMode, setViewMode] = useState<'tile' | 'list'>(() => {
+    const stored = typeof window !== 'undefined' ? window.localStorage.getItem('rasa.viewMode') : null
+    return stored === 'list' ? 'list' : 'tile'
+  })
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.localStorage.setItem('rasa.viewMode', viewMode)
+  }, [viewMode])
+  const [backfillStatus, setBackfillStatus] = useState<BackfillStatusApi | null>(null)
+  const backfillPollRef = useRef<number | null>(null)
 
   // Emoji map for moods (fallback to 🎬)
   const moodEmojiMap = useMemo<Record<string, string>>(() => ({
@@ -407,8 +417,74 @@ export default function App() {
       console.error('Failed to toggle auto-tagging:', error)
       setAutoTagEnabled(prev)
       alert('Failed to update auto-tagging setting')
+      return
+    }
+
+    if (next) {
+      // Count movies that currently have no tags and no pending suggestion — those are the ones
+      // the user would reasonably expect auto-tagging to cover.
+      const untaggedCount = movies.filter(m => (m.tags || []).length === 0 && !m.needsReview).length
+      if (untaggedCount > 0) {
+        const ok = window.confirm(
+          `Auto-tag ${untaggedCount} untagged movies now? This uses your Anthropic API.\n\n` +
+          `Future movies synced from Jellyfin will also be tagged automatically.`
+        )
+        if (ok) await startBackfill()
+      }
     }
   }
+
+  async function startBackfill() {
+    try {
+      const status = await api<BackfillStatusApi>('/admin/auto-tag/backfill', { method: 'POST' })
+      setBackfillStatus(status)
+      schedulePollBackfill()
+    } catch (error) {
+      console.error('Failed to start backfill:', error)
+      alert('Failed to start auto-tag backfill. Check that the Anthropic API key is set.')
+    }
+  }
+
+  function schedulePollBackfill() {
+    if (backfillPollRef.current) window.clearTimeout(backfillPollRef.current)
+    backfillPollRef.current = window.setTimeout(pollBackfillOnce, 3000)
+  }
+
+  async function pollBackfillOnce() {
+    try {
+      const status = await api<BackfillStatusApi>('/admin/auto-tag/backfill/status')
+      setBackfillStatus(status)
+      if (status.running) {
+        // Refresh the movie list periodically so newly-tagged rows appear without waiting for done.
+        await fetchAllMovies()
+        await fetchPendingSuggestions()
+        schedulePollBackfill()
+      } else {
+        // Final refresh so the grid reflects the finished run.
+        await fetchAllMovies()
+        await fetchPendingSuggestions()
+      }
+    } catch {
+      // Transient errors — keep trying until status says done.
+      schedulePollBackfill()
+    }
+  }
+
+  // On mount, pick up a backfill that's still running from a previous session.
+  useEffect(() => {
+    (async () => {
+      try {
+        const status = await api<BackfillStatusApi>('/admin/auto-tag/backfill/status')
+        if (status.running) {
+          setBackfillStatus(status)
+          schedulePollBackfill()
+        }
+      } catch {}
+    })()
+    return () => {
+      if (backfillPollRef.current) window.clearTimeout(backfillPollRef.current)
+    }
+  }, [])
 
   const filtered = useMemo(() => {
     return movies.filter(m => (
@@ -482,9 +558,53 @@ export default function App() {
                       </span>
                     </p>
                   </div>
-                  <div className="hidden sm:flex items-center gap-3">
+                  <div className="flex items-center gap-3">
+                    <div
+                      role="group"
+                      aria-label="View mode"
+                      className="inline-flex items-center gap-1 p-1 rounded-full bg-black/5 border border-black/5"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setViewMode('tile')}
+                        aria-pressed={viewMode === 'tile'}
+                        title="Tile view"
+                        aria-label="Tile view"
+                        className={`p-1.5 rounded-full transition flex items-center justify-center ${
+                          viewMode === 'tile'
+                            ? 'bg-white text-[#0f1222] shadow-sm'
+                            : 'text-black/50 hover:text-black'
+                        }`}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                          <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                          <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                          <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setViewMode('list')}
+                        aria-pressed={viewMode === 'list'}
+                        title="List view"
+                        aria-label="List view"
+                        className={`p-1.5 rounded-full transition flex items-center justify-center ${
+                          viewMode === 'list'
+                            ? 'bg-white text-[#0f1222] shadow-sm'
+                            : 'text-black/50 hover:text-black'
+                        }`}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="5" cy="6" r="1" fill="currentColor" stroke="none" />
+                          <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
+                          <circle cx="5" cy="18" r="1" fill="currentColor" stroke="none" />
+                          <path d="M9 6h12M9 12h12M9 18h12" />
+                        </svg>
+                      </button>
+                    </div>
                     <button
-                      className="px-4 py-2.5 bg-[#0f1222] hover:bg-black text-white rounded-full text-sm transition disabled:opacity-50"
+                      className="hidden sm:inline-flex px-4 py-2.5 bg-[#0f1222] hover:bg-black text-white rounded-full text-sm transition disabled:opacity-50"
                       onClick={syncAll}
                       disabled={loading}
                     >
@@ -580,6 +700,34 @@ export default function App() {
             </div>
           </header>
 
+          {/* Auto-tag backfill progress */}
+          {backfillStatus?.running && (
+            <section className="px-3 sm:px-6 pt-4">
+              <div className="mx-auto w-full max-w-[1600px]">
+                <div className="rounded-2xl bg-emerald-50 ring-1 ring-emerald-200 px-4 py-3 flex items-center gap-3">
+                  <svg className="h-4 w-4 text-emerald-700 animate-spin flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                  </svg>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-emerald-900">
+                      Auto-tagging {backfillStatus.processed} / {backfillStatus.total} untagged movies…
+                    </div>
+                    <div className="text-[11px] text-emerald-800/70 mt-0.5">
+                      Claude is working in the background. Tags will appear as they come in.
+                    </div>
+                  </div>
+                  <div className="hidden sm:block w-40 h-2 rounded-full bg-emerald-200 overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-600 transition-all"
+                      style={{ width: `${backfillStatus.total > 0 ? Math.min(100, (backfillStatus.processed / backfillStatus.total) * 100) : 0}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
           {/* Pending Suggestions Queue */}
           {pendingSuggestions.length > 0 && (
             <section className="px-3 sm:px-6 pt-4">
@@ -640,6 +788,7 @@ export default function App() {
 
           {/* Movies Grid */}
           <main className="px-3 sm:px-6 py-6">
+            {viewMode === 'tile' ? (
             <div className="mx-auto w-full max-w-[1600px] grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(140px,1fr))] sm:[grid-template-columns:repeat(auto-fill,minmax(180px,1fr))]">
               {ordered.map((m, idx) => {
                 const chips = m.tags || [];
@@ -734,6 +883,97 @@ export default function App() {
                 );
               })}
             </div>
+            ) : (
+            <div className="mx-auto w-full max-w-[1600px] rounded-2xl bg-white shadow-sm ring-1 ring-black/5 divide-y divide-black/5 overflow-hidden">
+              {ordered.map((m, idx) => {
+                const chips = m.tags || [];
+                return (
+                  <motion.div
+                    key={m.jellyfinId}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      delay: Math.min(idx * 0.008, 0.2),
+                      duration: 0.2,
+                      ease: "easeOut",
+                    }}
+                    className="flex items-center gap-3 px-3 sm:px-4 py-2 hover:bg-black/[0.02] transition"
+                  >
+                    <img
+                      className="w-10 h-14 object-cover rounded-md bg-black/5 flex-shrink-0"
+                      src={m.posterUrl || ""}
+                      alt={m.title}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src =
+                          "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjMwMCIgdmlld0JveD0iMCAwIDIwMCAzMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xMDAgMTQwTDEzMCAxNjBIMTMwTDEwMCAxODBMNzAgMTYwSDcwTDEwMCAxNDBaIiBmaWxsPSIjRDFENUQ5Ii8+Cjx0ZXh0IHg9IjEwMCIgeT0iMjIwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjNjg3Mjc2IiBmb250LWZhbWlseT0ic3lzdGVtLXVpIiBmb250LXNpemU9IjE0Ij5ObyBQb3N0ZXI8L3RleHQ+Cjwvc3ZnPgo=";
+                      }}
+                    />
+                    <div className="min-w-0 flex-shrink-0 w-44 sm:w-72">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="text-[14px] font-medium truncate text-[#0f1222]"
+                          title={m.title}
+                        >
+                          {m.title}
+                          {m.year ? (
+                            <span className="ml-1 text-black/40 font-normal">
+                              ({m.year})
+                            </span>
+                          ) : null}
+                        </div>
+                        {m.needsReview && (
+                          <span
+                            className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-amber-500/95 text-white"
+                            title="Auto-tagged with low confidence — please review."
+                          >
+                            Review
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0 flex flex-wrap items-center gap-1">
+                      {chips.length === 0 ? (
+                        <span className="text-[11px] text-black/40 italic">
+                          No tags
+                        </span>
+                      ) : (
+                        chips.map((t) => (
+                          <span
+                            key={t.slug}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-black/[0.06] text-[#0f1222] border border-black/5"
+                          >
+                            <span>{getMoodEmoji(t.slug, t.title)}</span>
+                            {t.title}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingMovie(m)}
+                      title="Edit tags"
+                      aria-label={`Edit tags for ${m.title}`}
+                      className="flex-shrink-0 p-2 rounded-full text-black/50 hover:text-black hover:bg-black/5 transition"
+                    >
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                      </svg>
+                    </button>
+                  </motion.div>
+                );
+              })}
+            </div>
+            )}
 
             {/* Empty State */}
             {filtered.length === 0 && !loading && (
@@ -858,12 +1098,12 @@ export default function App() {
 
               <div className="h-px bg-black/10" />
 
-              {/* Auto-tag queue toggle */}
+              {/* Auto-tag new movies toggle */}
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <div className="text-sm font-medium text-[#0f1222]">Auto-tag queue</div>
+                  <div className="text-sm font-medium text-[#0f1222]">Auto-tag new movies</div>
                   <p className="text-xs text-black/50 mt-1">
-                    When on, new Jellyfin movies automatically queue a Claude mood-tag suggestion. Nothing is written until you approve it in the pending list.
+                    When on, Claude tags new Jellyfin movies automatically on sync — no confirmation needed. Confident tags are applied instantly; low-confidence ones are applied but flagged for review in the pending list.
                     {!anthKeySet && (
                       <span className="block mt-1 text-amber-600">Requires an Anthropic API key.</span>
                     )}
