@@ -6,22 +6,22 @@ final class LLMService: Sendable {
     private let httpClient: HTTPClient
     private let logger = Logger(label: "LLMService")
     private let anthropicModel: String
-    
+
     init(httpClient: HTTPClient) {
         self.httpClient = httpClient
-        self.anthropicModel = ProcessInfo.processInfo.environment["ANTHROPIC_MODEL"] ?? "claude-sonnet-4-20250514"
+        self.anthropicModel = ProcessInfo.processInfo.environment["ANTHROPIC_MODEL"] ?? "claude-opus-4-7"
     }
-    
+
     func generateTags(
-        for movie: Movie,
+        for context: MovieContext,
         using provider: LLMProvider,
         availableTags: [String: MoodBucket],
         customPrompt: String?,
         maxTags: Int = 4,
         externalInfo: String? = nil
     ) async throws -> AutoTagResponse {
-        
-        let movieContext = buildMovieContext(movie: movie)
+
+        let movieContext = buildMovieContext(from: context)
         let tagsContext = buildTagsContext(availableTags: availableTags)
         let prompt = buildPrompt(
             movieContext: movieContext,
@@ -30,9 +30,9 @@ final class LLMService: Sendable {
             maxTags: maxTags,
             externalInfo: externalInfo
         )
-        
-        logger.info("Generating tags for movie: \(movie.title) using \(provider.name)")
-        
+
+        logger.info("Generating tags for movie: \(context.title) using \(provider.name)")
+
         switch provider {
         case .anthropic(let apiKey):
             return try await generateWithAnthropic(prompt: prompt, apiKey: apiKey, maxTags: maxTags)
@@ -40,14 +40,14 @@ final class LLMService: Sendable {
     }
 
     func refineTags(
-        for movie: Movie,
+        for context: MovieContext,
         using provider: LLMProvider,
         availableTags: [String: MoodBucket],
         initial: AutoTagResponse,
         externalInfo: String?,
         maxTags: Int
     ) async throws -> AutoTagResponse {
-        let movieContext = buildMovieContext(movie: movie)
+        let movieContext = buildMovieContext(from: context)
         let tagsContext = buildTagsContext(availableTags: availableTags)
         let prompt = buildRefinePrompt(
             movieContext: movieContext,
@@ -61,12 +61,12 @@ final class LLMService: Sendable {
             return try await generateWithAnthropic(prompt: prompt, apiKey: apiKey, maxTags: maxTags)
         }
     }
-    
+
     // MARK: - Anthropic Integration
-    
+
     private func generateWithAnthropic(prompt: String, apiKey: String, maxTags: Int) async throws -> AutoTagResponse {
         let url = "https://api.anthropic.com/v1/messages"
-        
+
         let requestBody = AnthropicRequest(
             model: anthropicModel,
             maxTokens: 500,
@@ -78,65 +78,64 @@ final class LLMService: Sendable {
             ],
             system: "You are a film expert helping categorize movies by mood. Return only valid JSON."
         )
-        
+
         var request = HTTPClientRequest(url: url)
         request.method = .POST
         request.headers.add(name: "x-api-key", value: apiKey)
         request.headers.add(name: "anthropic-version", value: "2023-06-01")
         request.headers.add(name: "content-type", value: "application/json")
-        
+
         let jsonData = try JSONEncoder().encode(requestBody)
         request.body = .bytes(jsonData)
-        
+
         let response: HTTPClientResponse
         do {
             response = try await httpClient.execute(request, timeout: .seconds(45))
         } catch {
-            // Map low-level HTTP client errors to an LLMError so middleware returns a clean 502
             throw LLMError.httpError(502, "Network error contacting Anthropic: \(error.localizedDescription)")
         }
-        
+
         guard response.status == .ok else {
             throw LLMError.httpError(response.status.code, "Anthropic API error")
         }
-        
+
         let data = try await response.body.collect(upTo: 1024 * 1024)
         let anthropicResponse = try JSONDecoder().decode(AnthropicResponse.self, from: data)
-        
+
         guard let content = anthropicResponse.content.first?.text else {
             throw LLMError.invalidResponse("No content in Anthropic response")
         }
-        
+
         return try parseTagResponse(content)
     }
-    
+
     // MARK: - Prompt Building
-    
-    private func buildMovieContext(movie: Movie) -> String {
-        let context = [
-            "Title: \(movie.title)",
-            movie.originalTitle.map { "Original Title: \($0)" },
-            movie.year.map { "Year: \($0)" },
-            movie.overview.map { "Plot: \($0)" },
-            movie.runtimeMinutes.map { "Runtime: \($0) minutes" },
-            movie.director.map { "Director: \($0)" },
-            !movie.genres.isEmpty ? "Genres: \(movie.genres.joined(separator: ", "))" : nil,
-            !movie.cast.isEmpty ? "Cast: \(movie.cast.prefix(5).joined(separator: ", "))" : nil
+
+    private func buildMovieContext(from context: MovieContext) -> String {
+        let lines = [
+            "Title: \(context.title)",
+            context.originalTitle.map { "Original Title: \($0)" },
+            context.year.map { "Year: \($0)" },
+            context.overview.map { "Plot: \($0)" },
+            context.runtimeMinutes.map { "Runtime: \($0) minutes" },
+            context.director.map { "Director: \($0)" },
+            !context.genres.isEmpty ? "Genres: \(context.genres.joined(separator: ", "))" : nil,
+            !context.cast.isEmpty ? "Cast: \(context.cast.prefix(5).joined(separator: ", "))" : nil
         ].compactMap { $0 }
-        
-        return context.joined(separator: "\n")
+
+        return lines.joined(separator: "\n")
     }
-    
+
     private func buildTagsContext(availableTags: [String: MoodBucket]) -> String {
         let tags = availableTags.map { slug, bucket in
             let keywords = (bucket.tags ?? []).joined(separator: ", ")
             let extras = keywords.isEmpty ? "" : " [keywords: \(keywords)]"
             return "\(slug): \(bucket.title) - \(bucket.description)\(extras)"
         }.sorted().joined(separator: "\n")
-        
+
         return "Available mood tags:\n\(tags)"
     }
-    
+
     private func buildPrompt(
         movieContext: String,
         tagsContext: String,
@@ -145,37 +144,56 @@ final class LLMService: Sendable {
         externalInfo: String?
     ) -> String {
         let basePrompt = customPrompt ?? """
-        You are a meticulous film taxonomy expert selecting the most relevant mood tags for a movie.
-        Task: Suggest up to \(maxTags) tags (fewer if uncertain) strictly from the provided list.
-        Rules:
-        - Only choose tags you can justify with explicit evidence from the overview or external summary.
-        - DO NOT pick "dialogue-driven" unless dialogue is clearly the dominant engine of tension/plot, with minimal action/set pieces.
-        - "time-twists" requires explicit temporal mechanics (time loop/travel/branching timelines). Nonlinear romance is NOT enough.
-        - "psychological-pressure-cooker" requires claustrophobic psychological strain; if the tension is mainly spatial confinement with debate, consider "one-room-pressure-cooker" instead.
-        - Prefer precision over breadth; if unsure, return fewer than \(maxTags) tags.
-        - Calibrate confidence to 0.70–0.95 when evidence is strong; lower only when evidence is weak.
-        - Tags MUST be valid slugs from the list. Do not invent new tags.
-        Return concise reasoning citing the concrete details that justify each tag.
+        You are a meticulous film taxonomy expert. Pick the 1–\(maxTags) mood tags that best describe
+        the movie's DOMINANT EMOTIONAL REGISTER — the feeling a viewer leaves with after watching the
+        whole film — not its individual scenes.
+
+        Rule 1 — Dominant register, not flavor notes
+        • A sad/tragic film with funny lines is NOT "ha-ha-ha".
+        • A film with a romantic subplot but dark themes is NOT "feel-good-romance".
+        • A heavy or intense film is NOT "rainy-day-rewinds".
+        • A coming-of-age subplot in a broader drama is NOT "coming-of-age" unless identity-becoming is the central arc.
+
+        Rule 2 — Evidence or drop the tag
+        Cite concrete evidence from the overview/summary for every tag. No citation → no tag.
+
+        Rule 3 — Specific guards
+        • dialogue-driven: only when verbal exchanges are the PRIMARY engine of tension; most dramas are not.
+        • time-twists: requires explicit temporal mechanics (loops, travel, branching timelines). Nonlinear editing ≠ time twists.
+        • psychological-pressure-cooker: requires mind-unraveling; spatial-confinement tension → prefer one-room-pressure-cooker.
+        • ha-ha-ha: primary register must be comedy; dark comedies with tragic endings do NOT qualify.
+        • feel-good-romance: uplifting arc AND romance is the engine; tragic romances do NOT qualify.
+        • rainy-day-rewinds: comfort-first, low-stakes, warm rhythm; heavy films do NOT qualify.
+        • modern-masterpieces: only with explicit acclaim evidence (Oscar, Palme d'Or, critic consensus, landmark).
+
+        Rule 4 — Prefer precision
+        Fewer tags when unsure. One well-justified tag beats three loose ones. Cap at \(maxTags).
+        Calibrate confidence 0.70–0.95 when strong; lower otherwise.
+
+        Rule 5 — Valid slugs only; do not invent tags.
+
+        In `reasoning`, first state the movie's dominant emotional register in one sentence, then cite
+        the evidence for each chosen tag.
         """
-        
+
         return """
         \(basePrompt)
-        
+
         Movie information:
         \(movieContext)
-        
+
         \(tagsContext)
-        
+
         Additional external context (optional):
         \(externalInfo ?? "(none)")
-        
+
         Please respond with a JSON object in exactly this format:
         {
             "suggestions": ["tag-slug-1", "tag-slug-2"],
             "confidence": 0.85,
             "reasoning": "Brief explanation of why these tags fit"
         }
-        
+
         Return only valid JSON, nothing else.
         """
     }
@@ -188,45 +206,58 @@ final class LLMService: Sendable {
         maxTags: Int
     ) -> String {
         let critiqueGuardrails = """
-        You are refining an earlier set of tags. Strict constraints:
-        - Keep at most \(maxTags) tags; return fewer if any tag lacks direct evidence.
-        - Remove tags that are generic or weakly supported.
-        - Reject "time-twists" without explicit temporal mechanics. Nonlinear romance ≠ time travel/loop.
-        - If tension is primarily debate in a single space, prefer "one-room-pressure-cooker" over "psychological-pressure-cooker" unless mental unraveling is explicit.
-        - If a tag is kept, briefly state the exact evidence (from overview/summary) that justifies it.
-        Output format must match exactly:
-        {"suggestions": ["tag-1", "tag-2"], "confidence": 0.8, "reasoning": "..."}
+        You are critiquing an earlier tag set. Be stricter than the first pass.
+        Apply the DOMINANT-REGISTER test: a tag is only valid if it describes the WHOLE film, not a scene or subplot.
+
+        Drop a tag if ANY of these are true:
+        • ha-ha-ha, but the film is primarily sad, tragic, or melancholic (some humor ≠ comedy).
+        • feel-good-romance, but the arc is ambivalent or tragic (romantic subplot ≠ feel-good).
+        • rainy-day-rewinds, but the film is heavy, disturbing, or high-stakes.
+        • coming-of-age, but the film is not centered on identity-becoming.
+        • dialogue-driven, but the film has meaningful action/set pieces; verbal exchanges are not the PRIMARY engine.
+        • time-twists, without explicit temporal mechanics (loop/travel/branching). Nonlinear editing alone ≠ qualifying.
+        • psychological-pressure-cooker, when the tension is primarily spatial — prefer one-room-pressure-cooker.
+        • modern-masterpieces, without explicit acclaim evidence (Oscar, Palme d'Or, critic consensus, landmark).
+        • Any tag lacking a concrete phrase from the overview/external summary you can quote in `reasoning`.
+
+        IMPORTANT: You MUST return at least 1 tag — the single strongest survivor. Never return an empty array.
+        If every initial tag fails its guard, keep the ONE that best matches the film's dominant register,
+        even if weakly supported — then lower confidence accordingly (0.50–0.65).
+
+        Keep at most \(maxTags). Fewer is better. For each kept tag, quote the exact evidence in `reasoning`.
+
+        Output format MUST match exactly:
+        {"suggestions": ["tag-1"], "confidence": 0.6, "reasoning": "..."}
         """
         return """
         \(critiqueGuardrails)
-        
+
         Movie information:
         \(movieContext)
-        
+
         \(tagsContext)
-        
+
         Additional external context (optional):
         \(externalInfo ?? "(none)")
-        
+
         Initial tags to critique:
         {"suggestions": \(try! initial.toJSONString()), "note": "Only use the 'suggestions' from above; re-evaluate them."}
         """
     }
-    
+
     // MARK: - Response Parsing
-    
+
     private func parseTagResponse(_ content: String) throws -> AutoTagResponse {
-        // Clean up the response - sometimes LLMs add markdown formatting
         let cleanContent = content
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "```json", with: "")
             .replacingOccurrences(of: "```", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        
+
         guard let data = cleanContent.data(using: .utf8) else {
             throw LLMError.invalidResponse("Could not encode response as UTF-8")
         }
-        
+
         do {
             return try JSONDecoder().decode(AutoTagResponse.self, from: data)
         } catch {
@@ -240,17 +271,10 @@ final class LLMService: Sendable {
 
 enum LLMProvider: Sendable {
     case anthropic(apiKey: String)
-    
+
     var name: String {
         switch self {
         case .anthropic: return "Anthropic"
-        }
-    }
-    
-    static func from(provider: String, apiKey: String) -> LLMProvider? {
-        switch provider.lowercased() {
-        case "anthropic": return .anthropic(apiKey: apiKey)
-        default: return nil
         }
     }
 }
@@ -259,17 +283,17 @@ enum LLMProvider: Sendable {
 
 extension LLMService {
     struct WikiSummary: Decodable { let extract: String? }
-    
-    func fetchExternalSummary(for movie: Movie) async -> String? {
+
+    func fetchExternalSummary(title: String, year: Int?) async -> String? {
         let base = "https://en.wikipedia.org/api/rest_v1/page/summary/"
         var candidates: [String] = []
-        if let year = movie.year {
-            candidates.append("\(movie.title) (\(year))")
+        if let year = year {
+            candidates.append("\(title) (\(year))")
         }
-        candidates.append(movie.title)
-        
-        for title in candidates {
-            let encoded = title.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? title
+        candidates.append(title)
+
+        for candidate in candidates {
+            let encoded = candidate.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? candidate
             let url = base + encoded
             var req = HTTPClientRequest(url: url)
             req.method = .GET
@@ -291,13 +315,12 @@ extension LLMService {
 
 // MARK: - API Models
 
-// Anthropic
 struct AnthropicRequest: Codable {
     let model: String
     let maxTokens: Int
     let messages: [AnthropicMessage]
     let system: String
-    
+
     enum CodingKeys: String, CodingKey {
         case model
         case maxTokens = "max_tokens"
@@ -316,7 +339,7 @@ struct AnthropicResponse: Codable {
     let model: String
     let role: String
     let stopReason: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case content
         case model
@@ -330,26 +353,18 @@ struct AnthropicContent: Codable {
     let text: String
 }
 
-// Removed Gemini support
-
 // MARK: - Errors
 
 enum LLMError: Error, CustomStringConvertible {
     case httpError(UInt, String)
     case invalidResponse(String)
-    case unsupportedProvider(String)
-    case missingApiKey(String)
-    
+
     var description: String {
         switch self {
         case .httpError(let code, let message):
             return "LLM API Error (\(code)): \(message)"
         case .invalidResponse(let details):
             return "Invalid LLM response: \(details)"
-        case .unsupportedProvider(let provider):
-            return "Unsupported LLM provider: \(provider)"
-        case .missingApiKey(let provider):
-            return "Missing API key for \(provider)"
         }
     }
 }

@@ -42,6 +42,8 @@ struct RasaServerApp {
             if let v = all["jellyfin_api_key"] { appConfig.jellyfinApiKey = v }
             if let v = all["jellyfin_user_id"] { appConfig.jellyfinUserId = v }
             if let v = all["anthropic_api_key"], !v.isEmpty { appConfig.anthropicApiKey = v }
+            if let v = all["omdb_api_key"], !v.isEmpty { appConfig.omdbApiKey = v }
+            if let v = all["enable_auto_tagging"] { appConfig.enableAutoTagging = (v == "true") }
         } catch {
             logger.error("Settings table init failed: \(error)")
         }
@@ -70,21 +72,38 @@ struct RasaServerApp {
             jellyfinService: jellyfinService,
             llmService: llmService
         )
+        let suggestionService = SuggestionService(
+            fluent: fluent,
+            jellyfinService: jellyfinService,
+            llmService: llmService,
+            config: appConfig
+        )
+        // Break the cycle: both services hold weak refs to each other.
+        movieService.suggestionService = suggestionService
+        suggestionService.movieServiceRef = movieService
+
         // Start realtime listener if configured
         var realtime: JellyfinRealtimeService? = nil
         if !appConfig.jellyfinUrl.isEmpty && !appConfig.jellyfinApiKey.isEmpty && !appConfig.jellyfinUserId.isEmpty {
-            let rt = JellyfinRealtimeService(config: appConfig, movieService: movieService, eventLoopGroup: eventLoopGroup, logger: logger)
+            let rt = JellyfinRealtimeService(
+                config: appConfig,
+                movieService: movieService,
+                suggestionService: suggestionService,
+                eventLoopGroup: eventLoopGroup,
+                logger: logger
+            )
             rt.start()
             realtime = rt
             logger.info("🔔 Jellyfin realtime listener started")
         } else {
             logger.warning("🔕 Realtime listener not started (missing Jellyfin url/token/userId). Complete setup at /setup")
         }
-        
+
         // Create and run server
         let app = try await createApplication(
             config: appConfig,
             movieService: movieService,
+            suggestionService: suggestionService,
             fluent: fluent,
             logger: logger,
             isFirstRun: false,
@@ -126,13 +145,12 @@ func setupDatabase(path: String, logger: Logger) throws -> Fluent {
 }
 
 func runMigrations(fluent: Fluent, logger: Logger) async throws {
-    // Add migrations
     await fluent.migrations.add(CreateMovies())
-    await fluent.migrations.add(AddTrailerDeeplinkToMovies())
     await fluent.migrations.add(CreateTags())
     await fluent.migrations.add(CreateMovieTags())
     await fluent.migrations.add(SeedMoodTags())
-    
+    await fluent.migrations.add(CreateTagSuggestions())
+
     logger.info("🔄 Running database migrations...")
     try await fluent.migrate()
     logger.info("✅ Database migrations completed")
@@ -143,23 +161,29 @@ func runMigrations(fluent: Fluent, logger: Logger) async throws {
 func createApplication(
     config: RasaConfiguration,
     movieService: MovieService,
+    suggestionService: SuggestionService,
     fluent: Fluent,
     logger: Logger,
     isFirstRun: Bool,
     httpClient: HTTPClient,
     eventLoopGroup: EventLoopGroup
 ) async throws -> Application<RouterResponder<BasicRequestContext>> {
-    
+
     let router = Router()
-    
+
     // Add middleware
     router.middlewares.add(LoggingMiddleware())
     router.middlewares.add(CORSMiddleware())
     router.middlewares.add(JSONErrorMiddleware())
-    
+
     // Always register routes; gate behavior dynamically based on configuration
     setupWizardRoutes(router: router, config: config, movieService: movieService, httpClient: httpClient, fluent: fluent)
-    let apiRoutes = APIRoutes(movieService: movieService, config: config, httpClient: httpClient)
+    let apiRoutes = APIRoutes(
+        movieService: movieService,
+        suggestionService: suggestionService,
+        config: config,
+        httpClient: httpClient
+    )
     apiRoutes.addRoutes(to: router)
     
     // Root: serve SPA index (from public/) or redirect to /setup if not configured

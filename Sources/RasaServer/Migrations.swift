@@ -1,44 +1,19 @@
 import Foundation
 import FluentKit
+import FluentSQL
 
 struct CreateMovies: AsyncMigration {
     func prepare(on database: Database) async throws {
         try await database.schema("movies")
             .id()
             .field("jellyfin_id", .string, .required)
-            .field("title", .string, .required)
-            .field("original_title", .string)
-            .field("year", .int)
-            .field("overview", .string)
-            .field("runtime_minutes", .int)
-            .field("genres", .array(of: .string), .required)
-            .field("director", .string)
-            .field("cast", .array(of: .string), .required)
-            .field("poster_url", .string)
-            .field("backdrop_url", .string)
-            .field("logo_url", .string)
-            .field("jellyfin_metadata", .json)
+            .field("last_seen_at", .datetime)
             .field("created_at", .datetime)
-            .field("updated_at", .datetime)
             .unique(on: "jellyfin_id")
             .create()
     }
     func revert(on database: Database) async throws {
         try await database.schema("movies").delete()
-    }
-}
-
-// Add trailer_deeplink column to movies
-struct AddTrailerDeeplinkToMovies: AsyncMigration {
-    func prepare(on database: Database) async throws {
-        try await database.schema("movies")
-            .field("trailer_deeplink", .string)
-            .update()
-    }
-    func revert(on database: Database) async throws {
-        try await database.schema("movies")
-            .deleteField("trailer_deeplink")
-            .update()
     }
 }
 
@@ -54,7 +29,7 @@ struct CreateTags: AsyncMigration {
             .unique(on: "slug")
             .create()
     }
-    
+
     func revert(on database: Database) async throws {
         try await database.schema("tags").delete()
     }
@@ -71,7 +46,7 @@ struct CreateMovieTags: AsyncMigration {
             .unique(on: "movie_id", "tag_id")
             .create()
     }
-    
+
     func revert(on database: Database) async throws {
         try await database.schema("movie_tags").delete()
     }
@@ -79,7 +54,6 @@ struct CreateMovieTags: AsyncMigration {
 
 struct SeedMoodTags: AsyncMigration {
     func prepare(on database: Database) async throws {
-        // Insert all the mood buckets as tags
         let moodBuckets: [String: MoodBucket] = [
             "dialogue-driven": MoodBucket(
                 title: "Dialogue-Driven",
@@ -218,20 +192,36 @@ struct SeedMoodTags: AsyncMigration {
                 description: "Form-forward films that break rules to find new rhythms."
             )
         ]
-        
+
         for (slug, bucket) in moodBuckets.sorted(by: { $0.key < $1.key }) {
             let tag = Tag(slug: slug, title: bucket.title, description: bucket.description, usageCount: 0)
             try await tag.save(on: database)
         }
     }
-    
+
     func revert(on database: Database) async throws {
         try await Tag.query(on: database).delete()
     }
 }
 
-// Migrations are now added directly in main.swift using:
-// await fluent.migrations.add(CreateMovies())
-// await fluent.migrations.add(CreateTags())
-// await fluent.migrations.add(CreateMovieTags())
-// await fluent.migrations.add(SeedMoodTags())
+struct CreateTagSuggestions: AsyncMigration {
+    func prepare(on database: Database) async throws {
+        try await database.schema("tag_suggestions")
+            .id()
+            .field("jellyfin_id", .string, .required)
+            .field("suggested_tags", .array(of: .string), .required)
+            .field("confidence", .double, .required)
+            .field("reasoning", .string)
+            .field("status", .string, .required)
+            .field("created_at", .datetime)
+            .field("resolved_at", .datetime)
+            .create()
+        guard let sql = database as? SQLDatabase else { return }
+        try await sql.raw("CREATE INDEX IF NOT EXISTS tag_suggestions_jellyfin_id_idx ON tag_suggestions(jellyfin_id)").run()
+        try await sql.raw("CREATE INDEX IF NOT EXISTS tag_suggestions_status_idx ON tag_suggestions(status)").run()
+    }
+
+    func revert(on database: Database) async throws {
+        try await database.schema("tag_suggestions").delete()
+    }
+}

@@ -5,7 +5,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 
 type Tag = { id?: string; slug: string; title: string }
-type Movie = { id: string; jellyfinId: string; title: string; posterUrl?: string; tags?: Tag[] }
+type Movie = { jellyfinId: string; title: string; year?: number; posterUrl?: string; tags?: Tag[]; pendingSuggestion?: boolean }
+type AdminMovieApi = { jellyfinId: string; title: string; year?: number; posterUrl?: string; tags: string[]; pendingSuggestion: boolean }
+type TagSuggestionApi = { id: string; jellyfinId: string; suggestedTags: string[]; confidence: number; reasoning?: string; status: string; createdAt?: string; resolvedAt?: string }
 type MoodBuckets = Record<string, { title: string, description: string }>
 type SyncStatus = {
   isRunning: boolean
@@ -37,7 +39,8 @@ export default function App() {
   const [autoTaggerOpen, setAutoTaggerOpen] = useState(false)
   const [autoTagIndex, setAutoTagIndex] = useState(0)
   const [autoTagging, setAutoTagging] = useState(false)
-  const [autoSuggestion, setAutoSuggestion] = useState<{ suggestions: string[]; confidence: number; reasoning?: string } | null>(null)
+  const [autoSuggestion, setAutoSuggestion] = useState<{ suggestions: string[]; confidence: number; reasoning?: string; suggestionId?: string } | null>(null)
+  const [pendingSuggestions, setPendingSuggestions] = useState<TagSuggestionApi[]>([])
   const [autoError, setAutoError] = useState<string | null>(null)
   const [selectedAutoTags, setSelectedAutoTags] = useState<string[]>([])
   const [autoQueue, setAutoQueue] = useState<string[]>([])
@@ -52,6 +55,7 @@ export default function App() {
   const [version, setVersion] = useState<string>("")
   const [anthKeySet, setAnthKeySet] = useState(false)
   const [omdbKeySet, setOmdbKeySet] = useState(false)
+  const [autoTagEnabled, setAutoTagEnabled] = useState(false)
   const [anthInput, setAnthInput] = useState("")
   const [omdbInput, setOmdbInput] = useState("")
 
@@ -94,13 +98,14 @@ export default function App() {
     return moodEmojiMap[key] || '🎬'
   }
 
-  useEffect(() => { fetchMoods(); fetchAllMovies(); fetchVersion() }, [])
+  useEffect(() => { fetchMoods(); fetchAllMovies(); fetchVersion(); fetchPendingSuggestions() }, [])
 
   async function fetchSettingsInfo() {
     try {
-      const info = await api<{ jellyfin_url: string; jellyfin_api_key_set: boolean; jellyfin_user_id: string; anthropic_key_set: boolean; omdb_key_set: boolean }>(`/settings/info`)
+      const info = await api<{ jellyfin_url: string; jellyfin_api_key_set: boolean; jellyfin_user_id: string; anthropic_key_set: boolean; omdb_key_set: boolean; enable_auto_tagging: boolean }>(`/settings/info`)
       setAnthKeySet(!!info.anthropic_key_set)
       setOmdbKeySet(!!info.omdb_key_set)
+      setAutoTagEnabled(!!info.enable_auto_tagging)
     } catch {}
   }
 
@@ -120,9 +125,17 @@ export default function App() {
   async function fetchAllMovies() {
     setLoading(true)
     try {
-      // Fetch all movies at once with a high limit
-      const data = await api<{ movies: Movie[] }>(`/movies?with_tags=true&limit=10000&offset=0`)
-      setMovies(data.movies)
+      // Admin proxy: live Jellyfin fetch enriched with local tags + pending-suggestion flag.
+      const data = await api<{ items: AdminMovieApi[]; totalCount: number }>(`/admin/movies?limit=10000&offset=0`)
+      const mapped: Movie[] = data.items.map(it => ({
+        jellyfinId: it.jellyfinId,
+        title: it.title,
+        year: it.year,
+        posterUrl: it.posterUrl,
+        pendingSuggestion: it.pendingSuggestion,
+        tags: it.tags.map(slug => ({ slug, title: moods[slug]?.title || slug })),
+      }))
+      setMovies(mapped)
     } catch (error) {
       console.error('Failed to fetch movies:', error)
     } finally {
@@ -182,8 +195,7 @@ export default function App() {
 
   async function saveTags(movie: Movie, selectedTags: string[]) {
     try {
-      // Server now allows empty tag arrays → send exactly what the user selected
-      await api(`/movies/${movie.id}/tags`, {
+      await api(`/movies/${movie.jellyfinId}/tags`, {
         method: 'PUT',
         body: JSON.stringify({ tagSlugs: selectedTags, replaceAll: true })
       })
@@ -198,7 +210,7 @@ export default function App() {
   async function removeTag(movie: Movie, tagSlug: string) {
     try {
       const remainingTags = (movie.tags || []).filter(t => t.slug !== tagSlug).map(t => t.slug)
-      await api(`/movies/${movie.id}/tags`, {
+      await api(`/movies/${movie.jellyfinId}/tags`, {
         method: 'PUT',
         body: JSON.stringify({ tagSlugs: remainingTags, replaceAll: true })
       })
@@ -208,43 +220,40 @@ export default function App() {
       alert('Failed to remove tag. Please try again.')
     }
   }
-  
+
+  // Queues a Claude suggestion. Approval happens in the pending-suggestions review UI.
   async function autoTag(movie: Movie) {
     try {
       setLoading(true)
-      await api(`/movies/${movie.id}/auto-tag`, { method: 'POST', body: JSON.stringify({ provider: 'anthropic', suggestionsOnly: false }) })
-      await fetchAllMovies() // Refresh to show new tags
+      await api(`/movies/${movie.jellyfinId}/auto-tag`, { method: 'POST', body: JSON.stringify({}) })
+      await fetchPendingSuggestions()
+      await fetchAllMovies()
     } catch (error: any) {
       console.error('Failed to auto-tag:', error)
-      let message = 'Failed to auto-tag movie.'
-      
+      let message = 'Failed to queue suggestion.'
       if (error.message?.includes('429')) {
         message = 'Anthropic API rate limit reached. Please wait a moment and try again.'
       } else if (error.message?.includes('401') || error.message?.includes('Invalid API key')) {
         message = 'Invalid Anthropic API key. Please check your API key settings.'
-      } else if (error.message?.includes('Internal Server Error')) {
-        message = 'Anthropic API error. This might be a rate limit or server issue. Try again in a few minutes.'
       }
-      
       alert(message)
     } finally {
       setLoading(false)
     }
   }
 
-  async function suggestFor(movieId: string) {
+  async function suggestFor(jellyfinId: string) {
     setAutoError(null)
     setAutoSuggestion(null)
     setAutoTagging(true)
     try {
-      const resp = await api<{ suggestions: string[]; confidence: number; reasoning?: string }>(`/movies/${movieId}/auto-tag`, {
+      const resp = await api<TagSuggestionApi>(`/movies/${jellyfinId}/auto-tag`, {
         method: 'POST',
-        body: JSON.stringify({ provider: 'anthropic', suggestionsOnly: true })
+        body: JSON.stringify({})
       })
-      // Ignore late responses if user navigated to a different movie
-      if (currentAutoId !== movieId) return
-      setAutoSuggestion(resp)
-      setSelectedAutoTags(resp.suggestions || [])
+      if (currentAutoId !== jellyfinId) return
+      setAutoSuggestion({ suggestions: resp.suggestedTags, confidence: resp.confidence, reasoning: resp.reasoning, suggestionId: resp.id })
+      setSelectedAutoTags(resp.suggestedTags || [])
     } catch (e: any) {
       setAutoError(e.message || 'Failed to get suggestions')
     } finally {
@@ -264,12 +273,49 @@ export default function App() {
   async function applyFor(movie: Movie) {
     if (!autoSuggestion) return
     try {
-      await api(`/movies/${movie.id}/tags`, {
-        method: 'PUT',
-        body: JSON.stringify({ tagSlugs: selectedAutoTags, replaceAll: false })
-      })
+      // Approve the queued suggestion if we have one; otherwise write tags directly.
+      if (autoSuggestion.suggestionId) {
+        await api(`/admin/suggestions/${autoSuggestion.suggestionId}/approve`, { method: 'POST' })
+      } else {
+        await api(`/movies/${movie.jellyfinId}/tags`, {
+          method: 'PUT',
+          body: JSON.stringify({ tagSlugs: selectedAutoTags, replaceAll: false })
+        })
+      }
+      await fetchPendingSuggestions()
+      await fetchAllMovies()
     } catch (e) {
       console.error('Failed to save tags', e)
+    }
+  }
+
+  async function fetchPendingSuggestions() {
+    try {
+      const resp = await api<{ items: TagSuggestionApi[] }>(`/admin/suggestions?status=pending`)
+      setPendingSuggestions(resp.items)
+    } catch (e) {
+      console.error('Failed to fetch pending suggestions:', e)
+    }
+  }
+
+  async function approveSuggestion(id: string) {
+    try {
+      await api(`/admin/suggestions/${id}/approve`, { method: 'POST' })
+      await fetchPendingSuggestions()
+      await fetchAllMovies()
+    } catch (e) {
+      console.error('Failed to approve:', e)
+      alert('Failed to approve suggestion')
+    }
+  }
+
+  async function rejectSuggestion(id: string) {
+    try {
+      await api(`/admin/suggestions/${id}/reject`, { method: 'POST' })
+      await fetchPendingSuggestions()
+    } catch (e) {
+      console.error('Failed to reject:', e)
+      alert('Failed to reject suggestion')
     }
   }
 
@@ -352,6 +398,18 @@ export default function App() {
     }
   }
 
+  async function toggleAutoTagging(next: boolean) {
+    const prev = autoTagEnabled
+    setAutoTagEnabled(next)
+    try {
+      await api('/settings/keys', { method: 'POST', body: JSON.stringify({ enable_auto_tagging: next }) })
+    } catch (error) {
+      console.error('Failed to toggle auto-tagging:', error)
+      setAutoTagEnabled(prev)
+      alert('Failed to update auto-tagging setting')
+    }
+  }
+
   const filtered = useMemo(() => {
     return movies.filter(m => (
       (!q || m.title.toLowerCase().includes(q.toLowerCase())) &&
@@ -373,7 +431,7 @@ export default function App() {
     return [...untagged, ...tagged]
   }, [filtered])
   
-  const currentAutoMovie = useMemo(() => movies.find(m => m.id === currentAutoId) || null, [movies, currentAutoId])
+  const currentAutoMovie = useMemo(() => movies.find(m => m.jellyfinId === currentAutoId) || null, [movies, currentAutoId])
   const moodCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     movies.forEach(m => (m.tags||[]).forEach(t => { counts[t.slug] = (counts[t.slug]||0)+1 }))
@@ -520,6 +578,59 @@ export default function App() {
             </div>
           </header>
 
+          {/* Pending Suggestions Queue */}
+          {pendingSuggestions.length > 0 && (
+            <section className="px-3 sm:px-6 pt-4">
+              <div className="mx-auto w-full max-w-[1600px]">
+                <div className="rounded-2xl bg-white shadow-sm ring-1 ring-black/5 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-sm font-semibold text-[#0f1222]">
+                      Pending AI suggestions ({pendingSuggestions.length})
+                    </div>
+                    <button
+                      className="text-xs text-black/60 hover:text-black"
+                      onClick={() => fetchPendingSuggestions()}
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {pendingSuggestions.slice(0, 8).map(s => {
+                      const movie = movies.find(m => m.jellyfinId === s.jellyfinId)
+                      return (
+                        <div key={s.id} className="flex items-center gap-3 py-2 border-t border-black/5 first:border-t-0">
+                          {movie?.posterUrl && (
+                            <img src={movie.posterUrl} alt="" className="w-8 h-12 object-cover rounded" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">{movie?.title || s.jellyfinId}</div>
+                            <div className="text-xs text-black/60 truncate">
+                              {s.suggestedTags.map(slug => moods[slug]?.title || slug).join(' · ')}
+                              {' · '}
+                              <span className="text-black/40">confidence {(s.confidence * 100).toFixed(0)}%</span>
+                            </div>
+                          </div>
+                          <button
+                            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+                            onClick={() => approveSuggestion(s.id)}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            className="px-3 py-1.5 rounded-lg border border-black/10 hover:bg-black/5 text-xs"
+                            onClick={() => rejectSuggestion(s.id)}
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
           {/* Movies Grid */}
           <main className="px-3 sm:px-6 py-6">
             <div className="mx-auto w-full max-w-[1600px] grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(140px,1fr))] sm:[grid-template-columns:repeat(auto-fill,minmax(180px,1fr))]">
@@ -527,7 +638,7 @@ export default function App() {
                 const chips = m.tags || [];
                 return (
                   <motion.div
-                    key={m.id}
+                    key={m.jellyfinId}
                     className="group"
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -733,6 +844,30 @@ export default function App() {
 
               <div className="h-px bg-black/10" />
 
+              {/* Auto-tag queue toggle */}
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-[#0f1222]">Auto-tag queue</div>
+                  <p className="text-xs text-black/50 mt-1">
+                    When on, new Jellyfin movies automatically queue a Claude mood-tag suggestion. Nothing is written until you approve it in the pending list.
+                    {!anthKeySet && (
+                      <span className="block mt-1 text-amber-600">Requires an Anthropic API key.</span>
+                    )}
+                  </p>
+                </div>
+                <button
+                  role="switch"
+                  aria-checked={autoTagEnabled}
+                  onClick={() => toggleAutoTagging(!autoTagEnabled)}
+                  disabled={!anthKeySet}
+                  className={`shrink-0 mt-1 inline-flex h-6 w-11 items-center rounded-full transition ${autoTagEnabled ? 'bg-emerald-600' : 'bg-black/20'} ${!anthKeySet ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${autoTagEnabled ? 'translate-x-5' : 'translate-x-1'}`} />
+                </button>
+              </div>
+
+              <div className="h-px bg-black/10" />
+
               {/* Grid cards: Library, Auto Tagger, Data, Maintenance */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="rounded-2xl border border-black/10 p-4 bg-white">
@@ -745,7 +880,7 @@ export default function App() {
                 <div className="rounded-2xl border border-black/10 p-4 bg-white">
                   <div className="text-sm font-medium text-[#0f1222] mb-2">AI Auto Tagger</div>
                   <p className="text-xs text-black/50 mb-3">Run AI suggestions for untagged movies.</p>
-                  <button className="px-4 py-2.5 rounded-lg border border-black/10 hover:bg-black/5" onClick={() => { const queue = movies.filter(m => (m.tags||[]).length === 0).map(m => m.id as string); setAutoQueue(queue); setAutoTagIndex(0); setCurrentAutoId(queue[0] || null); setAutoTaggerOpen(true); setSettingsOpen(false) }}>
+                  <button className="px-4 py-2.5 rounded-lg border border-black/10 hover:bg-black/5" onClick={() => { const queue = movies.filter(m => (m.tags||[]).length === 0).map(m => m.jellyfinId); setAutoQueue(queue); setAutoTagIndex(0); setCurrentAutoId(queue[0] || null); setAutoTaggerOpen(true); setSettingsOpen(false) }}>
                     Launch Auto Tagger
                   </button>
                 </div>
@@ -1243,8 +1378,10 @@ function JellyfinSetup() {
   async function testConnection() {
     try {
       setTesting(true)
+      // Trigger a real sync test against Jellyfin via the unified jellyfin endpoint.
+      // Saves as a side effect — use `/sync/test-connection` separately for a dry-run.
       const r = await api<{ success: boolean; error?: string; userId?: string; serverName?: string; version?: string; localAddress?: string }>(
-        `/settings/login?save=false`, { method: 'POST', body: JSON.stringify({ jellyfin_url: url, username: apiKey, password: (document.getElementById('jf-pass') as HTMLInputElement)?.value || '' }) }
+        `/sync/test-connection`, { method: 'POST' }
       )
       if (r.success) {
         setResult('Connection OK')
@@ -1264,7 +1401,11 @@ function JellyfinSetup() {
   async function saveConfig() {
     try {
       const password = (document.getElementById('jf-pass') as HTMLInputElement)?.value || ''
-      const resp = await fetch('/api/v1/settings/login?save=true', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jellyfin_url: url, username: apiKey, password }) })
+      const resp = await fetch('/api/v1/settings/jellyfin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jellyfin_url: url, jellyfin_username: apiKey, jellyfin_password: password })
+      })
       const j = await resp.json()
       if (j.success) {
         setResult('Saved & authenticated')

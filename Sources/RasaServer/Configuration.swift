@@ -1,35 +1,122 @@
 import Foundation
-import Yams
 import Logging
 
 final class RasaConfiguration: @unchecked Sendable {
     // Server Settings
     var host: String = "0.0.0.0"
     var port: Int = 8001
-    
+
     // Jellyfin Connection
     var jellyfinUrl: String = "http://192.168.0.111:8097"
     var jellyfinApiKey: String = ""
     var jellyfinUserId: String = ""
-    
+
     // Database
     var databasePath: String = "rasa.sqlite"
-    
+
     // BYOK - Bring Your Own Key (Optional)
     var anthropicApiKey: String? = nil
     var omdbApiKey: String? = nil
-    
+
     // Auto-tagging settings
     var enableAutoTagging: Bool = false
-    var maxAutoTags: Int = 5
+    var maxAutoTags: Int = 3
     var autoTaggingPrompt: String = """
-    Based on this movie's metadata, suggest up to 4 mood tags from the available list.
-    Consider the movie's genre, director style, themes, and overall vibe.
-    Only return tags that exist in the provided mood buckets list.
+    You are a meticulous film taxonomy expert. Pick the 1–3 mood tags that best describe the movie's
+    DOMINANT EMOTIONAL REGISTER — the feeling a viewer leaves with after watching the whole film —
+    not its individual scenes.
+
+    Rule 1 — Dominant register, not flavor notes
+    Most films contain moments of humor, romance, warmth, or violence that are NOT the primary register.
+    Tag the whole, never the parts.
+    • A sad / tragic / melancholic film that has funny lines is NOT "ha-ha-ha".
+    • A film with a romantic subplot but dark themes is NOT "feel-good-romance".
+    • A heavy, intense, or disturbing film is NOT "rainy-day-rewinds" — that bucket is for comfort-first
+      rewatchables with low emotional stakes.
+    • A coming-of-age element in a broader drama is NOT "coming-of-age" unless identity-becoming is the
+      CENTRAL arc.
+
+    Rule 2 — Evidence or drop the tag
+    For every tag you select, quote a SHORT specific phrase from the overview or external summary in
+    your reasoning (e.g. "time loop premise", "Palme d'Or winner", "confined to a single jury room").
+    No concrete phrase → no tag.
+
+    Rule 3 — Per-tag guards
+    • dialogue-driven: ONLY when verbal exchanges are the primary engine of tension/plot, with minimal
+      action/set pieces. Most dramas are NOT dialogue-driven.
+    • time-twists: requires explicit temporal mechanics — loops, travel, branching timelines. Nonlinear
+      editing alone is NOT enough.
+    • psychological-pressure-cooker: requires claustrophobic psychological strain / mind unraveling, not
+      just high tension. If the tension is mainly spatial confinement, prefer one-room-pressure-cooker.
+    • ha-ha-ha: primary register must be comedy. Dark comedies with tragic or melancholic endings do NOT
+      qualify.
+    • feel-good-romance: overall uplifting arc AND romance is the engine. Tragic or ambivalent romances
+      do NOT qualify.
+    • rainy-day-rewinds: comfort watches with warm rhythm and low stakes. Heavy or intense films do NOT
+      qualify.
+    • modern-masterpieces: 2000s+ with explicit acclaim evidence (Oscar, Palme d'Or, critic consensus,
+      landmark-film language). If pre-2000 and canonical, use film-school-shelf instead.
+
+    Rule 4 — Disambiguation between close buckets
+    When two buckets could apply, prefer the more specific one:
+    • one-room-pressure-cooker (SPACE does the squeezing, e.g. 12 Angry Men) vs psychological-pressure-cooker
+      (MIND does the squeezing, e.g. Repulsion). If both a confined space and mental unraveling are present,
+      both may apply.
+    • the-twist-is-the-plot (a single engineered reveal reframes the film) vs brainmelt-zone (perception
+      is fractured throughout, no single reveal).
+    • horror-and-unease (dread-forward, often genre scares) vs uncanny-vibes (gentle off-reality strangeness,
+      not primarily scary) vs psychological-pressure-cooker (anxiety from minds under siege).
+    • vibe-is-the-plot (story recedes, mood leads) vs visual-worship (image/composition is the point; story
+      may still be strong).
+    • modern-masterpieces (2000s+ acclaim) vs film-school-shelf (historically pivotal, form-defining canon,
+      typically pre-2000).
+
+    Rule 5 — Prefer precision
+    Return fewer tags when unsure. One well-justified tag beats three loose ones. Cap at 3. Return at
+    LEAST 1 tag — never empty. Calibrate confidence 0.70–0.95 when evidence is strong; lower otherwise.
+
+    Rule 6 — Valid slugs only
+    Tags MUST be slugs from the provided list. Do not invent new tags. Jellyfin genres (Comedy, Drama, …)
+    are hints, not mood tags — don't map them 1:1.
+
+    Few-shot calibration examples (use as a model; do not output these):
+
+    ① Manchester by the Sea
+       Dominant register: catatonic grief and the incapacity to move on.
+       Tags: ["bittersweet-aftermath", "emotional-gut-punch"]
+       NOT "ha-ha-ha" — the film has one laugh-at-a-funeral beat but the register is grief, not comedy.
+       NOT "coming-of-age" — the nephew subplot is secondary.
+
+    ② The Big Lebowski
+       Dominant register: shaggy, quotable comedy across the entire runtime.
+       Tags: ["ha-ha-ha", "cult-chaos"]
+       "ha-ha-ha" passes because comedy is the primary delivery mechanism; crime elements are backdrop.
+
+    ③ Memento
+       Dominant register: fractured perception / memory-identity puzzle.
+       Tags: ["brainmelt-zone", "the-twist-is-the-plot"]
+       NOT "time-twists" — the narrative is non-linearly edited but contains no time-travel or loops.
+
+    ④ Groundhog Day
+       Dominant register: comedic time-loop with existential undertow.
+       Tags: ["time-twists", "ha-ha-ha", "existential-core"]
+       Passes time-twists ("time loop premise"), ha-ha-ha (comedy is the engine), existential-core
+       (meaning-of-life arc over repeated days).
+
+    ⑤ 12 Angry Men
+       Dominant register: strategic verbal combat inside a single jury room.
+       Tags: ["one-room-pressure-cooker", "dialogue-driven"]
+       NOT "psychological-pressure-cooker" — the squeeze is social/spatial, not mental unraveling.
+
+    Workflow
+    1. In reasoning, first state the movie's dominant emotional register in ONE sentence.
+    2. For each candidate tag, quote the exact phrase from the overview/summary that justifies it.
+    3. Apply Rules 1–4. Drop any tag that fails.
+    4. Return 1–3 survivors.
     """
-    
+
     // Guiding principle:
-    // - These buckets are “primary mood lenses,” not rigid genres.
+    // - These buckets are "primary mood lenses," not rigid genres.
     // - Overlaps happen; a film can live in multiple buckets if the mood strongly fits.
     // - When in doubt, pick the bucket that best describes how the film feels while watching.
     let moodBuckets: [String: MoodBucket] = [
@@ -71,7 +158,7 @@ Charisma, restraint, and coiled menace—stoic leads who command the frame with 
         "brainmelt-zone": MoodBucket(
             title: "Brainmelt Zone",
             description: """
-Films that fracture perception—memory slips, unreliable frames, and shifting truths. You’re meant to feel disoriented, then delighted, when pieces reassemble into a new picture.
+Films that fracture perception—memory slips, unreliable frames, and shifting truths. You're meant to feel disoriented, then delighted, when pieces reassemble into a new picture.
 """,
             tags: ["surreal","unreliable","identity-blur","puzzle-box","dream-logic","metafiction","mind-bending"]
         ),
@@ -169,14 +256,14 @@ Transitions and firsts—the ache and thrill of becoming. Identity coalesces thr
         "late-night-mind-rattle": MoodBucket(
             title: "Late-Night Mind Rattle",
             description: """
-Films that echo at 1:47 a.m.—eerie, thoughtful, and a little unmooring. Not pure horror or puzzle boxes, but lingering ideas that won’t let you sleep just yet.
+Films that echo at 1:47 a.m.—eerie, thoughtful, and a little unmooring. Not pure horror or puzzle boxes, but lingering ideas that won't let you sleep just yet.
 """,
             tags: ["haunting","liminal","restless-thoughts","afterglow","uneasy-calm","philosophical-chill"]
         ),
         "uncanny-vibes": MoodBucket(
             title: "Uncanny Vibes",
             description: """
-Slightly off reality—dreamlike cadence, ritual behavior, or settings that feel familiar yet wrong. The strangeness is gentle but persistent, like déjà vu you can’t shake.
+Slightly off reality—dreamlike cadence, ritual behavior, or settings that feel familiar yet wrong. The strangeness is gentle but persistent, like déjà vu you can't shake.
 """,
             tags: ["uncanny","liminal","dreamlike","off-kilter","estrangement","eeriness","surreal-lite"]
         ),
@@ -190,21 +277,21 @@ Dread-forward storytelling—menace in tone, image, and implication. Scares may 
         "wtf-did-i-watch": MoodBucket(
             title: "WTF Did I Watch",
             description: """
-Transgressive, absurd, or confrontational—cinema that breaks decorum and dares you to keep up. You might regret it, but you won’t forget it.
+Transgressive, absurd, or confrontational—cinema that breaks decorum and dares you to keep up. You might regret it, but you won't forget it.
 """,
             tags: ["transgressive","absurd","shock","provocative","boundary-pushing","cult-energy"]
         ),
         "film-school-shelf": MoodBucket(
             title: "Film School Shelf",
             description: """
-Canonical essentials that map the medium’s language. Historically pivotal works—form, editing, performance—that every cinephile benefits from knowing cold.
+Canonical essentials that map the medium's language. Historically pivotal works—form, editing, performance—that every cinephile benefits from knowing cold.
 """,
             tags: ["canon","foundational","history","form-defining","influential","curriculum"]
         ),
         "modern-masterpieces": MoodBucket(
             title: "Modern Masterpieces",
             description: """
-2000s+ pinnacles where craft, ambition, and resonance align. Acclaim isn’t the point—enduring impact is, the kind that sets a bar for the era.
+2000s+ pinnacles where craft, ambition, and resonance align. Acclaim isn't the point—enduring impact is, the kind that sets a bar for the era.
 """,
             tags: ["contemporary-classic","acclaimed","ambitious","craft-excellence","enduring"]
         ),
@@ -260,7 +347,7 @@ Large stakes told with restraint—time, landscape, or history scaled down to in
         "bittersweet-aftermath": MoodBucket(
             title: "Bittersweet Aftermath",
             description: """
-Endings that ache softly—loss braided with grace, acceptance, or a small light left on. It’s not happy or tragic; it’s human.
+Endings that ache softly—loss braided with grace, acceptance, or a small light left on. It's not happy or tragic; it's human.
 """,
             tags: ["bittersweet","melancholy","closure","grace","acceptance","quiet-cry"]
         ),
@@ -293,80 +380,6 @@ Form-first filmmaking—structure, sound, or image pushed into new shapes. Narra
         } else {
             self.databasePath = "/app/data/rasa.sqlite"
         }
-    }
-    
-    static func load(from path: String = "config.yaml") throws -> RasaConfiguration {
-        let config = RasaConfiguration()
-        
-        // Check if config file exists
-        guard FileManager.default.fileExists(atPath: path) else {
-            // Create default config file
-            try config.save(to: path)
-            print("📝 Created default config at \(path)")
-            return config
-        }
-        
-        // Load from file
-        let data = try Data(contentsOf: URL(fileURLWithPath: path))
-        let yaml = try Yams.load(yaml: String(data: data, encoding: .utf8) ?? "")
-        
-        if let dict = yaml as? [String: Any] {
-            config.host = dict["host"] as? String ?? config.host
-            config.port = dict["port"] as? Int ?? config.port
-            config.jellyfinUrl = dict["jellyfin_url"] as? String ?? config.jellyfinUrl
-            config.jellyfinApiKey = dict["jellyfin_api_key"] as? String ?? config.jellyfinApiKey
-            config.jellyfinUserId = dict["jellyfin_user_id"] as? String ?? config.jellyfinUserId
-            config.databasePath = dict["database_path"] as? String ?? config.databasePath
-            config.anthropicApiKey = dict["anthropic_api_key"] as? String
-            config.omdbApiKey = dict["omdb_api_key"] as? String
-            config.enableAutoTagging = dict["enable_auto_tagging"] as? Bool ?? config.enableAutoTagging
-            config.maxAutoTags = dict["max_auto_tags"] as? Int ?? config.maxAutoTags
-            config.autoTaggingPrompt = dict["auto_tagging_prompt"] as? String ?? config.autoTaggingPrompt
-        }
-
-        // Fallback to environment variable if not set in file
-        if (config.anthropicApiKey == nil || config.anthropicApiKey?.isEmpty == true),
-           let envKey = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"], !envKey.isEmpty {
-            config.anthropicApiKey = envKey
-        }
-        if (config.omdbApiKey == nil || config.omdbApiKey?.isEmpty == true),
-           let envKey = ProcessInfo.processInfo.environment["OMDB_API_KEY"], !envKey.isEmpty {
-            config.omdbApiKey = envKey
-        }
-        
-        return config
-    }
-    
-    func save(to path: String = "config.yaml") throws {
-        let base: [String: Any] = [
-            "# Rasa Server Configuration": "",
-            "# Server settings": "",
-            "host": host,
-            "port": port,
-            "": "",
-            "# Jellyfin connection": "",
-            "jellyfin_url": jellyfinUrl,
-            "jellyfin_api_key": jellyfinApiKey,
-            "jellyfin_user_id": jellyfinUserId,
-            " ": "",
-            "# Database": "",
-            "database_path": databasePath,
-            "  ": "",
-            "# BYOK - Optional API Keys": "",
-            "# anthropic_api_key": "sk-ant-...", 
-            "   ": "",
-            "# Auto-tagging (requires API key)": "",
-            "enable_auto_tagging": enableAutoTagging,
-            "max_auto_tags": maxAutoTags,
-            "auto_tagging_prompt": autoTaggingPrompt
-        ]
-        
-        // Persist anthropic/omdb keys if present
-        var out = base
-        if let key = anthropicApiKey, !key.isEmpty { out["anthropic_api_key"] = key }
-        if let key = omdbApiKey, !key.isEmpty { out["omdb_api_key"] = key }
-        let yaml = try Yams.dump(object: out)
-        try yaml.write(to: URL(fileURLWithPath: path), atomically: true, encoding: String.Encoding.utf8)
     }
 }
 
