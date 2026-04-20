@@ -118,7 +118,8 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
         zlib1g; \
     rm -rf /var/lib/apt/lists/* && apt-get clean; \
     groupadd -r rasa; \
-    useradd -r -g rasa -d /app -s /bin/bash -c "Rasa Server User" rasa
+    useradd -r -g rasa -d /app -s /bin/bash -c "Rasa Server User" rasa; \
+    echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf
 
 # Set working directory
 WORKDIR /app
