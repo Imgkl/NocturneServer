@@ -26,22 +26,37 @@ RasaServer is a vibe-based movie discovery layer that sits alongside Jellyfin, o
 ---
 
 ## Architecture
-```
-┌──────────────┐
-│   Jellyfin   │ ← source of truth for everything media
-└──────┬───────┘
-       │ REST + WebSocket (used by both sides)
-       ▼
-┌──────────────────────────┐       ┌──────────────┐
-│     RasaServer           │◄──────│   Client     │
-│  (vibe index only)       │       │ (Jellyfin    │
-│  jellyfinId ↔ mood tag   │       │  SDK inside) │
-│  + Claude suggestion     │       └──────────────┘
-│    queue + OMDb proxy    │               │
-└──────────────────────────┘               │
-           ▲                                │
-           └────── streams, catalog, ───────┘
-                   playback, watched state
+
+```mermaid
+flowchart TB
+    Jellyfin[("Jellyfin<br/>source of truth<br/>catalog · playback · watched")]
+
+    subgraph Rasa["RasaServer — vibe index layer"]
+        direction LR
+        API["Hummingbird API<br/>:3242"]
+        WS["Jellyfin Realtime<br/>WebSocket listener"]
+        SuggQ["Claude suggestion<br/>queue"]
+        OMDbProxy["OMDb proxy<br/>(15-day cache)"]
+        WebUI["Web UI<br/>setup · tagging · approvals"]
+        DB[("SQLite<br/>jellyfinId ↔ mood tags")]
+
+        WebUI --- API
+        API --- DB
+        WS --- DB
+        SuggQ --- DB
+        OMDbProxy --- DB
+    end
+
+    Client["Client<br/>(RasaPlay, etc.)"]
+    Claude["Claude API<br/>(BYOK)"]
+    OMDb["OMDb API<br/>(BYOK)"]
+
+    Jellyfin <-- "REST + WebSocket" --> WS
+    Client -- "streams · catalog · watched" --> Jellyfin
+    Client -- "mood queries · tag reads" --> API
+
+    SuggQ -- "mood suggestions" --> Claude
+    OMDbProxy -- "ratings lookup" --> OMDb
 ```
 
 > [!Important]

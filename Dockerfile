@@ -109,6 +109,7 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
+        gosu \
         libsqlite3-0 \
         libssl3 \
         tini \
@@ -148,8 +149,8 @@ COPY --chown=rasa:rasa public/ /app/static/
 # Make binary executable
 RUN chmod +x /app/rasa-server
 
-# Switch to application user for security
-USER rasa
+# Entrypoint script: fixes bind-mount ownership then drops privileges to rasa
+COPY --chmod=0755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # Environment variables for Rasa Server
 ENV RASA_HOST=0.0.0.0
@@ -188,8 +189,8 @@ HEALTHCHECK --interval=30s \
 # Volume declarations for persistent data
 VOLUME ["/app/data", "/app/config", "/app/logs"]
 
-# Use tini as init system for proper signal handling
-ENTRYPOINT ["/usr/bin/tini", "--"]
+# Use tini as init system for proper signal handling; entrypoint script drops to rasa user
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 
 # Default command to run the server
 CMD ["/app/rasa-server"]

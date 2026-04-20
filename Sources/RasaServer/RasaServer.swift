@@ -136,10 +136,14 @@ struct RasaServerApp {
 
 func setupDatabase(path: String, logger: Logger) throws -> Fluent {
     let fluent = Fluent(logger: logger)
-    
-    // Add SQLite database
+
+    let parent = (path as NSString).deletingLastPathComponent
+    if !parent.isEmpty {
+        try? FileManager.default.createDirectory(atPath: parent, withIntermediateDirectories: true)
+    }
+
     fluent.databases.use(.sqlite(.file(path)), as: .sqlite)
-    
+
     logger.info("📊 Database configured at: \(path)")
     return fluent
 }
