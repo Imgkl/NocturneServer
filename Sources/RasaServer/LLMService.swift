@@ -16,13 +16,14 @@ final class LLMService: Sendable {
         for context: MovieContext,
         using provider: LLMProvider,
         availableTags: [String: MoodBucket],
+        calibration: [String: TagCalibration] = [:],
         customPrompt: String?,
         maxTags: Int = 4,
         externalInfo: String? = nil
     ) async throws -> AutoTagResponse {
 
         let movieContext = buildMovieContext(from: context)
-        let tagsContext = buildTagsContext(availableTags: availableTags)
+        let tagsContext = buildTagsContext(availableTags: availableTags, calibration: calibration)
         let prompt = buildPrompt(
             movieContext: movieContext,
             tagsContext: tagsContext,
@@ -43,12 +44,13 @@ final class LLMService: Sendable {
         for context: MovieContext,
         using provider: LLMProvider,
         availableTags: [String: MoodBucket],
+        calibration: [String: TagCalibration] = [:],
         initial: AutoTagResponse,
         externalInfo: String?,
         maxTags: Int
     ) async throws -> AutoTagResponse {
         let movieContext = buildMovieContext(from: context)
-        let tagsContext = buildTagsContext(availableTags: availableTags)
+        let tagsContext = buildTagsContext(availableTags: availableTags, calibration: calibration)
         let prompt = buildRefinePrompt(
             movieContext: movieContext,
             tagsContext: tagsContext,
@@ -147,14 +149,37 @@ final class LLMService: Sendable {
         return lines.joined(separator: "\n")
     }
 
-    private func buildTagsContext(availableTags: [String: MoodBucket]) -> String {
-        let tags = availableTags.map { slug, bucket in
-            let keywords = (bucket.tags ?? []).joined(separator: ", ")
-            let extras = keywords.isEmpty ? "" : " [keywords: \(keywords)]"
-            return "\(slug): \(bucket.title) - \(bucket.description)\(extras)"
-        }.sorted().joined(separator: "\n")
+    private func buildTagsContext(
+        availableTags: [String: MoodBucket],
+        calibration: [String: TagCalibration] = [:]
+    ) -> String {
+        let entries = availableTags.map { slug, bucket -> String in
+            var out = "\(slug): \(bucket.title)\n  Residue: \(bucket.description.trimmingCharacters(in: .whitespacesAndNewlines))"
+            if let keywords = bucket.tags, !keywords.isEmpty {
+                out += "\n  Keywords: \(keywords.joined(separator: ", "))"
+            }
+            if let fits = bucket.anchorsFit, !fits.isEmpty {
+                out += "\n  Fits:\n    - " + fits.joined(separator: "\n    - ")
+            }
+            if let misses = bucket.anchorsMiss, !misses.isEmpty {
+                out += "\n  Does NOT fit:\n    - " + misses.joined(separator: "\n    - ")
+            }
+            if let cal = calibration[slug], !cal.positives.isEmpty || !cal.negatives.isEmpty {
+                out += "\n  Recent user decisions:"
+                for p in cal.positives.prefix(3) {
+                    out += "\n    ✓ \(p) — you approved this tag"
+                }
+                for n in cal.negatives.prefix(2) {
+                    out += "\n    ✗ \(n) — you rejected this tag"
+                }
+            }
+            if let floor = bucket.minConfidence {
+                out += "\n  Min confidence to apply: \(floor)"
+            }
+            return out
+        }.sorted().joined(separator: "\n\n")
 
-        return "Available mood tags:\n\(tags)"
+        return "Available mood tags:\n\n\(entries)"
     }
 
     private func buildPrompt(
@@ -211,10 +236,18 @@ final class LLMService: Sendable {
 
         Please respond with a JSON object in exactly this format:
         {
-            "suggestions": ["tag-slug-1", "tag-slug-2"],
-            "confidence": 0.85,
-            "reasoning": "Brief explanation of why these tags fit"
+          "residue": "one-sentence description of what the viewer carries after the credits",
+          "tags": [
+            {"slug": "tag-slug-1", "confidence": 0.92, "evidence": "exact phrase from the summary that justifies this tag"},
+            {"slug": "tag-slug-2", "confidence": 0.78, "evidence": "another exact phrase"}
+          ],
+          "reasoning": "optional overall notes; per-tag evidence goes in the evidence field above"
         }
+
+        Rules:
+        - `confidence` per tag in [0.0, 1.0]; drop any tag that can't clear its listed Min confidence floor.
+        - `evidence` must be a short phrase taken from the overview/summary — not generic.
+        - Order tags by confidence descending. Return between 1 and \(maxTags) tags.
 
         Return only valid JSON, nothing else.
         """
@@ -229,28 +262,41 @@ final class LLMService: Sendable {
     ) -> String {
         let critiqueGuardrails = """
         You are critiquing an earlier tag set. Be stricter than the first pass.
-        Apply the DOMINANT-REGISTER test: a tag is only valid if it describes the WHOLE film, not a scene or subplot.
+        Apply the RESIDUE test first: a tag is only valid if it describes the feeling a viewer carries
+        after the credits — NOT a scene, subplot, or plot event.
 
         Drop a tag if ANY of these are true:
-        • ha-ha-ha, but the film is primarily sad, tragic, or melancholic (some humor ≠ comedy).
+        • ha-ha-ha, but the film is primarily sad / tragic / melancholic (some humor ≠ comedy).
         • feel-good-romance, but the arc is ambivalent or tragic (romantic subplot ≠ feel-good).
-        • rainy-day-rewinds, but the film is heavy, disturbing, or high-stakes.
+        • rainy-day-rewinds, but the film is heavy / disturbing / high-stakes.
         • coming-of-age, but the film is not centered on identity-becoming.
-        • dialogue-driven, but the film has meaningful action/set pieces; verbal exchanges are not the PRIMARY engine.
-        • time-twists, without explicit temporal mechanics (loop/travel/branching). Nonlinear editing alone ≠ qualifying.
+        • dialogue-driven, but the film has meaningful action / set pieces — verbal exchanges are not the PRIMARY engine.
+        • time-twists, without explicit temporal mechanics (loop / travel / branching). Nonlinear editing alone ≠ qualifying.
         • psychological-pressure-cooker, when the tension is primarily spatial — prefer one-room-pressure-cooker.
-        • modern-masterpieces, without explicit acclaim evidence (Oscar, Palme d'Or, critic consensus, landmark).
-        • Any tag lacking a concrete phrase from the overview/external summary you can quote in `reasoning`.
+        • regional-gems, without a standout signal (award / festival / genre landmark). Regional origin alone ≠ qualifying.
+        • bittersweet-aftermath, when the residue is devastation (→ emotional-gut-punch) or triumph (→ rainy-day-rewinds).
+        • crime-grit-style, for Bond-style action, caper comedies, racing films, or sports films — needs a gritty underworld.
+        • film-school-shelf, for popular-and-old films that are not form-defining canon.
+        • modern-masterpieces, without 2000s+ landmark status (Best Picture / Palme d'Or / near-universal consensus).
+        • Any tag whose confidence can't clear its Min confidence floor.
+        • Any tag lacking a concrete phrase from the overview/external summary you can cite in `evidence`.
 
         IMPORTANT: You MUST return at least 1 tag — the single strongest survivor. Never return an empty array.
-        If every initial tag fails its guard, keep the ONE that best matches the film's dominant register,
-        even if weakly supported — then lower confidence accordingly (0.50–0.65).
+        If every initial tag fails its guard, keep the ONE that best matches the film's residue, even
+        if weakly supported — then lower its confidence accordingly (0.50–0.65).
 
-        Keep at most \(maxTags). Fewer is better. For each kept tag, quote the exact evidence in `reasoning`.
+        Keep at most \(maxTags). Fewer is better.
 
-        Output format MUST match exactly:
-        {"suggestions": ["tag-1"], "confidence": 0.6, "reasoning": "..."}
+        Output format MUST match exactly (same schema as the first pass):
+        {
+          "residue": "revised one-sentence residue",
+          "tags": [
+            {"slug": "tag-1", "confidence": 0.76, "evidence": "exact phrase"}
+          ],
+          "reasoning": "optional overall notes"
+        }
         """
+        let initialJSON = (try? initial.toJSONString()) ?? "{}"
         return """
         \(critiqueGuardrails)
 
@@ -263,7 +309,7 @@ final class LLMService: Sendable {
         \(externalInfo ?? "(none)")
 
         Initial tags to critique:
-        {"suggestions": \(try! initial.toJSONString()), "note": "Only use the 'suggestions' from above; re-evaluate them."}
+        \(initialJSON)
         """
     }
 

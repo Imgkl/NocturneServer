@@ -244,9 +244,18 @@ struct UpdateMovieTagsRequest: Codable, Sendable {
 }
 
 struct AutoTagResponse: Codable, Sendable {
-    let suggestions: [String]
-    let confidence: Float
+    struct TagWithConfidence: Codable, Sendable {
+        let slug: String
+        let confidence: Double
+        let evidence: String?
+    }
+    let residue: String?
+    let tags: [TagWithConfidence]
     let reasoning: String?
+
+    var suggestions: [String] { tags.map(\.slug) }
+    var confidence: Double { tags.map(\.confidence).min() ?? 0 }
+    var overallConfidence: Double { confidence }
 }
 
 struct ExportMovieTags: Codable, Sendable {

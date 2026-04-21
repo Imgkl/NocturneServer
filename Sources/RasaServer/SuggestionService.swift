@@ -34,8 +34,15 @@ final class SuggestionService: @unchecked Sendable {
   /// is true, any existing pending row for this movie is superseded so the reviewer sees the
   /// new suggestion instead of two stacked rows. When false (default), a pre-existing pending
   /// row short-circuits the call so we don't burn API budget on duplicates.
+  ///
+  /// `calibration` can be provided by callers (e.g. the backfill worker) to avoid rebuilding
+  /// the per-tag user-decision map on every enqueue. If nil, it's built fresh here.
   @discardableResult
-  func enqueue(jellyfinId: String, replaceExistingPending: Bool = false) async throws -> TagSuggestion {
+  func enqueue(
+    jellyfinId: String,
+    replaceExistingPending: Bool = false,
+    calibration: [String: TagCalibration]? = nil
+  ) async throws -> TagSuggestion {
     let existing = try await TagSuggestion.query(on: fluent.db())
       .filter(\.$jellyfinId == jellyfinId)
       .filter(\.$status == "pending")
@@ -56,6 +63,26 @@ final class SuggestionService: @unchecked Sendable {
       throw SuggestionError.missingAnthropicKey
     }
 
+    let cal: [String: TagCalibration]
+    if let calibration {
+      cal = calibration
+    } else {
+      cal = (try? await buildCalibration(
+        fluent: fluent, jellyfinService: jellyfinService, availableTags: config.moodBuckets
+      )) ?? [:]
+    }
+    return try await runEnqueue(
+      jellyfinId: jellyfinId, apiKey: apiKey, calibration: cal)
+  }
+
+  /// Shared enqueue worker — pulled out so backfill/reprocess can build calibration ONCE and
+  /// reuse it across every candidate (instead of re-querying on every call).
+  @discardableResult
+  private func runEnqueue(
+    jellyfinId: String,
+    apiKey: String,
+    calibration: [String: TagCalibration]
+  ) async throws -> TagSuggestion {
     let item = try await jellyfinService.fetchMovie(id: jellyfinId)
     let context = MovieContext(from: item)
     let provider = LLMProvider.anthropic(apiKey: apiKey)
@@ -65,14 +92,15 @@ final class SuggestionService: @unchecked Sendable {
       for: context,
       using: provider,
       availableTags: config.moodBuckets,
+      calibration: calibration,
       customPrompt: config.autoTaggingPrompt,
       maxTags: config.maxAutoTags,
       externalInfo: external
     )
 
-    // Snapshot the first-pass validated list — used as a safety net if refine or post-filter
-    // over-strips everything.
-    let firstPassValidated = firstPass.suggestions.filter { config.moodBuckets[$0] != nil }
+    // Snapshot the first-pass validated tag/confidence list — used as a safety net if refine
+    // or the per-tag floor over-strips everything.
+    let firstPassValidated = firstPass.tags.filter { config.moodBuckets[$0.slug] != nil }
 
     var response = firstPass
     let looksGeneric =
@@ -84,6 +112,7 @@ final class SuggestionService: @unchecked Sendable {
           for: context,
           using: provider,
           availableTags: config.moodBuckets,
+          calibration: calibration,
           initial: firstPass,
           externalInfo: external,
           maxTags: config.maxAutoTags
@@ -91,14 +120,31 @@ final class SuggestionService: @unchecked Sendable {
       } catch {}
     }
 
-    var validSuggestions = response.suggestions.filter { config.moodBuckets[$0] != nil }
+    // Per-tag floor: drop any tag whose confidence fails its bucket's minConfidence.
+    var survivingTags: [(String, Double)] = []
+    for tag in response.tags {
+      guard let bucket = config.moodBuckets[tag.slug] else { continue }
+      let floor = bucket.minConfidence ?? 0.72
+      if tag.confidence >= floor {
+        survivingTags.append((tag.slug, tag.confidence))
+      } else {
+        logger.info(
+          "Dropped \(tag.slug) for \(jellyfinId): conf=\(tag.confidence) < floor=\(floor)")
+      }
+    }
+    var validSuggestions = survivingTags.map(\.0)
     validSuggestions = postFilterSuggestions(validSuggestions, summary: external, context: context)
 
-    // Floor: never store an empty suggestion. If everything got stripped, keep the strongest
-    // first-pass survivor so the reviewer has something concrete to approve or reject.
-    if validSuggestions.isEmpty, let fallback = firstPassValidated.first {
-      validSuggestions = [fallback]
-      logger.info("Refine/post-filter emptied the tag set for \(jellyfinId); restoring first-pass top tag: \(fallback)")
+    // Floor: never store an empty suggestion. Keep the strongest first-pass survivor so the
+    // reviewer has something concrete to approve or reject, even if it failed its own floor.
+    if validSuggestions.isEmpty {
+      if let fallback = firstPassValidated.max(by: { $0.confidence < $1.confidence }) {
+        validSuggestions = [fallback.slug]
+        survivingTags = [(fallback.slug, fallback.confidence)]
+        logger.info(
+          "All tags stripped for \(jellyfinId); restoring first-pass top: \(fallback.slug) (conf=\(fallback.confidence))"
+        )
+      }
     }
 
     // Apply tags immediately so clients see them right away. A weak run still gets applied;
@@ -113,12 +159,14 @@ final class SuggestionService: @unchecked Sendable {
       addedByAutoTag: true
     )
 
-    let isWeak = Double(response.confidence) < 0.72
+    // Row-level confidence = min across surviving tags. Pending if any surviving tag < 0.72.
+    let rowConfidence = survivingTags.map(\.1).min() ?? 0
+    let isWeak = rowConfidence < 0.72
     let sugg = TagSuggestion(
       jellyfinId: jellyfinId,
       suggestedTags: validSuggestions,
-      confidence: Double(response.confidence),
-      reasoning: response.reasoning,
+      confidence: rowConfidence,
+      reasoning: response.residue ?? response.reasoning,
       status: isWeak ? "pending" : "approved"
     )
     if !isWeak {
@@ -126,7 +174,7 @@ final class SuggestionService: @unchecked Sendable {
     }
     try await sugg.save(on: fluent.db())
     logger.info(
-      "Auto-applied \(isWeak ? "weak" : "strong") tags for \(jellyfinId): \(validSuggestions) (conf=\(response.confidence))"
+      "Auto-applied \(isWeak ? "weak" : "strong") tags for \(jellyfinId): \(validSuggestions) (minConf=\(rowConfidence))"
     )
     return sugg
   }
@@ -282,7 +330,8 @@ final class SuggestionService: @unchecked Sendable {
   }
 
   /// Shared throttled worker loop. Claims the backfill state actor, schedules a background task
-  /// that walks the candidate list with a breather between Claude calls.
+  /// that walks the candidate list with a breather between Claude calls. Builds user-calibration
+  /// ONCE up front so the expensive Jellyfin + DB join doesn't run per movie.
   private func runWorker(
     label: String, jellyfinIds: [String], replaceExistingPending: Bool
   ) async throws -> BackfillStatus {
@@ -291,6 +340,10 @@ final class SuggestionService: @unchecked Sendable {
       return existing
     }
 
+    let calibration = (try? await buildCalibration(
+      fluent: fluent, jellyfinService: jellyfinService, availableTags: config.moodBuckets
+    )) ?? [:]
+
     logger.info("\(label) starting for \(jellyfinIds.count) movies")
 
     Task { [weak self] in
@@ -298,7 +351,10 @@ final class SuggestionService: @unchecked Sendable {
       for jid in jellyfinIds {
         do {
           _ = try await self.enqueue(
-            jellyfinId: jid, replaceExistingPending: replaceExistingPending)
+            jellyfinId: jid,
+            replaceExistingPending: replaceExistingPending,
+            calibration: calibration
+          )
         } catch {
           self.logger.warning("\(label) enqueue failed for \(jid): \(error)")
         }
