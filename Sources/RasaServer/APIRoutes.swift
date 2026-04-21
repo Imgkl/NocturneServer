@@ -72,7 +72,7 @@ final class APIRoutes: @unchecked Sendable {
 
       return try jsonResponse(
         try await self.movieService.updateMovieTags(
-          movieId: String(movieId),
+          jellyfinId: String(movieId),
           tagSlugs: updateRequest.tagSlugs,
           replaceAll: updateRequest.replaceAll
         ))
@@ -81,18 +81,8 @@ final class APIRoutes: @unchecked Sendable {
     // Always routes through the suggestion queue; never auto-applies.
     // Body is ignored — prompt/provider come from server config.
     movies.post(":id/auto-tag") { request, context in
-      let movieId = try context.parameters.require("id")
-      let resolved: String
-      if let uuid = UUID(uuidString: String(movieId)) {
-        let movie = try await Movie.query(on: self.movieService.fluent.db())
-          .filter(\.$id == uuid)
-          .first()
-          .unwrap(orError: MovieServiceError.movieNotFound(String(movieId)))
-        resolved = movie.jellyfinId
-      } else {
-        resolved = String(movieId)
-      }
-      let sugg = try await self.suggestionService.enqueue(jellyfinId: resolved)
+      let jellyfinId = try context.parameters.require("id")
+      let sugg = try await self.suggestionService.enqueue(jellyfinId: String(jellyfinId))
       return try jsonResponse(TagSuggestionResponse(sugg))
     }
   }

@@ -753,30 +753,34 @@ export default function App() {
                     {pendingSuggestions.slice(0, 8).map(s => {
                       const movie = movies.find(m => m.jellyfinId === s.jellyfinId)
                       return (
-                        <div key={s.id} className="flex items-center gap-3 py-2 border-t border-black/5 first:border-t-0">
-                          {movie?.posterUrl && (
-                            <img src={movie.posterUrl} alt="" className="w-8 h-12 object-cover rounded" />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">{movie?.title || s.jellyfinId}</div>
-                            <div className="text-xs text-black/60 truncate">
-                              {s.suggestedTags.map(slug => moods[slug]?.title || slug).join(' · ')}
-                              {' · '}
-                              <span className="text-black/40">confidence {(s.confidence * 100).toFixed(0)}%</span>
+                        <div key={s.id} className="flex flex-col sm:flex-row sm:items-center gap-3 py-2 border-t border-black/5 first:border-t-0">
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            {movie?.posterUrl && (
+                              <img src={movie.posterUrl} alt="" className="w-8 h-12 object-cover rounded flex-shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium truncate">{movie?.title || s.jellyfinId}</div>
+                              <div className="text-xs text-black/60 truncate">
+                                {s.suggestedTags.map(slug => moods[slug]?.title || slug).join(' · ')}
+                                {' · '}
+                                <span className="text-black/40">confidence {(s.confidence * 100).toFixed(0)}%</span>
+                              </div>
                             </div>
                           </div>
-                          <button
-                            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
-                            onClick={() => approveSuggestion(s.id)}
-                          >
-                            Approve
-                          </button>
-                          <button
-                            className="px-3 py-1.5 rounded-lg border border-black/10 hover:bg-black/5 text-xs"
-                            onClick={() => rejectSuggestion(s.id)}
-                          >
-                            Reject
-                          </button>
+                          <div className="flex gap-2 sm:flex-shrink-0">
+                            <button
+                              className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+                              onClick={() => approveSuggestion(s.id)}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg border border-black/10 hover:bg-black/5 text-xs"
+                              onClick={() => rejectSuggestion(s.id)}
+                            >
+                              Reject
+                            </button>
+                          </div>
                         </div>
                       )
                     })}
@@ -908,45 +912,47 @@ export default function App() {
                           "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjMwMCIgdmlld0JveD0iMCAwIDIwMCAzMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xMDAgMTQwTDEzMCAxNjBIMTMwTDEwMCAxODBMNzAgMTYwSDcwTDEwMCAxNDBaIiBmaWxsPSIjRDFENUQ5Ii8+Cjx0ZXh0IHg9IjEwMCIgeT0iMjIwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjNjg3Mjc2IiBmb250LWZhbWlseT0ic3lzdGVtLXVpIiBmb250LXNpemU9IjE0Ij5ObyBQb3N0ZXI8L3RleHQ+Cjwvc3ZnPgo=";
                       }}
                     />
-                    <div className="min-w-0 flex-shrink-0 w-44 sm:w-72">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="text-[14px] font-medium truncate text-[#0f1222]"
-                          title={m.title}
-                        >
-                          {m.title}
-                          {m.year ? (
-                            <span className="ml-1 text-black/40 font-normal">
-                              ({m.year})
-                            </span>
-                          ) : null}
-                        </div>
-                        {m.needsReview && (
-                          <span
-                            className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-amber-500/95 text-white"
-                            title="Auto-tagged with low confidence — please review."
+                    <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center sm:gap-3">
+                      <div className="min-w-0 sm:w-72 sm:flex-shrink-0">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="text-[14px] font-medium truncate text-[#0f1222]"
+                            title={m.title}
                           >
-                            Review
+                            {m.title}
+                            {m.year ? (
+                              <span className="ml-1 text-black/40 font-normal">
+                                ({m.year})
+                              </span>
+                            ) : null}
+                          </div>
+                          {m.needsReview && (
+                            <span
+                              className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-amber-500/95 text-white"
+                              title="Auto-tagged with low confidence — please review."
+                            >
+                              Review
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-1 sm:mt-0 flex-1 min-w-0 flex flex-wrap items-center gap-1">
+                        {chips.length === 0 ? (
+                          <span className="text-[11px] text-black/40 italic">
+                            No tags
                           </span>
+                        ) : (
+                          chips.map((t) => (
+                            <span
+                              key={t.slug}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-black/[0.06] text-[#0f1222] border border-black/5"
+                            >
+                              <span>{getMoodEmoji(t.slug, t.title)}</span>
+                              {t.title}
+                            </span>
+                          ))
                         )}
                       </div>
-                    </div>
-                    <div className="flex-1 min-w-0 flex flex-wrap items-center gap-1">
-                      {chips.length === 0 ? (
-                        <span className="text-[11px] text-black/40 italic">
-                          No tags
-                        </span>
-                      ) : (
-                        chips.map((t) => (
-                          <span
-                            key={t.slug}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-black/[0.06] text-[#0f1222] border border-black/5"
-                          >
-                            <span>{getMoodEmoji(t.slug, t.title)}</span>
-                            {t.title}
-                          </span>
-                        ))
-                      )}
                     </div>
                     <button
                       type="button"
@@ -1169,9 +1175,9 @@ export default function App() {
       {/* Edit Tags Modal */}
       {editingMovie && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-8 max-w-lg w-full mx-4 shadow-2xl border border-gray-100">
-            <div className="flex items-center justify-between mb-8">
-              <h2 className="text-2xl font-light text-gray-900">Edit Tags</h2>
+          <div className="bg-white rounded-3xl p-5 sm:p-8 max-w-lg w-full mx-4 shadow-2xl border border-gray-100">
+            <div className="flex items-center justify-between mb-6 sm:mb-8">
+              <h2 className="text-xl sm:text-2xl font-light text-gray-900">Edit Tags</h2>
               <button
                 className="text-gray-400 hover:text-gray-600 transition-colors rounded-full p-1 hover:bg-gray-100"
                 onClick={() => setEditingMovie(null)}
@@ -1192,7 +1198,7 @@ export default function App() {
               </button>
             </div>
 
-            <div className="mb-8">
+            <div className="mb-6 sm:mb-8">
               <h3 className="font-medium text-gray-900 mb-2">
                 {editingMovie.title}
               </h3>
@@ -1217,16 +1223,16 @@ export default function App() {
       {/* AI Auto Tagger Modal */}
       {autoTaggerOpen && currentAutoMovie && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-6 max-w-4xl w-full mx-4 shadow-2xl border border-gray-100">
-            <div className="flex items-start gap-6">
-              <div className="w-1/3 bg-gray-100 rounded-2xl overflow-hidden">
+          <div className="bg-white rounded-3xl p-4 sm:p-6 max-w-4xl w-full mx-4 shadow-2xl border border-gray-100">
+            <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
+              <div className="w-full sm:w-1/3 aspect-[2/3] sm:aspect-auto bg-gray-100 rounded-2xl overflow-hidden">
                 <img
                   src={currentAutoMovie.posterUrl || ""}
                   alt={currentAutoMovie.title}
                   className="w-full h-full object-cover"
                 />
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0 w-full">
                 <div className="flex items-start justify-between mb-3">
                   <h2 className="text-xl font-light text-gray-900">
                     {currentAutoMovie.title}

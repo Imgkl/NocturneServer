@@ -97,7 +97,7 @@ final class SuggestionService: @unchecked Sendable {
       throw SuggestionError.serviceUnavailable
     }
     _ = try await movieService.updateMovieTags(
-      movieId: jellyfinId,
+      jellyfinId: jellyfinId,
       tagSlugs: validSuggestions,
       replaceAll: false,
       addedByAutoTag: true

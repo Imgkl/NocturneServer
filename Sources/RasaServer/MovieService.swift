@@ -103,12 +103,12 @@ final class MovieService {
   // MARK: - Tag Management
 
   func updateMovieTags(
-    movieId: String,
+    jellyfinId: String,
     tagSlugs: [String],
     replaceAll: Bool,
     addedByAutoTag: Bool = false
   ) async throws -> ClientTagEntry {
-    let movie = try await getMovieEntity(id: movieId)
+    let movie = try await getMovieEntity(jellyfinId: jellyfinId)
     let validSlugs = try validateTagSlugs(tagSlugs)
 
     if replaceAll {
@@ -324,7 +324,7 @@ final class MovieService {
     for (jellyfinId, payload) in map {
       do {
         _ = try await updateMovieTags(
-          movieId: jellyfinId, tagSlugs: payload.tags, replaceAll: replaceAll)
+          jellyfinId: jellyfinId, tagSlugs: payload.tags, replaceAll: replaceAll)
       } catch {
         logger.error("Failed to import tags for jellyfinId=\(jellyfinId): \(error)")
       }
@@ -485,18 +485,11 @@ final class MovieService {
 
   // MARK: - Private Helpers
 
-  private func getMovieEntity(id: String) async throws -> Movie {
-    if let uuid = UUID(uuidString: id) {
-      return try await Movie.query(on: fluent.db())
-        .filter(\.$id == uuid)
-        .first()
-        .unwrap(orError: MovieServiceError.movieNotFound(id))
-    } else {
-      return try await Movie.query(on: fluent.db())
-        .filter(\.$jellyfinId == id)
-        .first()
-        .unwrap(orError: MovieServiceError.movieNotFound(id))
-    }
+  private func getMovieEntity(jellyfinId: String) async throws -> Movie {
+    try await Movie.query(on: fluent.db())
+      .filter(\.$jellyfinId == jellyfinId)
+      .first()
+      .unwrap(orError: MovieServiceError.movieNotFound(jellyfinId))
   }
 
   private func validateTagSlugs(_ slugs: [String]) throws -> [String] {
