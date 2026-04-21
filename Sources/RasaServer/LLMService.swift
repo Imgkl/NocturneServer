@@ -88,11 +88,32 @@ final class LLMService: Sendable {
         let jsonData = try JSONEncoder().encode(requestBody)
         request.body = .bytes(jsonData)
 
+        // Retry on 429 (rate limit) and 529 (overloaded). Respect the Retry-After
+        // header when present; otherwise exponential backoff capped at 32s.
+        let maxRetries = 5
+        var attempt = 0
         let response: HTTPClientResponse
-        do {
-            response = try await httpClient.execute(request, timeout: .seconds(45))
-        } catch {
-            throw LLMError.httpError(502, "Network error contacting Anthropic: \(error.localizedDescription)")
+        while true {
+            let attemptResponse: HTTPClientResponse
+            do {
+                attemptResponse = try await httpClient.execute(request, timeout: .seconds(45))
+            } catch {
+                throw LLMError.httpError(502, "Network error contacting Anthropic: \(error.localizedDescription)")
+            }
+            let code = attemptResponse.status.code
+            if code == 429 || code == 529 {
+                if attempt >= maxRetries {
+                    throw LLMError.httpError(code, "Anthropic rate limited after \(maxRetries) retries")
+                }
+                let retryAfter = attemptResponse.headers.first(name: "retry-after").flatMap { UInt64($0) }
+                let backoffSec = retryAfter ?? min(32, UInt64(pow(2.0, Double(attempt + 1))))
+                logger.warning("Anthropic \(code); retry \(attempt + 1)/\(maxRetries) in \(backoffSec)s")
+                try await Task.sleep(nanoseconds: backoffSec * 1_000_000_000)
+                attempt += 1
+                continue
+            }
+            response = attemptResponse
+            break
         }
 
         guard response.status == .ok else {

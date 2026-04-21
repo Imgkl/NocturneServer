@@ -236,8 +236,9 @@ final class SuggestionService: @unchecked Sendable {
           self.logger.warning("Backfill enqueue failed for \(jid): \(error)")
         }
         await self.backfillState.tick()
-        // Breather between Claude calls — keeps us well under Anthropic rate limits.
-        try? await Task.sleep(nanoseconds: 500_000_000)
+        // Breather between Claude calls. 1.5s keeps us under ~40 RPM which matches
+        // Anthropic Tier 1 ceilings; actual 429s also retry with backoff in LLMService.
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
       }
       await self.backfillState.finish()
       self.logger.info("Backfill complete")
