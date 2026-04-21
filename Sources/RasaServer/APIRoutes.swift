@@ -315,6 +315,15 @@ final class APIRoutes: @unchecked Sendable {
       return try jsonResponse(status)
     }
 
+    // POST /admin/auto-tag/cancel — request cancellation of the in-flight worker. The worker
+    // checks this flag before each enqueue and bails cleanly. Returns the current status so
+    // the frontend can immediately reflect the cancelled state.
+    admin.post("auto-tag/cancel") { request, context in
+      await self.suggestionService.cancelBackfill()
+      let status = await self.suggestionService.getBackfillStatus()
+      return try jsonResponse(status)
+    }
+
     // GET /admin/movies?q&limit&offset — live Jellyfin fetch + local tag join + needs-review flag
     struct AdminMovie: Codable {
       let jellyfinId: String

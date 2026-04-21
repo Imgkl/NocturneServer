@@ -8,7 +8,7 @@ type Tag = { id?: string; slug: string; title: string }
 type Movie = { jellyfinId: string; title: string; year?: number; posterUrl?: string; tags?: Tag[]; needsReview?: boolean }
 type AdminMovieApi = { jellyfinId: string; title: string; year?: number; posterUrl?: string; tags: string[]; needsReview: boolean }
 type TagSuggestionApi = { id: string; jellyfinId: string; suggestedTags: string[]; confidence: number; reasoning?: string; status: string; createdAt?: string; resolvedAt?: string }
-type BackfillStatusApi = { running: boolean; total: number; processed: number; startedAt?: string }
+type BackfillStatusApi = { running: boolean; total: number; processed: number; startedAt?: string; cancelled?: boolean }
 type MoodBuckets = Record<string, { title: string, description: string }>
 type SyncStatus = {
   isRunning: boolean
@@ -455,6 +455,17 @@ export default function App() {
     } catch (error) {
       console.error('Failed to start reprocess-all:', error)
       alert('Failed to start reprocess. Check that the Anthropic API key is set.')
+    }
+  }
+
+  async function cancelBackfill() {
+    if (!confirm('Stop the auto-tagger? The current movie will finish, but no more will be processed.')) return
+    try {
+      const status = await api<BackfillStatusApi>('/admin/auto-tag/cancel', { method: 'POST' })
+      setBackfillStatus(status)
+    } catch (error) {
+      console.error('Failed to cancel:', error)
+      alert('Failed to cancel auto-tagger.')
     }
   }
 
@@ -1196,8 +1207,19 @@ export default function App() {
                       <div className="h-1.5 rounded-full bg-black/10 overflow-hidden">
                         <div className="h-full bg-emerald-600 transition-all" style={{ width: `${backfillPct}%` }} />
                       </div>
-                      <div className="mt-1.5 text-[11px] text-black/60">
-                        {backfillStatus?.processed ?? 0} / {backfillStatus?.total ?? 0} processed
+                      <div className="mt-1.5 flex items-center justify-between gap-3">
+                        <span className="text-[11px] text-black/60">
+                          {backfillStatus?.processed ?? 0} / {backfillStatus?.total ?? 0} processed
+                          {backfillStatus?.cancelled && <span className="ml-2 text-rose-600">· cancelling…</span>}
+                        </span>
+                        {!backfillStatus?.cancelled && (
+                          <button
+                            className="text-[11px] text-rose-600 hover:text-rose-800 underline decoration-dotted underline-offset-2"
+                            onClick={cancelBackfill}
+                          >
+                            Cancel
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}

@@ -98,6 +98,9 @@ final class SuggestionService: @unchecked Sendable {
       externalInfo: external
     )
 
+    logger.info(
+      "[\(jellyfinId)] firstPass: \(firstPass.tags.count) tags (min conf \(firstPass.confidence)) slugs=\(firstPass.suggestions)")
+
     // Snapshot the first-pass validated tag/confidence list — used as a safety net if refine
     // or the per-tag floor over-strips everything.
     let firstPassValidated = firstPass.tags.filter { config.moodBuckets[$0.slug] != nil }
@@ -117,7 +120,10 @@ final class SuggestionService: @unchecked Sendable {
           externalInfo: external,
           maxTags: config.maxAutoTags
         )
-      } catch {}
+        logger.info("[\(jellyfinId)] refine: \(response.tags.count) tags slugs=\(response.suggestions)")
+      } catch {
+        logger.warning("[\(jellyfinId)] refine failed, keeping firstPass — \(error)")
+      }
     }
 
     // Per-tag floor: drop any tag whose confidence fails its bucket's minConfidence.
@@ -129,9 +135,11 @@ final class SuggestionService: @unchecked Sendable {
         survivingTags.append((tag.slug, tag.confidence))
       } else {
         logger.info(
-          "Dropped \(tag.slug) for \(jellyfinId): conf=\(tag.confidence) < floor=\(floor)")
+          "[\(jellyfinId)] dropped \(tag.slug): conf=\(tag.confidence) < floor=\(floor)")
       }
     }
+    logger.info(
+      "[\(jellyfinId)] after per-tag floor: \(survivingTags.count) of \(response.tags.count) survived")
     var validSuggestions = survivingTags.map(\.0)
     validSuggestions = postFilterSuggestions(validSuggestions, summary: external, context: context)
 
@@ -141,9 +149,25 @@ final class SuggestionService: @unchecked Sendable {
       if let fallback = firstPassValidated.max(by: { $0.confidence < $1.confidence }) {
         validSuggestions = [fallback.slug]
         survivingTags = [(fallback.slug, fallback.confidence)]
-        logger.info(
-          "All tags stripped for \(jellyfinId); restoring first-pass top: \(fallback.slug) (conf=\(fallback.confidence))"
+        logger.warning(
+          "[\(jellyfinId)] ALL TAGS STRIPPED — fallback to first-pass top: \(fallback.slug) (conf=\(fallback.confidence))"
         )
+      } else {
+        // Absolute fallback: the LLM returned nothing parseable. Write a zero-tag pending row
+        // so the reviewer knows this movie failed to auto-tag — the edit-tags flow (v0.0.76+)
+        // lets them manually add tags and approve from the pending list.
+        logger.warning(
+          "[\(jellyfinId)] LLM returned no parseable tags — writing empty pending row for manual review"
+        )
+        let sugg = TagSuggestion(
+          jellyfinId: jellyfinId,
+          suggestedTags: [],
+          confidence: 0.0,
+          reasoning: "auto-tagger returned no valid tags — review manually",
+          status: "pending"
+        )
+        try await sugg.save(on: fluent.db())
+        return sugg
       }
     }
 
@@ -280,6 +304,14 @@ final class SuggestionService: @unchecked Sendable {
     await backfillState.snapshot()
   }
 
+  /// Request cancellation of the in-flight backfill/reprocess worker. The worker checks this
+  /// flag before each iteration and bails cleanly — one Claude call may still finish
+  /// (already in-flight), but no new calls fire after cancel arrives.
+  func cancelBackfill() async {
+    await backfillState.requestCancel()
+    logger.info("Backfill cancel requested")
+  }
+
   /// Enqueue a Claude suggestion for every movie that needs one — i.e. no tags at all, or
   /// currently in pending-review state so the reviewer can see a fresh take. Runs sequentially
   /// in the background with a throttle between calls. Idempotent — if already running, returns
@@ -349,6 +381,10 @@ final class SuggestionService: @unchecked Sendable {
     Task { [weak self] in
       guard let self else { return }
       for jid in jellyfinIds {
+        if await self.backfillState.isCancelled() {
+          self.logger.info("\(label) cancelled mid-run")
+          break
+        }
         do {
           _ = try await self.enqueue(
             jellyfinId: jid,
@@ -371,7 +407,8 @@ final class SuggestionService: @unchecked Sendable {
       running: true,
       total: jellyfinIds.count,
       processed: 0,
-      startedAt: startedAt
+      startedAt: startedAt,
+      cancelled: nil
     )
   }
 
@@ -419,12 +456,15 @@ final class SuggestionService: @unchecked Sendable {
 /// Serializes reads/writes of the singleton backfill worker state.
 actor BackfillStateActor {
   private var running: Bool = false
+  private var cancelRequested: Bool = false
   private var total: Int = 0
   private var processed: Int = 0
   private var startedAt: Date?
 
   func snapshot() -> BackfillStatus {
-    BackfillStatus(running: running, total: total, processed: processed, startedAt: startedAt)
+    BackfillStatus(
+      running: running, total: total, processed: processed,
+      startedAt: startedAt, cancelled: cancelRequested ? true : nil)
   }
 
   /// If idle, marks the state as running and returns nil. If already running, returns the
@@ -432,9 +472,11 @@ actor BackfillStateActor {
   func claimIfIdle(total: Int, at startedAt: Date) -> BackfillStatus? {
     if running {
       return BackfillStatus(
-        running: true, total: self.total, processed: processed, startedAt: self.startedAt)
+        running: true, total: self.total, processed: processed,
+        startedAt: self.startedAt, cancelled: cancelRequested ? true : nil)
     }
     running = true
+    cancelRequested = false   // reset on fresh start
     self.total = total
     processed = 0
     self.startedAt = startedAt
@@ -442,7 +484,10 @@ actor BackfillStateActor {
   }
 
   func tick() { processed += 1 }
-  func finish() { running = false }
+  func finish() { running = false; cancelRequested = false }
+
+  func requestCancel() { if running { cancelRequested = true } }
+  func isCancelled() -> Bool { cancelRequested }
 }
 
 enum SuggestionError: Error, CustomStringConvertible {

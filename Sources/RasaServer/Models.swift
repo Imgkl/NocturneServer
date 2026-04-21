@@ -214,6 +214,7 @@ struct BackfillStatus: Codable, Sendable {
     let total: Int
     let processed: Int
     let startedAt: Date?
+    let cancelled: Bool?
 }
 
 // MARK: - OMDb DTOs
@@ -256,6 +257,43 @@ struct AutoTagResponse: Codable, Sendable {
     var suggestions: [String] { tags.map(\.slug) }
     var confidence: Double { tags.map(\.confidence).min() ?? 0 }
     var overallConfidence: Double { confidence }
+
+    enum CodingKeys: String, CodingKey {
+        case residue, tags, reasoning, suggestions, confidence
+    }
+
+    init(residue: String?, tags: [TagWithConfidence], reasoning: String? = nil) {
+        self.residue = residue
+        self.tags = tags
+        self.reasoning = reasoning
+    }
+
+    /// Lenient decoder: accepts the new `{residue, tags: [{slug, confidence, evidence}]}` shape
+    /// or the legacy `{suggestions: [slug], confidence: 0.85}` shape so old cached responses /
+    /// LLM schema drift don't silently drop entire movies.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.residue = try c.decodeIfPresent(String.self, forKey: .residue)
+        self.reasoning = try c.decodeIfPresent(String.self, forKey: .reasoning)
+        if let newTags = try? c.decode([TagWithConfidence].self, forKey: .tags) {
+            self.tags = newTags
+        } else if let oldSlugs = try? c.decode([String].self, forKey: .suggestions) {
+            let oldConf = (try? c.decode(Double.self, forKey: .confidence)) ?? 0.70
+            self.tags = oldSlugs.map {
+                TagWithConfidence(slug: $0, confidence: oldConf, evidence: nil)
+            }
+        } else {
+            self.tags = []
+        }
+    }
+
+    /// Encode writes the canonical new-schema shape so refine prompts round-trip cleanly.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(residue, forKey: .residue)
+        try c.encode(tags, forKey: .tags)
+        try c.encodeIfPresent(reasoning, forKey: .reasoning)
+    }
 }
 
 struct ExportMovieTags: Codable, Sendable {

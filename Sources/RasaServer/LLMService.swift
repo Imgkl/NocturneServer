@@ -327,9 +327,19 @@ final class LLMService: Sendable {
         }
 
         do {
-            return try JSONDecoder().decode(AutoTagResponse.self, from: data)
+            let parsed = try JSONDecoder().decode(AutoTagResponse.self, from: data)
+            if parsed.tags.isEmpty {
+                let preview = String(cleanContent.prefix(400))
+                logger.warning("LLM returned empty tag set. Residue=\(parsed.residue ?? "nil"). Raw (first 400): \(preview)")
+            } else {
+                let minC = parsed.tags.map(\.confidence).min() ?? 0
+                let maxC = parsed.tags.map(\.confidence).max() ?? 0
+                logger.info("LLM returned \(parsed.tags.count) tags (conf \(minC)..\(maxC))")
+            }
+            return parsed
         } catch {
-            logger.error("Failed to parse LLM response: \(cleanContent)")
+            let preview = String(cleanContent.prefix(400))
+            logger.error("Failed to parse LLM response. Raw (first 400): \(preview)")
             throw LLMError.invalidResponse("Failed to parse JSON response: \(error)")
         }
     }
