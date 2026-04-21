@@ -154,6 +154,7 @@ func runMigrations(fluent: Fluent, logger: Logger) async throws {
     await fluent.migrations.add(CreateMovieTags())
     await fluent.migrations.add(SeedMoodTags())
     await fluent.migrations.add(CreateTagSuggestions())
+    await fluent.migrations.add(UpdateRegionalGemsDescription())
 
     logger.info("🔄 Running database migrations...")
     try await fluent.migrate()

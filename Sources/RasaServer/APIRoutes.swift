@@ -265,12 +265,16 @@ final class APIRoutes: @unchecked Sendable {
     }
 
     // POST /admin/suggestions/:id/approve
+    // Optional body: { "tags": ["slug1", "slug2"] } — when present, overrides the suggested
+    // tags with the reviewer's edited set before approving.
+    struct ApproveBody: Codable { let tags: [String]? }
     admin.post("suggestions/:id/approve") { request, context in
       let idStr = try context.parameters.require("id")
       guard let uuid = UUID(uuidString: String(idStr)) else {
         throw HTTPError(.badRequest)
       }
-      let sugg = try await self.suggestionService.approve(uuid)
+      let overrideTags = try? await request.decode(as: ApproveBody.self, context: context).tags
+      let sugg = try await self.suggestionService.approve(uuid, overrideTags: overrideTags)
       return try jsonResponse(TagSuggestionResponse(sugg))
     }
 
@@ -301,6 +305,13 @@ final class APIRoutes: @unchecked Sendable {
     // GET /admin/auto-tag/backfill/status — current progress snapshot.
     admin.get("auto-tag/backfill/status") { request, context in
       let status = await self.suggestionService.getBackfillStatus()
+      return try jsonResponse(status)
+    }
+
+    // POST /admin/auto-tag/reprocess-all — clear every movie's tags, supersede pending
+    // suggestions, then re-run the auto-tagger against the whole library. Destructive.
+    admin.post("auto-tag/reprocess-all") { request, context in
+      let status = try await self.suggestionService.startReprocessAll()
       return try jsonResponse(status)
     }
 

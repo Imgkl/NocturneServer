@@ -149,7 +149,7 @@ struct SeedMoodTags: AsyncMigration {
             ),
             "regional-gems": MoodBucket(
                 title: "Regional Gems",
-                description: "Standouts from Tamil, Hindi, and wider Indian cinema."
+                description: "Critically recognized or culturally significant Indian cinema (Tamil, Hindi, Malayalam, Bengali, etc.) — award winners, festival standouts, or genre landmarks. Not every film from the region."
             ),
             "underseen-treasures": MoodBucket(
                 title: "Underseen Treasures",
@@ -201,6 +201,30 @@ struct SeedMoodTags: AsyncMigration {
 
     func revert(on database: Database) async throws {
         try await Tag.query(on: database).delete()
+    }
+}
+
+struct UpdateRegionalGemsDescription: AsyncMigration {
+    func prepare(on database: Database) async throws {
+        let newDescription = "Critically recognized or culturally significant Indian cinema (Tamil, Hindi, Malayalam, Bengali, etc.) — award winners, festival standouts, or genre landmarks. Not every film from the region."
+        if let tag = try await Tag.query(on: database)
+            .filter(\.$slug == "regional-gems")
+            .first()
+        {
+            tag.description = newDescription
+            try await tag.save(on: database)
+        }
+    }
+
+    func revert(on database: Database) async throws {
+        let oldDescription = "Standouts from Tamil, Hindi, and wider Indian cinema."
+        if let tag = try await Tag.query(on: database)
+            .filter(\.$slug == "regional-gems")
+            .first()
+        {
+            tag.description = oldDescription
+            try await tag.save(on: database)
+        }
     }
 }
 

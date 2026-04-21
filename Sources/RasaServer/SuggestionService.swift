@@ -30,16 +30,26 @@ final class SuggestionService: @unchecked Sendable {
     self.config = config
   }
 
-  /// Generate a fresh Claude suggestion and persist as pending. Idempotent: if a pending row
-  /// already exists for this jellyfinId, reuse it.
+  /// Generate a fresh Claude suggestion and persist as pending. When `replaceExistingPending`
+  /// is true, any existing pending row for this movie is superseded so the reviewer sees the
+  /// new suggestion instead of two stacked rows. When false (default), a pre-existing pending
+  /// row short-circuits the call so we don't burn API budget on duplicates.
   @discardableResult
-  func enqueue(jellyfinId: String) async throws -> TagSuggestion {
-    if let existing = try await TagSuggestion.query(on: fluent.db())
+  func enqueue(jellyfinId: String, replaceExistingPending: Bool = false) async throws -> TagSuggestion {
+    let existing = try await TagSuggestion.query(on: fluent.db())
       .filter(\.$jellyfinId == jellyfinId)
       .filter(\.$status == "pending")
-      .first()
-    {
-      return existing
+      .all()
+
+    if !existing.isEmpty {
+      if !replaceExistingPending {
+        return existing[0]
+      }
+      for old in existing {
+        old.status = "superseded"
+        old.resolvedAt = Date()
+        try await old.save(on: fluent.db())
+      }
     }
 
     guard let apiKey = config.anthropicApiKey, !apiKey.isEmpty else {
@@ -132,12 +142,29 @@ final class SuggestionService: @unchecked Sendable {
     }
   }
 
-  /// Tags are already applied by `enqueue`; approve just confirms the review.
-  func approve(_ id: UUID) async throws -> TagSuggestion {
+  /// Tags are already applied by `enqueue`; approve confirms the review. When `overrideTags`
+  /// is supplied, the reviewer's edited set replaces the originally-suggested tags on the movie
+  /// and the suggestion row is rewritten to match.
+  func approve(_ id: UUID, overrideTags: [String]? = nil) async throws -> TagSuggestion {
     guard let sugg = try await TagSuggestion.find(id, on: fluent.db()) else {
       throw SuggestionError.notFound(id)
     }
     guard sugg.status == "pending" else { throw SuggestionError.alreadyResolved(id) }
+
+    if let overrideTags {
+      let validOverrides = overrideTags.filter { config.moodBuckets[$0] != nil }
+      guard let movieService = movieServiceRef else {
+        throw SuggestionError.serviceUnavailable
+      }
+      _ = try await movieService.updateMovieTags(
+        jellyfinId: sugg.jellyfinId,
+        tagSlugs: validOverrides,
+        replaceAll: true,
+        addedByAutoTag: false
+      )
+      sugg.suggestedTags = validOverrides
+    }
+
     sugg.status = "approved"
     sugg.resolvedAt = Date()
     try await sugg.save(on: fluent.db())
@@ -205,9 +232,10 @@ final class SuggestionService: @unchecked Sendable {
     await backfillState.snapshot()
   }
 
-  /// Enqueue a Claude suggestion for every movie that has no tags and no pending suggestion.
-  /// Runs sequentially in the background with a throttle between calls. Idempotent — if already
-  /// running, returns the current state without starting a second worker.
+  /// Enqueue a Claude suggestion for every movie that needs one — i.e. no tags at all, or
+  /// currently in pending-review state so the reviewer can see a fresh take. Runs sequentially
+  /// in the background with a throttle between calls. Idempotent — if already running, returns
+  /// the current state without starting a second worker.
   func startBackfill() async throws -> BackfillStatus {
     guard let apiKey = config.anthropicApiKey, !apiKey.isEmpty else {
       throw SuggestionError.missingAnthropicKey
@@ -216,24 +244,63 @@ final class SuggestionService: @unchecked Sendable {
     let allMovies = try await Movie.query(on: fluent.db()).with(\.$tags).all()
     let pending = try await pendingJellyfinIds()
     let candidates = allMovies
-      .filter { $0.tags.isEmpty && !pending.contains($0.jellyfinId) }
+      .filter { $0.tags.isEmpty || pending.contains($0.jellyfinId) }
       .map { $0.jellyfinId }
 
+    return try await runWorker(
+      label: "Backfill", jellyfinIds: candidates, replaceExistingPending: true)
+  }
+
+  /// Clear tags on every movie, supersede every pending suggestion, then re-run the auto-tagger
+  /// against the entire library. Used after taxonomy changes to get a clean slate.
+  func startReprocessAll() async throws -> BackfillStatus {
+    guard let apiKey = config.anthropicApiKey, !apiKey.isEmpty else {
+      throw SuggestionError.missingAnthropicKey
+    }
+
+    let allMovies = try await Movie.query(on: fluent.db()).with(\.$tags).all()
+
+    // Detach every tag link so the run starts from a clean slate.
+    for movie in allMovies where !movie.tags.isEmpty {
+      try await movie.$tags.detach(movie.tags, on: fluent.db())
+    }
+
+    // Supersede every pending suggestion — they refer to the pre-reprocess tag set.
+    let oldPending = try await TagSuggestion.query(on: fluent.db())
+      .filter(\.$status == "pending")
+      .all()
+    let now = Date()
+    for old in oldPending {
+      old.status = "superseded"
+      old.resolvedAt = now
+      try await old.save(on: fluent.db())
+    }
+
+    let candidates = allMovies.map { $0.jellyfinId }
+    return try await runWorker(
+      label: "Reprocess-all", jellyfinIds: candidates, replaceExistingPending: true)
+  }
+
+  /// Shared throttled worker loop. Claims the backfill state actor, schedules a background task
+  /// that walks the candidate list with a breather between Claude calls.
+  private func runWorker(
+    label: String, jellyfinIds: [String], replaceExistingPending: Bool
+  ) async throws -> BackfillStatus {
     let startedAt = Date()
-    if let existing = await backfillState.claimIfIdle(total: candidates.count, at: startedAt) {
-      // Already running — caller piggy-backs on the in-flight worker.
+    if let existing = await backfillState.claimIfIdle(total: jellyfinIds.count, at: startedAt) {
       return existing
     }
 
-    logger.info("Backfill starting for \(candidates.count) untagged movies")
+    logger.info("\(label) starting for \(jellyfinIds.count) movies")
 
     Task { [weak self] in
       guard let self else { return }
-      for jid in candidates {
+      for jid in jellyfinIds {
         do {
-          _ = try await self.enqueue(jellyfinId: jid)
+          _ = try await self.enqueue(
+            jellyfinId: jid, replaceExistingPending: replaceExistingPending)
         } catch {
-          self.logger.warning("Backfill enqueue failed for \(jid): \(error)")
+          self.logger.warning("\(label) enqueue failed for \(jid): \(error)")
         }
         await self.backfillState.tick()
         // Breather between Claude calls. 1.5s keeps us under ~40 RPM which matches
@@ -241,12 +308,12 @@ final class SuggestionService: @unchecked Sendable {
         try? await Task.sleep(nanoseconds: 1_500_000_000)
       }
       await self.backfillState.finish()
-      self.logger.info("Backfill complete")
+      self.logger.info("\(label) complete")
     }
 
     return BackfillStatus(
       running: true,
-      total: candidates.count,
+      total: jellyfinIds.count,
       processed: 0,
       startedAt: startedAt
     )
@@ -273,12 +340,6 @@ final class SuggestionService: @unchecked Sendable {
         let ok = [
           "time travel", "time-travel", "time loop", "timeloop", "looping time", "resetting day",
           "timeline", "timelines", "temporal", "time machine", "alternate timeline", "paradox",
-        ].contains(where: { words.contains($0) })
-        if ok { result.append(tag) }
-      case "modern-masterpieces":
-        let ok = [
-          "masterpiece", "critically acclaimed", "universal acclaim", "academy award", "oscar",
-          "palme d'or", "landmark film", "canon", "best of all time",
         ].contains(where: { words.contains($0) })
         if ok { result.append(tag) }
       case "psychological-pressure-cooker":

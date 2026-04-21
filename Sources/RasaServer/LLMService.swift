@@ -186,6 +186,7 @@ final class LLMService: Sendable {
         • feel-good-romance: uplifting arc AND romance is the engine; tragic romances do NOT qualify.
         • rainy-day-rewinds: comfort-first, low-stakes, warm rhythm; heavy films do NOT qualify.
         • modern-masterpieces: only with explicit acclaim evidence (Oscar, Palme d'Or, critic consensus, landmark).
+        • regional-gems: requires a standout signal (critical acclaim, award, festival run, genre-defining). Regional origin alone is NOT enough.
 
         Rule 4 — Prefer precision
         Fewer tags when unsure. One well-justified tag beats three loose ones. Cap at \(maxTags).
