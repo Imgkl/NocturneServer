@@ -237,6 +237,31 @@ final class MovieService {
     }
   }
 
+  /// Tags for a caller-supplied set of Jellyfin IDs. Preserves input order;
+  /// drops IDs that aren't in the local DB so the caller can diff.
+  func getClientTagsBatch(jellyfinIds: [String]) async throws -> [ClientTagEntry] {
+    guard !jellyfinIds.isEmpty else { return [] }
+    let movies = try await Movie.query(on: fluent.db())
+      .filter(\.$jellyfinId ~~ jellyfinIds)
+      .with(\.$tags)
+      .all()
+    let pending = try await TagSuggestion.query(on: fluent.db())
+      .filter(\.$status == "pending")
+      .filter(\.$jellyfinId ~~ jellyfinIds)
+      .field(\.$jellyfinId)
+      .all()
+    let pendingSet = Set(pending.map { $0.jellyfinId })
+    let byId = Dictionary(uniqueKeysWithValues: movies.map { ($0.jellyfinId, $0) })
+    return jellyfinIds.compactMap { jid in
+      guard let m = byId[jid] else { return nil }
+      return ClientTagEntry(
+        jellyfinId: m.jellyfinId,
+        tags: m.tags.map { $0.slug },
+        needsReview: pendingSet.contains(m.jellyfinId)
+      )
+    }
+  }
+
   /// Tags for a single Jellyfin id.
   func getClientTags(jellyfinId: String) async throws -> ClientTagEntry {
     let movie = try await Movie.query(on: fluent.db())

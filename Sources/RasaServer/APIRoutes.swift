@@ -173,6 +173,17 @@ final class APIRoutes: @unchecked Sendable {
       return try jsonResponse(ClientTagsListResponse(items: items))
     }
 
+    // POST /api/v1/clients/tags/batch — tags for a caller-supplied set of Jellyfin IDs.
+    // Preserves input order; drops unknown IDs. Capped at 500 per call.
+    struct BatchTagsRequest: Codable { let jellyfinIds: [String] }
+    clients.post("tags/batch") { request, context in
+      let payload = try await request.decode(as: BatchTagsRequest.self, context: context)
+      guard payload.jellyfinIds.count <= 500 else { throw HTTPError(.badRequest) }
+      let items = try await self.movieService.getClientTagsBatch(
+        jellyfinIds: payload.jellyfinIds)
+      return try jsonResponse(ClientTagsListResponse(items: items))
+    }
+
     let clientMovies = clients.group("movies")
     clientMovies.get(":jellyfinId/tags") { request, context in
       let jellyfinId = try context.parameters.require("jellyfinId")
