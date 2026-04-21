@@ -10,6 +10,7 @@ final class LLMService: Sendable {
     init(httpClient: HTTPClient) {
         self.httpClient = httpClient
         self.anthropicModel = ProcessInfo.processInfo.environment["ANTHROPIC_MODEL"] ?? "claude-opus-4-7"
+        self.logger.info("LLMService initialized with Anthropic model: \(self.anthropicModel)")
     }
 
     func generateTags(
@@ -119,7 +120,16 @@ final class LLMService: Sendable {
         }
 
         guard response.status == .ok else {
-            throw LLMError.httpError(response.status.code, "Anthropic API error")
+            let code = response.status.code
+            let reqSize = jsonData.count
+            let bodyText: String
+            if let buf = try? await response.body.collect(upTo: 64 * 1024) {
+                bodyText = String(buffer: buf)
+            } else {
+                bodyText = "(body unreadable)"
+            }
+            self.logger.error("Anthropic \(code) (req=\(reqSize) bytes, model=\(self.anthropicModel)): \(bodyText)")
+            throw LLMError.httpError(code, "Anthropic \(code) (req=\(reqSize) bytes): \(bodyText)")
         }
 
         let data = try await response.body.collect(upTo: 1024 * 1024)
