@@ -9,6 +9,7 @@ import NIOHTTP1
 final class JellyfinRealtimeService: @unchecked Sendable {
     private let config: RasaConfiguration
     private let movieService: MovieService
+    private let suggestionService: SuggestionService
     private let eventLoopGroup: EventLoopGroup
     private let logger: Logger
 
@@ -17,9 +18,16 @@ final class JellyfinRealtimeService: @unchecked Sendable {
 
     // No additional debounce; Jellyfin already batches LibraryChanged
 
-    init(config: RasaConfiguration, movieService: MovieService, eventLoopGroup: EventLoopGroup, logger: Logger) {
+    init(
+        config: RasaConfiguration,
+        movieService: MovieService,
+        suggestionService: SuggestionService,
+        eventLoopGroup: EventLoopGroup,
+        logger: Logger
+    ) {
         self.config = config
         self.movieService = movieService
+        self.suggestionService = suggestionService
         self.eventLoopGroup = eventLoopGroup
         self.logger = Logger(label: "JellyfinRealtime")
     }
@@ -152,7 +160,7 @@ final class JellyfinRealtimeService: @unchecked Sendable {
         if addUpd.isEmpty && removed.isEmpty { return }
         logger.info("Realtime: processing changes added/updated=\(addUpd.count) removed=\(removed.count)")
 
-        // 1) Process removals first
+        // 1) Process removals first — drops the jellyfin_id FK stub and cascades movie_tags.
         for id in removed {
             do {
                 let ok = try await movieService.deleteMovieByJellyfinId(id)
@@ -162,25 +170,16 @@ final class JellyfinRealtimeService: @unchecked Sendable {
             }
         }
 
-        // 2) Fetch updated items in small batches and upsert
-        let chunkSize = 50
-        var idx = 0
-        while idx < addUpd.count {
-            let end = min(addUpd.count, idx + chunkSize)
-            let slice = Array(addUpd[idx..<end])
-            idx = end
+        // 2) Upsert stubs for new/updated items (ID + last_seen_at only),
+        //    then enqueue a Claude suggestion if auto-tagging is on.
+        for id in addUpd {
             do {
-                let baseItems = try await movieService.jellyfinService.fetchBaseItems(ids: slice)
-                for item in baseItems {
-                    guard let id = item.id else { continue }
-                    do {
-                        _ = try await movieService.refreshClientMovie(jellyfinId: id, item: item)
-                    } catch {
-                        logger.error("Realtime: upsert failed for \(id): \(error)")
-                    }
+                _ = try await movieService.upsertJellyfinId(id)
+                if config.enableAutoTagging {
+                    suggestionService.enqueueInBackground(jellyfinId: id)
                 }
             } catch {
-                logger.error("Realtime: batch fetch failed for \(slice.count) items: \(error)")
+                logger.error("Realtime: upsert failed for \(id): \(error)")
             }
         }
     }

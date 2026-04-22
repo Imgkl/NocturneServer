@@ -19,17 +19,10 @@ let package = Package(
         
         // WebSocket client
         .package(url: "https://github.com/vapor/websocket-kit.git", from: "2.6.0"),
-        
-        
-        // JSON/UUID utilities
-        .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
-        
+
         // Logging
         .package(url: "https://github.com/apple/swift-log.git", from: "1.6.0"),
-        
-        // Configuration
-        .package(url: "https://github.com/jpsim/Yams.git", from: "5.1.0"),
-        
+
         // Cross‑platform CryptoKit for Linux
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.9.0"),
         
@@ -53,9 +46,7 @@ let package = Package(
                 
                 
                 // Utilities
-                .product(name: "Collections", package: "swift-collections"),
                 .product(name: "Logging", package: "swift-log"),
-                .product(name: "Yams", package: "Yams"),
                 .product(name: "Crypto", package: "swift-crypto")
             ],
             path: "Sources/RasaServer"

@@ -8,12 +8,19 @@ import NIOCore
 
 final class APIRoutes: @unchecked Sendable {
   let movieService: MovieService
+  let suggestionService: SuggestionService
   let config: RasaConfiguration
   let logger = Logger(label: "APIRoutes")
   let httpClient: HTTPClient
 
-  init(movieService: MovieService, config: RasaConfiguration, httpClient: HTTPClient) {
+  init(
+    movieService: MovieService,
+    suggestionService: SuggestionService,
+    config: RasaConfiguration,
+    httpClient: HTTPClient
+  ) {
     self.movieService = movieService
+    self.suggestionService = suggestionService
     self.config = config
     self.httpClient = httpClient
   }
@@ -28,98 +35,35 @@ final class APIRoutes: @unchecked Sendable {
       return try jsonResponse(VersionResponse(version: v))
     }
 
-    // API v1 routes
     let api = router.group("api/v1")
 
-    // Moods endpoints
     addMoodRoutes(to: api)
-
-    // Movies endpoints
     addMovieRoutes(to: api)
-
-    // Tags endpoints
-    addTagRoutes(to: api)
-
-    // Search endpoints
-    addSearchRoutes(to: api)
-
-    // Sync endpoints
     addSyncRoutes(to: api)
-
-    // Settings endpoints
     addSettingsRoutes(to: api)
-
-    // Import/Export endpoints
     addImportExportRoutes(to: api)
-
-    // Clients endpoints
     addClientRoutes(to: api)
-
-    // OMDb endpoints
-    addOmdbRoutes(to: api)
+    addAdminRoutes(to: api)
   }
 
-  // MARK: - Mood Routes
+  // MARK: - Mood Routes (admin needs the bucket list for display names)
 
   private func addMoodRoutes(to router: RouterGroup<BasicRequestContext>) {
     let moods = router.group("moods")
 
-    // GET /api/v1/moods - List all available mood buckets
     moods.get { request, context in
       try jsonResponse(
         MoodBucketsResponse(
           moods: self.movieService.config.moodBuckets
         ))
     }
-
-    // GET /api/v1/moods/:slug - Get specific mood bucket
-    moods.get(":slug") { request, context in
-      let slug = try context.parameters.require("slug")
-
-      guard let mood = self.movieService.config.moodBuckets[String(slug)] else {
-        throw HTTPError(.notFound)
-      }
-      struct BucketResponse: Codable {
-        let slug: String
-        let mood: MoodBucket
-      }
-      return try jsonResponse(BucketResponse(slug: String(slug), mood: mood))
-    }
-
-    // GET /api/v1/moods/:slug/movies - Get movies with specific mood
-    moods.get(":slug/movies") { request, context in
-      let slug = try context.parameters.require("slug")
-      let limit = request.uri.queryParameters["limit"].flatMap { Int(String($0)) } ?? 50
-      let offset = request.uri.queryParameters["offset"].flatMap { Int(String($0)) } ?? 0
-
-      return try jsonResponse(
-        try await self.movieService.getMovies(withTag: String(slug), limit: limit, offset: offset))
-    }
   }
 
-  // MARK: - Movie Routes
+  // MARK: - Movie Routes (admin tag editor + auto-tag queue)
 
   private func addMovieRoutes(to router: RouterGroup<BasicRequestContext>) {
     let movies = router.group("movies")
 
-    // GET /api/v1/movies - List movies with pagination
-    movies.get { request, context in
-      let limit = request.uri.queryParameters["limit"].flatMap { Int(String($0)) } ?? 50
-      let offset = request.uri.queryParameters["offset"].flatMap { Int(String($0)) } ?? 0
-      let withTags = request.uri.queryParameters["with_tags"].map { String($0) == "true" } ?? false
-
-      return try jsonResponse(
-        try await self.movieService.getMovies(limit: limit, offset: offset, includeTags: withTags))
-    }
-
-    // GET /api/v1/movies/:id - Get specific movie
-    movies.get(":id") { request, context in
-      let movieId = try context.parameters.require("id")
-      return try jsonResponse(
-        try await self.movieService.getMovie(id: String(movieId), includeTags: true))
-    }
-
-    // PUT /api/v1/movies/:id/tags - Update movie tags
     movies.put(":id/tags") { request, context in
       let movieId = try context.parameters.require("id")
       let updateRequest = try await request.decode(
@@ -128,100 +72,18 @@ final class APIRoutes: @unchecked Sendable {
 
       return try jsonResponse(
         try await self.movieService.updateMovieTags(
-          movieId: String(movieId),
+          jellyfinId: String(movieId),
           tagSlugs: updateRequest.tagSlugs,
           replaceAll: updateRequest.replaceAll
         ))
     }
 
-    // POST /api/v1/movies/:id/auto-tag - Generate automatic tags
+    // Always routes through the suggestion queue; never auto-applies.
+    // Body is ignored — prompt/provider come from server config.
     movies.post(":id/auto-tag") { request, context in
-      let movieId = try context.parameters.require("id")
-      let autoTagRequest = try await request.decode(as: AutoTagRequest.self, context: context)
-
-      return try jsonResponse(
-        try await self.movieService.generateAutoTags(
-          movieId: String(movieId),
-          provider: autoTagRequest.provider,
-          suggestionsOnly: autoTagRequest.suggestionsOnly,
-          customPrompt: autoTagRequest.customPrompt
-        ))
-    }
-
-    // GET /api/v1/movies/:id/subtitles - Get available subtitles
-    movies.get(":id/subtitles") { request, context in
-      let movieId = try context.parameters.require("id")
-      return try jsonResponse(
-        try await self.movieService.getAvailableSubtitles(movieId: String(movieId)))
-    }
-  }
-
-  // MARK: - Tag Routes
-
-  private func addTagRoutes(to router: RouterGroup<BasicRequestContext>) {
-    let tags = router.group("tags")
-
-    // GET /api/v1/tags - List all tags with usage stats
-    tags.get { request, context in
-      let sortBy = request.uri.queryParameters["sort_by"].map { String($0) } ?? "usage"
-      let order = request.uri.queryParameters["order"].map { String($0) } ?? "desc"
-
-      return try jsonResponse(try await self.movieService.getAllTags(sortBy: sortBy, order: order))
-    }
-
-    // GET /api/v1/tags/:slug - Get specific tag info
-    tags.get(":slug") { request, context in
-      let slug = try context.parameters.require("slug")
-      return try jsonResponse(try await self.movieService.getTag(slug: String(slug)))
-    }
-
-    // GET /api/v1/tags/:slug/movies - Get movies with specific tag
-    tags.get(":slug/movies") { request, context in
-      let slug = try context.parameters.require("slug")
-      let limit = request.uri.queryParameters["limit"].flatMap { Int(String($0)) } ?? 50
-      let offset = request.uri.queryParameters["offset"].flatMap { Int(String($0)) } ?? 0
-
-      return try jsonResponse(
-        try await self.movieService.getMovies(withTag: String(slug), limit: limit, offset: offset))
-    }
-
-    // DELETE /api/v1/tags/reset-all - Remove all tags from all movies
-    tags.delete("reset-all") { request, context in
-      try await self.movieService.resetAllTags()
-      return try jsonResponse(["success": true])
-    }
-  }
-
-  // MARK: - Search Routes
-
-  private func addSearchRoutes(to router: RouterGroup<BasicRequestContext>) {
-    let search = router.group("search")
-
-    // GET /api/v1/search/movies - Search movies by title, director, etc.
-    search.get("movies") { request, context in
-      guard let query = request.uri.queryParameters["q"] else {
-        throw HTTPError(.badRequest)
-      }
-
-      let limit = request.uri.queryParameters["limit"].flatMap { Int(String($0)) } ?? 20
-      let includeTags =
-        request.uri.queryParameters["with_tags"].map { String($0) == "true" } ?? false
-
-      return try jsonResponse(
-        try await self.movieService.searchMovies(
-          query: String(query),
-          limit: limit,
-          includeTags: includeTags
-        ))
-    }
-
-    // GET /api/v1/search/tags - Search mood tags
-    search.get("tags") { request, context in
-      guard let query = request.uri.queryParameters["q"] else {
-        throw HTTPError(.badRequest)
-      }
-
-      return try jsonResponse(try await self.movieService.searchTags(query: String(query)))
+      let jellyfinId = try context.parameters.require("id")
+      let sugg = try await self.suggestionService.enqueue(jellyfinId: String(jellyfinId))
+      return try jsonResponse(TagSuggestionResponse(sugg))
     }
   }
 
@@ -230,9 +92,7 @@ final class APIRoutes: @unchecked Sendable {
   private func addSyncRoutes(to router: RouterGroup<BasicRequestContext>) {
     let sync = router.group("sync")
 
-    // POST /api/v1/sync/jellyfin - Sync with Jellyfin server
     sync.post("jellyfin") { request, context in
-      // Ensure runtime client uses latest saved token before syncing
       let store = SettingsStore(db: self.movieService.fluent.db(), logger: self.logger)
       try await store.ensureTable()
       if let url = try await store.get("jellyfin_url"),
@@ -245,12 +105,10 @@ final class APIRoutes: @unchecked Sendable {
       return try jsonResponse(try await self.movieService.syncWithJellyfin(fullSync: fullSync))
     }
 
-    // GET /api/v1/sync/status - Get sync status
     sync.get("status") { request, context in
       return try jsonResponse(try await self.movieService.getSyncStatus())
     }
 
-    // POST /api/v1/sync/test-connection - Test Jellyfin connection
     sync.post("test-connection") { request, context in
       return try jsonResponse(try await self.movieService.testJellyfinConnection())
     }
@@ -260,7 +118,6 @@ final class APIRoutes: @unchecked Sendable {
   private func addImportExportRoutes(to router: RouterGroup<BasicRequestContext>) {
     let data = router.group("data")
 
-    // GET /api/v1/data/export - Export tags map as JSON
     data.get("export") { request, context in
       let map = try await self.movieService.exportTagsMap()
       return try jsonResponse(map)
@@ -271,7 +128,6 @@ final class APIRoutes: @unchecked Sendable {
       let map: [String: ExportMovieTags]
     }
 
-    // POST /api/v1/data/import - Import tags map JSON
     data.post("import") { request, context in
       let payload = try await request.decode(as: ImportPayload.self, context: context)
       try await self.movieService.importTagsMap(payload.map, replaceAll: payload.replaceAll ?? true)
@@ -279,348 +135,96 @@ final class APIRoutes: @unchecked Sendable {
     }
   }
 
-  // MARK: - Clients Routes
+  // MARK: - Clients Routes (ID-only surface for RasaPlay-style clients)
   private func addClientRoutes(to router: RouterGroup<BasicRequestContext>) {
     let clients = router.group("clients")
-    let movies = clients.group("movies")
-    let moods = clients.group("moods")
-    // GET /api/v1/clients/ping - Simple connectivity check for clients
+
     clients.get("ping") { request, context in
-      struct ClientPingResponse: Codable { let success: Bool }
-      return try jsonResponse(ClientPingResponse(success: true))
-    }
-    // GET /api/v1/clients/movies - Return all movies with client payload
-    movies.get { request, context in
-      // Return everything; include tags; no pagination as requested
-      return try jsonResponse(try await self.movieService.getClientMovies())
+      return try jsonResponse(SuccessResponse(success: true))
     }
 
-    // POST /api/v1/clients/movies/refresh/:jellyfinId - Upsert from client-provided Jellyfin payload
-    movies.post("refresh/:jellyfinId") { request, context in
-      let jellyfinId = try context.parameters.require("jellyfinId")
-      let item = try await request.decode(as: BaseItemDto.self, context: context)
-      let updated = try await self.movieService.refreshClientMovie(jellyfinId: String(jellyfinId), item: item)
-      return try jsonResponse(updated)
-    }
-
-    // GET /api/v1/clients/moods - list buckets
+    let moods = clients.group("moods")
     moods.get { request, context in
       struct ClientMoods: Codable { let moods: [String: MoodBucket] }
       return try jsonResponse(ClientMoods(moods: self.movieService.config.moodBuckets))
     }
 
-    // GET /api/v1/clients/moods/:slug/movies - movies for mood
+    moods.get(":slug") { request, context in
+      let slug = try context.parameters.require("slug")
+      guard let mood = self.movieService.config.moodBuckets[String(slug)] else {
+        throw HTTPError(.notFound)
+      }
+      struct BucketResponse: Codable {
+        let slug: String
+        let mood: MoodBucket
+      }
+      return try jsonResponse(BucketResponse(slug: String(slug), mood: mood))
+    }
+
     moods.get(":slug/movies") { request, context in
       let slug = try context.parameters.require("slug")
-      return try jsonResponse(try await self.movieService.getClientMovies(withTag: String(slug)))
-    }
-
-    // GET /api/v1/clients/timeline - movies sorted by year ascending; unknown year last
-    clients.get("timeline") { request, context in
-      return try jsonResponse(try await self.movieService.getClientTimeline())
-    }
-
-    // GET /api/v1/clients/home - aggregated landing payload
-    clients.get("home") { request, context in
-      // Parse optional header for mood exclusions
-      let headerName = HTTPField.Name("X-Mood-Exclude")
-      let excludeHeader = request.headers.first { $0.name == headerName }?.value
-      let excludedMoods: [String] =
-        excludeHeader.map { value in
-          value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        } ?? []
-
-      async let banner = self.movieService.getBannerMovies(maxCount: 5)
-      async let cont = self.movieService.getContinueWatchingMovies()
-      async let recent = self.movieService.getRecentlyAddedMovies(maxCount: 20)
-      async let allMovies = self.movieService.getAllMoviesByTitle(maxCount: 15)
-      async let unwatched = self.movieService.getUnwatchedMoviesByTitle(maxCount: 15)
-      async let random = self.movieService.getRandomMoodSection(excluding: excludedMoods)
-      async let progress = self.movieService.getTotalProgress()
-
-      let (bannerItems, contItems, recentItems, allItems, unwatchedItems, randomSection, progressStats) = try await (
-        banner, cont, recent, allMovies, unwatched, random, progress
-      )
-
-      struct RandomBlock: Codable {
-        let mood: String
-        let moodTitle: String
-        let items: [ClientMovieResponse]
-      }
-      struct ProgressStats: Codable {
-        let totalMovies: Int
-        let watchedMovies: Int
-        let progressPercent: Float
-      }
-      struct HomePayload: Codable {
-        let banner: [ClientMovieResponse]?
-        let continueWatching: [ClientMovieResponse]?
-        let recentlyAdded: [ClientMovieResponse]?
-        let allMovies: [ClientMovieResponse]?
-        let unwatched: [ClientMovieResponse]?
-        let random: RandomBlock?
-        let progress: ProgressStats
-      }
-
-      let payload = HomePayload(
-        banner: bannerItems.isEmpty ? nil : bannerItems,
-        continueWatching: contItems.isEmpty ? nil : contItems,
-        recentlyAdded: recentItems.isEmpty ? nil : recentItems,
-        allMovies: allItems.isEmpty ? nil : allItems,
-        unwatched: unwatchedItems.isEmpty ? nil : unwatchedItems,
-        random: {
-          if let r = randomSection {
-            return RandomBlock(mood: r.mood, moodTitle: r.moodTitle, items: r.items)
-          } else {
-            return nil
-          }
-        }(),
-        progress: ProgressStats(
-          totalMovies: progressStats.totalMovies,
-          watchedMovies: progressStats.watchedMovies,
-          progressPercent: progressStats.progressPercent
-        )
-      )
-
-      return try jsonResponse(payload)
-    }
-
-    // GET /api/v1/clients/topshelf - continue watching + recently added + featured mood
-    clients.get("topshelf") { request, context in
-      let headerName = HTTPField.Name("X-Mood-Exclude")
-      let excludeHeader = request.headers.first { $0.name == headerName }?.value
-      let excludedMoods: [String] =
-        excludeHeader.map { value in
-          value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        } ?? []
-
-      let maxContinue = 5
-      let maxRecent = 10
-      let maxFeatured = 10
-
-      // Deterministic daily featured mood
-      let allMoods = Array(self.movieService.config.moodBuckets.keys)
-      let excludeSet = Set(excludedMoods.filter { !$0.isEmpty })
-      var pool = allMoods.filter { !excludeSet.contains($0) }
-      if pool.isEmpty { pool = allMoods }
-      let df = DateFormatter()
-      df.dateFormat = "yyyy-MM-dd"
-      let seed = df.string(from: Date())
-      func djb2(_ s: String) -> Int {
-        var h = 5381
-        for u in s.unicodeScalars { h = ((h << 5) &+ h) &+ Int(u.value) }
-        return abs(h)
-      }
-      let featuredSlug: String? = pool.isEmpty ? nil : Array(pool.sorted())[djb2(seed) % pool.count]
-      let featuredTitle: String? = featuredSlug.map {
-        self.movieService.config.moodBuckets[$0]?.title ?? $0
-      }
-
-      async let cont = self.movieService.getContinueWatchingMovies(maxCount: maxContinue)
-      async let recent = self.movieService.getRecentlyAddedMovies(maxCount: maxRecent)
-      async let featuredItems: [ClientMovieResponse] = { () async -> [ClientMovieResponse] in
-        if let slug = featuredSlug {
-          if let list = try? await self.movieService.getClientMovies(withTag: slug) {
-            // Deterministically randomize (daily) using the same seed
-            let ordered = list.movies.sorted { a, b in
-              let ha = djb2(seed + a.jellyfinId)
-              let hb = djb2(seed + b.jellyfinId)
-              if ha == hb { return a.jellyfinId < b.jellyfinId }
-              return ha < hb
-            }
-            return Array(ordered.prefix(maxFeatured))
-          }
-        }
-        return []
-      }()
-
-      let (contItems, recentItems, featItems) = try await (cont, recent, featuredItems)
-
-      struct FeaturedBlock: Codable {
-        let mood: String
-        let moodTitle: String
-        let items: [ClientMovieResponse]
-      }
-      struct TopshelfPayload: Codable {
-        let continueWatching: [ClientMovieResponse]?
-        let recentlyAdded: [ClientMovieResponse]?
-        let featuredMood: FeaturedBlock?
-      }
-
-      let payload = TopshelfPayload(
-        continueWatching: contItems.isEmpty ? nil : contItems,
-        recentlyAdded: recentItems.isEmpty ? nil : recentItems,
-        featuredMood: {
-          if let slug = featuredSlug, let title = featuredTitle, !featItems.isEmpty {
-            return FeaturedBlock(mood: slug, moodTitle: title, items: featItems)
-          } else {
-            return nil
-          }
-        }()
-      )
-      return try jsonResponse(payload)
-    }
-
-    // GET /api/v1/clients/movies/:id/similar - more like this (array)
-    movies.get(":id/similar") { request, context in
-      let id = try context.parameters.require("id")
-      let items = try await self.movieService.getSimilarClientMovies(id: String(id), maxCount: 12)
-      return try jsonResponse(items)
-    }
-
-    // GET /api/v1/clients/movies/:id/cast - cast & crew for client apps
-    movies.get(":id/cast") { request, context in
-      let id = try context.parameters.require("id")
-      let limit = request.uri.queryParameters["limit"].flatMap { Int(String($0)) }
-      let types = request.uri.queryParameters["types"].map {
-        String($0).split(separator: ",").map {
-          String($0).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-      }
+      let ids = try await self.movieService.getClientJellyfinIds(withTag: String(slug))
       return try jsonResponse(
-        try await self.movieService.getCastDetails(movieId: String(id), limit: limit, types: types))
+        ClientMoodMoviesResponse(slug: String(slug), jellyfinIds: ids))
     }
 
-    // GET /api/v1/clients/stream/:jellyfinId - Get streaming URLs on demand
-    clients.get("stream/:jellyfinId") { request, context in
+    clients.get("tags") { request, context in
+      let items = try await self.movieService.getClientTagMap()
+      return try jsonResponse(ClientTagsListResponse(items: items))
+    }
+
+    // POST /api/v1/clients/tags/batch — tags for a caller-supplied set of Jellyfin IDs.
+    // Preserves input order; drops unknown IDs. Capped at 500 per call.
+    struct BatchTagsRequest: Codable { let jellyfinIds: [String] }
+    clients.post("tags/batch") { request, context in
+      let payload = try await request.decode(as: BatchTagsRequest.self, context: context)
+      guard payload.jellyfinIds.count <= 500 else { throw HTTPError(.badRequest) }
+      let items = try await self.movieService.getClientTagsBatch(
+        jellyfinIds: payload.jellyfinIds)
+      return try jsonResponse(ClientTagsListResponse(items: items))
+    }
+
+    let clientMovies = clients.group("movies")
+    clientMovies.get(":jellyfinId/tags") { request, context in
       let jellyfinId = try context.parameters.require("jellyfinId")
-
-      // Parse optional stream indices from query parameters
-      let audioStreamIndex = request.uri.queryParameters["audioStreamIndex"].flatMap {
-        Int(String($0))
-      }
-      let subtitleStreamIndex = request.uri.queryParameters["subtitleStreamIndex"].flatMap {
-        Int(String($0))
-      }
-      let startPositionTicks = request.uri.queryParameters["startPositionTicks"].flatMap {
-        Int64(String($0))
-      }
-
-      // Generate session ID for this streaming session
-      let playSessionId = UUID().uuidString
-
-      // Direct stream URL with all parameters (no transcoding)
-      let streamUrl = self.movieService.jellyfinService.getStreamUrl(
-        itemId: String(jellyfinId),
-        playSessionId: playSessionId,
-        startPositionTicks: startPositionTicks,
-        audioStreamIndex: audioStreamIndex,
-        subtitleStreamIndex: subtitleStreamIndex
-      )
-
-      struct StreamResponse: Codable {
-        let streamUrl: String
-        let playSessionId: String
-      }
-
-      return try jsonResponse(StreamResponse(streamUrl: streamUrl, playSessionId: playSessionId))
+      return try jsonResponse(
+        try await self.movieService.getClientTags(jellyfinId: String(jellyfinId)))
     }
 
-    // Playback reporting proxies
-    struct StartPayload: Codable {
-      let jellyfinId: String
-      let playSessionId: String
-      let positionMs: Int?
-      let playMethod: String?
-      let audioStreamIndex: Int?
-      let subtitleStreamIndex: Int?
-    }
-    clients.post("playback/start") { request, context in
-      let payload = try await request.decode(as: StartPayload.self, context: context)
-      try await self.movieService.jellyfinService.reportPlaybackStart(
-        itemId: payload.jellyfinId,
-        playSessionId: payload.playSessionId,
-        positionMs: payload.positionMs,
-        playMethod: payload.playMethod,
-        audioStreamIndex: payload.audioStreamIndex,
-        subtitleStreamIndex: payload.subtitleStreamIndex
-      )
-      return try jsonResponse(SuccessResponse(success: true))
+    clients.get("home") { request, context in
+      let headerName = HTTPField.Name("X-Mood-Exclude")
+      let excludeHeader = request.headers.first { $0.name == headerName }?.value
+      let excludedMoods: [String] =
+        excludeHeader.map { value in
+          value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        } ?? []
+
+      async let randomTask = self.movieService.getRandomMoodSection(excluding: excludedMoods)
+      async let featuredTask = self.movieService.getFeaturedMoodSection(excluding: excludedMoods)
+      let (random, featured) = try await (randomTask, featuredTask)
+      return try jsonResponse(
+        ClientHomePayload(randomMood: random, featuredMood: featured))
     }
 
-    struct ProgressPayload: Codable {
-      let jellyfinId: String
-      let playSessionId: String
-      let positionMs: Int
-      let isPaused: Bool?
-    }
-    clients.post("playback/progress") { request, context in
-      let payload = try await request.decode(as: ProgressPayload.self, context: context)
-      try await self.movieService.jellyfinService.reportPlaybackProgress(
-        itemId: payload.jellyfinId,
-        playSessionId: payload.playSessionId,
-        positionMs: payload.positionMs,
-        isPaused: payload.isPaused
-      )
-      return try jsonResponse(SuccessResponse(success: true))
-    }
-
-    struct StopPayload: Codable {
-      let jellyfinId: String
-      let playSessionId: String
-      let positionMs: Int?
-    }
-    clients.post("playback/stop") { request, context in
-      let payload = try await request.decode(as: StopPayload.self, context: context)
-      try await self.movieService.jellyfinService.reportPlaybackStopped(
-        itemId: payload.jellyfinId,
-        playSessionId: payload.playSessionId,
-        positionMs: payload.positionMs
-      )
-      return try jsonResponse(SuccessResponse(success: true))
-    }
-
-    // Watched state
-    struct WatchedPayload: Codable {
-      let jellyfinId: String
-      let playSessionId: String?
-      let positionMs: Int?
-    }
-    clients.post("watched") { request, context in
-      let payload = try await request.decode(as: WatchedPayload.self, context: context)
-      // If position is provided (possibly in-progress), stop first to finalize session
-      if let pos = payload.positionMs, let sessionId = payload.playSessionId {
-        try await self.movieService.jellyfinService.reportPlaybackStopped(
-          itemId: payload.jellyfinId,
-          playSessionId: sessionId,
-          positionMs: pos
-        )
-      }
-      try await self.movieService.jellyfinService.markItemPlayed(itemId: payload.jellyfinId)
-      return try jsonResponse(SuccessResponse(success: true))
-    }
-    clients.post("unwatched") { request, context in
-      let payload = try await request.decode(as: WatchedPayload.self, context: context)
-      try await self.movieService.jellyfinService.markItemUnplayed(itemId: payload.jellyfinId)
-      return try jsonResponse(SuccessResponse(success: true))
-    }
-  }
-
-  // MARK: - OMDb Routes
-  private func addOmdbRoutes(to router: RouterGroup<BasicRequestContext>) {
-    let omdb = router.group("omdb")
-
+    // OMDb ratings proxy — keeps the key off clients and shares a 15-day cache
     struct OmdbRatingsResponse: Codable { let ratings: [OmdbRating] }
     struct RawOmdbResponse: Codable {
       let Ratings: [OmdbRating]?
       let Response: String?
     }
 
-    omdb.get("ratings") { request, context in
+    clients.get("omdb/ratings") { request, context in
       let imdbId =
         request.uri.queryParameters["imdbId"].map { String($0) }?.trimmingCharacters(
           in: .whitespacesAndNewlines) ?? ""
 
-      // Always return 200 with empty ratings if missing key/id
       guard !imdbId.isEmpty else { return try jsonResponse(OmdbRatingsResponse(ratings: [])) }
 
-      // Load key from DB/config
       let store = SettingsStore(db: self.movieService.fluent.db(), logger: self.logger)
       try await store.ensureTable()
       let savedKey = try await store.get("omdb_api_key") ?? (self.config.omdbApiKey ?? "")
       guard !savedKey.isEmpty else { return try jsonResponse(OmdbRatingsResponse(ratings: [])) }
 
-      // Check cache (15 days)
       let cache = OmdbCacheStore(db: self.movieService.fluent.db(), logger: self.logger)
       try await cache.ensureTable()
       if let cached = try await cache.get(imdbId: imdbId) {
@@ -630,7 +234,6 @@ final class APIRoutes: @unchecked Sendable {
         }
       }
 
-      // Fetch from OMDb
       do {
         let url = "http://www.omdbapi.com/?apikey=\(savedKey)&i=\(imdbId)"
         let response = try await self.httpClient.get(url: url).get()
@@ -641,7 +244,6 @@ final class APIRoutes: @unchecked Sendable {
         let raw = try JSONDecoder().decode(RawOmdbResponse.self, from: data)
         let ok = (raw.Response?.lowercased() == "true")
         let ratings = ok ? (raw.Ratings ?? []) : []
-        // Update cache on success
         if ok {
           try await cache.set(imdbId: imdbId, ratings: ratings)
         }
@@ -652,6 +254,147 @@ final class APIRoutes: @unchecked Sendable {
       }
     }
   }
+
+  // MARK: - Admin Routes (suggestion queue + movies proxy)
+  private func addAdminRoutes(to router: RouterGroup<BasicRequestContext>) {
+    let admin = router.group("admin")
+
+    // GET /admin/suggestions?status=pending
+    admin.get("suggestions") { request, context in
+      let statusParam = request.uri.queryParameters["status"].map { String($0) } ?? "pending"
+      let rows: [TagSuggestion]
+      if statusParam == "pending" {
+        rows = try await self.suggestionService.listPending()
+      } else {
+        rows = try await TagSuggestion.query(on: self.movieService.fluent.db())
+          .filter(\.$status == statusParam)
+          .sort(\.$createdAt, DatabaseQuery.Sort.Direction.descending)
+          .all()
+      }
+      return try jsonResponse(
+        SuggestionListResponse(items: rows.map(TagSuggestionResponse.init)))
+    }
+
+    // POST /admin/suggestions/:id/approve
+    // Optional body: { "tags": ["slug1", "slug2"] } — when present, overrides the suggested
+    // tags with the reviewer's edited set before approving.
+    struct ApproveBody: Codable { let tags: [String]? }
+    admin.post("suggestions/:id/approve") { request, context in
+      let idStr = try context.parameters.require("id")
+      guard let uuid = UUID(uuidString: String(idStr)) else {
+        throw HTTPError(.badRequest)
+      }
+      let overrideTags = try? await request.decode(as: ApproveBody.self, context: context).tags
+      let sugg = try await self.suggestionService.approve(uuid, overrideTags: overrideTags)
+      return try jsonResponse(TagSuggestionResponse(sugg))
+    }
+
+    // POST /admin/suggestions/:id/reject
+    admin.post("suggestions/:id/reject") { request, context in
+      let idStr = try context.parameters.require("id")
+      guard let uuid = UUID(uuidString: String(idStr)) else {
+        throw HTTPError(.badRequest)
+      }
+      let sugg = try await self.suggestionService.reject(uuid)
+      return try jsonResponse(TagSuggestionResponse(sugg))
+    }
+
+    // POST /admin/suggestions/regenerate/:jellyfinId
+    admin.post("suggestions/regenerate/:jellyfinId") { request, context in
+      let jid = try context.parameters.require("jellyfinId")
+      let sugg = try await self.suggestionService.regenerate(jellyfinId: String(jid))
+      return try jsonResponse(TagSuggestionResponse(sugg))
+    }
+
+    // POST /admin/auto-tag/backfill — kick off a background worker that auto-tags every movie
+    // with no tags and no pending suggestion. Idempotent.
+    admin.post("auto-tag/backfill") { request, context in
+      let status = try await self.suggestionService.startBackfill()
+      return try jsonResponse(status)
+    }
+
+    // GET /admin/auto-tag/backfill/status — current progress snapshot.
+    admin.get("auto-tag/backfill/status") { request, context in
+      let status = await self.suggestionService.getBackfillStatus()
+      return try jsonResponse(status)
+    }
+
+    // POST /admin/auto-tag/reprocess-all — clear every movie's tags, supersede pending
+    // suggestions, then re-run the auto-tagger against the whole library. Destructive.
+    admin.post("auto-tag/reprocess-all") { request, context in
+      let status = try await self.suggestionService.startReprocessAll()
+      return try jsonResponse(status)
+    }
+
+    // POST /admin/auto-tag/cancel — request cancellation of the in-flight worker. The worker
+    // checks this flag before each enqueue and bails cleanly. Returns the current status so
+    // the frontend can immediately reflect the cancelled state.
+    admin.post("auto-tag/cancel") { request, context in
+      await self.suggestionService.cancelBackfill()
+      let status = await self.suggestionService.getBackfillStatus()
+      return try jsonResponse(status)
+    }
+
+    // GET /admin/movies?q&limit&offset — live Jellyfin fetch + local tag join + needs-review flag
+    struct AdminMovie: Codable {
+      let jellyfinId: String
+      let title: String
+      let year: Int?
+      let posterUrl: String?
+      let tags: [String]
+      let needsReview: Bool
+    }
+    struct AdminMoviesResponse: Codable {
+      let items: [AdminMovie]
+      let totalCount: Int
+      let offset: Int
+      let limit: Int
+    }
+    admin.get("movies") { request, context in
+      let q = request.uri.queryParameters["q"].map { String($0).lowercased() } ?? ""
+      let limit = request.uri.queryParameters["limit"].flatMap { Int(String($0)) } ?? 100
+      let offset = request.uri.queryParameters["offset"].flatMap { Int(String($0)) } ?? 0
+
+      let live = try await self.movieService.jellyfinService.fetchAllMovies()
+
+      // Local tag map
+      let localMovies = try await Movie.query(on: self.movieService.fluent.db())
+        .with(\.$tags)
+        .all()
+      var tagsByJellyfinId: [String: [String]] = [:]
+      for m in localMovies {
+        tagsByJellyfinId[m.jellyfinId] = m.tags.map { $0.slug }
+      }
+      let pending = try await self.suggestionService.pendingJellyfinIds()
+
+      let filtered = live.filter { item in
+        guard q.isEmpty else {
+          let haystack = (item.name ?? "").lowercased() + " "
+            + (item.originalTitle ?? "").lowercased()
+          return haystack.contains(q)
+        }
+        return true
+      }
+      let totalCount = filtered.count
+      let paged = Array(filtered.dropFirst(offset).prefix(limit))
+
+      let items: [AdminMovie] = paged.map { item in
+        let jid = item.id ?? ""
+        return AdminMovie(
+          jellyfinId: jid,
+          title: item.name ?? "",
+          year: item.productionYear,
+          posterUrl: self.movieService.jellyfinService.getImageUrl(for: item, imageType: .primary),
+          tags: tagsByJellyfinId[jid] ?? [],
+          needsReview: pending.contains(jid)
+        )
+      }
+
+      return try jsonResponse(
+        AdminMoviesResponse(items: items, totalCount: totalCount, offset: offset, limit: limit))
+    }
+  }
+
   // MARK: - Settings Routes (BYOK)
   private func addSettingsRoutes(to router: RouterGroup<BasicRequestContext>) {
     let settings = router.group("settings")
@@ -659,27 +402,29 @@ final class APIRoutes: @unchecked Sendable {
     struct KeysPayload: Codable {
       let anthropic_api_key: String?
       let omdb_api_key: String?
+      let enable_auto_tagging: Bool?
     }
 
     settings.post("keys") { request, context in
       let payload = try await request.decode(as: KeysPayload.self, context: context)
       if let v = payload.anthropic_api_key { self.config.anthropicApiKey = v }
       if let v = payload.omdb_api_key { self.config.omdbApiKey = v }
-      // Persist to DB (settings table)
+      if let v = payload.enable_auto_tagging { self.config.enableAutoTagging = v }
       let store = SettingsStore(db: self.movieService.fluent.db(), logger: self.logger)
       try await store.ensureTable()
       try await store.set("anthropic_api_key", self.config.anthropicApiKey ?? "")
       try await store.set("omdb_api_key", self.config.omdbApiKey ?? "")
+      try await store.set("enable_auto_tagging", self.config.enableAutoTagging ? "true" : "false")
       return try jsonResponse(["success": true])
     }
 
-    // Maintenance: clear all movies
     settings.post("clear-movies") { request, context in
       try await self.movieService.clearAllMovies()
       return try jsonResponse(["success": true])
     }
 
-    // Jellyfin config save
+    // Single jellyfin-config endpoint — accepts either creds (url+username+password, server logs
+    // in) or a pre-existing token (url+apiKey+userId). Persists, re-keys the runtime client.
     struct JellyfinPayload: Codable {
       let jellyfin_url: String?
       let jellyfin_api_key: String?
@@ -688,28 +433,73 @@ final class APIRoutes: @unchecked Sendable {
       let jellyfin_password: String?
     }
 
+    struct JellyfinSaveResponse: Codable {
+      let success: Bool
+      let error: String?
+      let userId: String?
+      let serverName: String?
+      let version: String?
+      let localAddress: String?
+    }
+
     settings.post("jellyfin") { request, context in
       let payload = try await request.decode(as: JellyfinPayload.self, context: context)
+      let store = SettingsStore(db: self.movieService.fluent.db(), logger: self.logger)
+      try await store.ensureTable()
+
+      if let url = payload.jellyfin_url,
+        let username = payload.jellyfin_username,
+        let password = payload.jellyfin_password
+      {
+        // Creds path — log in to Jellyfin to obtain a token, persist encrypted password for auto-renew.
+        do {
+          let auth = try await JellyfinService.login(
+            baseURL: url, username: username, password: password, httpClient: self.httpClient)
+          let tmpSvc = JellyfinService(
+            baseURL: url, apiKey: auth.token, userId: auth.userId, httpClient: self.httpClient)
+          let info = try? await tmpSvc.getServerInfo()
+
+          self.config.jellyfinUrl = url
+          self.config.jellyfinApiKey = auth.token
+          self.config.jellyfinUserId = auth.userId
+
+          try await store.set("jellyfin_url", url)
+          try await store.set("jellyfin_api_key", auth.token)
+          try await store.set("jellyfin_user_id", auth.userId)
+          try await store.set("jellyfin_username", username)
+          let key = try SecretsManager.loadOrCreateKey(logger: self.logger)
+          let enc = try SecretsManager.encryptString(password, key: key)
+          try await store.set("jellyfin_password_enc", enc)
+
+          self.movieService.reconfigureJellyfin(
+            baseURL: url, apiKey: auth.token, userId: auth.userId)
+
+          return try jsonResponse(
+            JellyfinSaveResponse(
+              success: true, error: nil, userId: auth.userId, serverName: info?.serverName,
+              version: info?.version, localAddress: info?.localAddress))
+        } catch {
+          return try jsonResponse(
+            JellyfinSaveResponse(
+              success: false, error: error.localizedDescription, userId: nil, serverName: nil,
+              version: nil, localAddress: nil))
+        }
+      }
+
+      // Manual-token path — trust what the caller gave us.
       if let v = payload.jellyfin_url { self.config.jellyfinUrl = v }
       if let v = payload.jellyfin_api_key { self.config.jellyfinApiKey = v }
       if let v = payload.jellyfin_user_id { self.config.jellyfinUserId = v }
-      // Save to DB (also optional creds for auto-renew)
-      let store = SettingsStore(db: self.movieService.fluent.db(), logger: self.logger)
-      try await store.ensureTable()
       try await store.set("jellyfin_url", self.config.jellyfinUrl)
       try await store.set("jellyfin_api_key", self.config.jellyfinApiKey)
       try await store.set("jellyfin_user_id", self.config.jellyfinUserId)
-      if let u = payload.jellyfin_username { try await store.set("jellyfin_username", u) }
-      if let p = payload.jellyfin_password {
-        let key = try SecretsManager.loadOrCreateKey(logger: self.logger)
-        let enc = try SecretsManager.encryptString(p, key: key)
-        try await store.set("jellyfin_password_enc", enc)
-      }
-      // Reconfigure runtime client so next sync uses fresh token
       self.movieService.reconfigureJellyfin(
         baseURL: self.config.jellyfinUrl, apiKey: self.config.jellyfinApiKey,
         userId: self.config.jellyfinUserId)
-      return try jsonResponse(["success": true])
+      return try jsonResponse(
+        JellyfinSaveResponse(
+          success: true, error: nil, userId: self.config.jellyfinUserId, serverName: nil,
+          version: nil, localAddress: nil))
     }
 
     struct SettingsInfo: Codable {
@@ -718,6 +508,7 @@ final class APIRoutes: @unchecked Sendable {
       let jellyfin_user_id: String
       let anthropic_key_set: Bool
       let omdb_key_set: Bool
+      let enable_auto_tagging: Bool
     }
     settings.get("info") { request, context in
       let store = SettingsStore(db: self.movieService.fluent.db(), logger: self.logger)
@@ -732,93 +523,16 @@ final class APIRoutes: @unchecked Sendable {
         jellyfin_api_key_set: !api.isEmpty,
         jellyfin_user_id: uid,
         anthropic_key_set: !anth.isEmpty,
-        omdb_key_set: !omdb.isEmpty
+        omdb_key_set: !omdb.isEmpty,
+        enable_auto_tagging: self.config.enableAutoTagging
       )
       return try jsonResponse(info)
     }
 
-    // Login with username/password; optional save flag to persist to DB
-    struct LoginPayload: Codable {
-      let jellyfin_url: String
-      let username: String
-      let password: String
-    }
-    struct LoginResponse: Codable {
-      let success: Bool
-      let error: String?
-      let userId: String?
-      let serverName: String?
-      let version: String?
-      let localAddress: String?
-    }
-    settings.post("login") { request, context in
-      let payload = try await request.decode(as: LoginPayload.self, context: context)
-      let saveFlag =
-        request.uri.queryParameters["save"].map { String($0).lowercased() == "true" } ?? false
-      do {
-        let auth = try await JellyfinService.login(
-          baseURL: payload.jellyfin_url, username: payload.username, password: payload.password,
-          httpClient: self.httpClient)
-        // Get server info
-        let tmpSvc = JellyfinService(
-          baseURL: payload.jellyfin_url, apiKey: auth.token, userId: auth.userId,
-          httpClient: self.httpClient)
-        let info = try? await tmpSvc.getServerInfo()
-        if saveFlag {
-          self.config.jellyfinUrl = payload.jellyfin_url
-          self.config.jellyfinApiKey = auth.token
-          self.config.jellyfinUserId = auth.userId
-          let store = SettingsStore(db: self.movieService.fluent.db(), logger: self.logger)
-          try await store.ensureTable()
-          try await store.set("jellyfin_url", self.config.jellyfinUrl)
-          try await store.set("jellyfin_api_key", self.config.jellyfinApiKey)
-          try await store.set("jellyfin_user_id", self.config.jellyfinUserId)
-          try await store.set("jellyfin_username", payload.username)
-          let key = try SecretsManager.loadOrCreateKey(logger: self.logger)
-          let enc = try SecretsManager.encryptString(payload.password, key: key)
-          try await store.set("jellyfin_password_enc", enc)
-          // Reconfigure runtime client
-          self.movieService.reconfigureJellyfin(
-            baseURL: self.config.jellyfinUrl, apiKey: self.config.jellyfinApiKey,
-            userId: self.config.jellyfinUserId)
-        }
-        return try jsonResponse(
-          LoginResponse(
-            success: true, error: nil, userId: auth.userId, serverName: info?.serverName,
-            version: info?.version, localAddress: info?.localAddress))
-      } catch {
-        return try jsonResponse(
-          LoginResponse(
-            success: false, error: error.localizedDescription, userId: nil, serverName: nil,
-            version: nil, localAddress: nil))
-      }
-    }
   }
 }
 
 // MARK: - Response Types
-
-struct MoviesListResponse: Codable, Sendable {
-  let movies: [MovieResponse]
-  let totalCount: Int
-  let offset: Int
-  let limit: Int
-}
-
-struct TagsListResponse: Codable, Sendable {
-  let tags: [TagResponse]
-  let totalCount: Int
-}
-
-struct SubtitleTrack: Codable, Sendable {
-  let index: Int
-  let title: String?
-  let language: String?
-  let codec: String
-  let isForced: Bool
-  let isDefault: Bool
-  let url: String?
-}
 
 struct SyncStatusResponse: Codable, Sendable {
   let isRunning: Bool
@@ -836,7 +550,6 @@ struct ConnectionTestResponse: Codable, Sendable {
   let error: String?
 }
 
-// Response types used above
 struct ErrorResponse: Codable, Sendable {
   let error: String
   let message: String

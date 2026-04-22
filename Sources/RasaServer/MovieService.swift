@@ -11,15 +11,14 @@ final class MovieService {
   let llmService: LLMService
   private let logger = Logger(label: "MovieService")
 
+  /// Wired post-construction by RasaServerApp to break the cycle with SuggestionService.
+  weak var suggestionService: SuggestionService?
+
   // Sync status tracking
   private var isSyncing = false
   private var lastSyncAt: Date?
   private var lastSyncDuration: TimeInterval?
   private var lastSyncStats = SyncStats()
-  
-  // Banner movies tracking to reduce repetition
-  private var recentBannerMovies: [String] = []
-  private let maxRecentBannerCount = 20
 
   init(
     config: RasaConfiguration,
@@ -33,6 +32,22 @@ final class MovieService {
     self.llmService = llmService
   }
 
+  /// Insert or touch a Movie row for the given Jellyfin ID; bumps last_seen_at.
+  @discardableResult
+  func upsertJellyfinId(_ jellyfinId: String) async throws -> Movie {
+    if let existing = try await Movie.query(on: fluent.db())
+      .filter(\.$jellyfinId == jellyfinId)
+      .first()
+    {
+      existing.lastSeenAt = Date()
+      try await existing.save(on: fluent.db())
+      return existing
+    }
+    let movie = Movie(jellyfinId: jellyfinId, lastSeenAt: Date())
+    try await movie.save(on: fluent.db())
+    return movie
+  }
+
   /// Delete a movie (and its tag relations) by Jellyfin item id. Returns true if deleted.
   func deleteMovieByJellyfinId(_ jellyfinId: String) async throws -> Bool {
     if let movie = try await Movie.query(on: fluent.db())
@@ -41,13 +56,10 @@ final class MovieService {
       .first()
     {
       let tagSlugs = movie.tags.map { $0.slug }
-      // Remove pivot rows
       try await MovieTag.query(on: fluent.db())
         .filter(\.$movie.$id == movie.requireID())
         .delete()
-      // Delete the movie
       try await movie.delete(on: fluent.db())
-      // Recompute usage counts for affected tags
       try await updateTagUsageCounts(for: tagSlugs)
       logger.info("Deleted movie with Jellyfin id \(jellyfinId)")
       return true
@@ -55,46 +67,15 @@ final class MovieService {
     return false
   }
 
-  // MARK: - Movie Management
-
-  func getMovies(limit: Int = 50, offset: Int = 0, includeTags: Bool = false) async throws
-    -> MoviesListResponse
-  {
-    let query = Movie.query(on: fluent.db())
-      .sort(\.$title)
-      .range(offset..<(offset + limit))
-
-    if includeTags {
-      query.with(\.$tags)
-    }
-
-    let movies = try await query.all()
-    let totalCount = try await Movie.query(on: fluent.db()).count()
-
-    let movieResponses = movies.map { movie in
-      MovieResponse(movie: movie, tags: includeTags ? movie.tags : [])
-    }
-
-    return MoviesListResponse(
-      movies: movieResponses,
-      totalCount: totalCount,
-      offset: offset,
-      limit: limit
-    )
-  }
-
   // MARK: - Reconfigure Jellyfin at runtime
   func reconfigureJellyfin(baseURL: String, apiKey: String, userId: String) {
-    // Reuse the shared HTTP client from existing service to avoid leaks
     let httpClient = self.jellyfinService.httpClient
     self.jellyfinService = JellyfinService(
       baseURL: baseURL, apiKey: apiKey, userId: userId, httpClient: httpClient)
     logger.info("Jellyfin service reconfigured at runtime")
   }
 
-  // Try to re-login using stored username/password (if provided via settings/login previously)
   private func attemptAutoLoginAndUpdate() async throws -> Bool {
-    // Load creds from DB settings (if present)
     let store = SettingsStore(db: fluent.db(), logger: logger)
     try await store.ensureTable()
     guard let url = try await store.get("jellyfin_url"),
@@ -103,18 +84,14 @@ final class MovieService {
     else {
       return false
     }
-    // Decrypt password
     let key = try SecretsManager.loadOrCreateKey(logger: logger)
     let password = try SecretsManager.decryptString(encPwd, key: key)
-    // Login using shared client
     let httpClient = self.jellyfinService.httpClient
     do {
       let auth = try await JellyfinService.login(
         baseURL: url, username: username, password: password, httpClient: httpClient)
-      // Save new token
       try await store.set("jellyfin_api_key", auth.token)
       try await store.set("jellyfin_user_id", auth.userId)
-      // Update in-memory
       reconfigureJellyfin(baseURL: url, apiKey: auth.token, userId: auth.userId)
       return true
     } catch {
@@ -123,80 +100,23 @@ final class MovieService {
     }
   }
 
-  func getMovie(id: String, includeTags: Bool = false) async throws -> MovieResponse {
-    // Try UUID first, then Jellyfin ID
-    let movie: Movie
-    if let uuid = UUID(uuidString: id) {
-      movie = try await Movie.query(on: fluent.db())
-        .filter(\.$id == uuid)
-        .with(\.$tags)
-        .first()
-        .unwrap(orError: MovieServiceError.movieNotFound(id))
-    } else {
-      movie = try await Movie.query(on: fluent.db())
-        .filter(\.$jellyfinId == id)
-        .with(\.$tags)
-        .first()
-        .unwrap(orError: MovieServiceError.movieNotFound(id))
-    }
-
-    return MovieResponse(movie: movie, tags: includeTags ? movie.tags : [])
-  }
-
-  func getMovies(withTag tagSlug: String, limit: Int = 50, offset: Int = 0) async throws
-    -> MoviesListResponse
-  {
-    // Check if tag exists (aliases removed)
-    guard config.moodBuckets[tagSlug] != nil else {
-      throw MovieServiceError.tagNotFound(tagSlug)
-    }
-
-    let tag = try await Tag.query(on: fluent.db())
-      .filter(\.$slug == tagSlug)
-      .first()
-      .unwrap(orError: MovieServiceError.tagNotFound(tagSlug))
-
-    let movies = try await Movie.query(on: fluent.db())
-      .join(MovieTag.self, on: \Movie.$id == \MovieTag.$movie.$id)
-      .filter(MovieTag.self, \.$tag.$id == tag.requireID())
-      .with(\.$tags)
-      .sort(\.$title)
-      .range(offset..<(offset + limit))
-      .all()
-
-    let totalCount = try await Movie.query(on: fluent.db())
-      .join(MovieTag.self, on: \Movie.$id == \MovieTag.$movie.$id)
-      .filter(MovieTag.self, \.$tag.$id == tag.requireID())
-      .count()
-
-    let movieResponses = movies.map { MovieResponse(movie: $0, tags: $0.tags) }
-
-    return MoviesListResponse(
-      movies: movieResponses,
-      totalCount: totalCount,
-      offset: offset,
-      limit: limit
-    )
-  }
-
   // MARK: - Tag Management
 
-  func updateMovieTags(movieId: String, tagSlugs: [String], replaceAll: Bool) async throws
-    -> MovieResponse
-  {
-    let movie = try await getMovieEntity(id: movieId)
-
-    // Validate tag slugs
+  func updateMovieTags(
+    jellyfinId: String,
+    tagSlugs: [String],
+    replaceAll: Bool,
+    addedByAutoTag: Bool = false
+  ) async throws -> ClientTagEntry {
+    let movie = try await getMovieEntity(jellyfinId: jellyfinId)
     let validSlugs = try validateTagSlugs(tagSlugs)
 
     if replaceAll {
-      // Remove all existing tags
       try await MovieTag.query(on: fluent.db())
         .filter(\.$movie.$id == movie.requireID())
         .delete()
     }
 
-    // Get or create tags
     var tags: [Tag] = []
     for slug in validSlugs {
       let tag = try await getOrCreateTag(slug: slug)
@@ -204,17 +124,15 @@ final class MovieService {
     }
 
     if replaceAll {
-      // Add new tags
       for tag in tags {
         let movieTag = MovieTag(
           movieId: try movie.requireID(),
           tagId: try tag.requireID(),
-          addedByAutoTag: false
+          addedByAutoTag: addedByAutoTag
         )
         try await movieTag.save(on: fluent.db())
       }
     } else {
-      // Add only new tags (check for duplicates)
       let existingTagIds = try await MovieTag.query(on: fluent.db())
         .filter(\.$movie.$id == movie.requireID())
         .with(\.$tag)
@@ -227,685 +145,68 @@ final class MovieService {
           let movieTag = MovieTag(
             movieId: try movie.requireID(),
             tagId: tagId,
-            addedByAutoTag: false
+            addedByAutoTag: addedByAutoTag
           )
           try await movieTag.save(on: fluent.db())
         }
       }
     }
 
-    // Update usage counts
     try await updateTagUsageCounts(for: validSlugs)
 
-    // Return updated movie
     let updatedMovie = try await Movie.query(on: fluent.db())
       .filter(\.$id == movie.requireID())
       .with(\.$tags)
       .first()!
 
-    return MovieResponse(movie: updatedMovie, tags: updatedMovie.tags)
-  }
-
-  func getAllTags(sortBy: String = "usage", order: String = "desc") async throws -> TagsListResponse
-  {
-    let query = Tag.query(on: fluent.db())
-
-    switch sortBy {
-    case "usage":
-      if order == "desc" {
-        query.sort(\.$usageCount, DatabaseQuery.Sort.Direction.descending)
-      } else {
-        query.sort(\.$usageCount, DatabaseQuery.Sort.Direction.ascending)
+    // A human just touched the tag set — any outstanding weak-review row is stale.
+    if !addedByAutoTag {
+      let pendingRows = try await TagSuggestion.query(on: fluent.db())
+        .filter(\.$jellyfinId == updatedMovie.jellyfinId)
+        .filter(\.$status == "pending")
+        .all()
+      for row in pendingRows {
+        row.status = "approved"
+        row.resolvedAt = Date()
+        try await row.save(on: fluent.db())
       }
-    case "name", "title":
-      if order == "desc" {
-        query.sort(\.$title, DatabaseQuery.Sort.Direction.descending)
-      } else {
-        query.sort(\.$title, DatabaseQuery.Sort.Direction.ascending)
-      }
-    case "created":
-      if order == "desc" {
-        query.sort(\.$createdAt, DatabaseQuery.Sort.Direction.descending)
-      } else {
-        query.sort(\.$createdAt, DatabaseQuery.Sort.Direction.ascending)
-      }
-    default:
-      query.sort(\.$usageCount, DatabaseQuery.Sort.Direction.descending)
     }
 
-    let tags = try await query.all()
-    let responses = tags.map(TagResponse.init)
-
-    return TagsListResponse(tags: responses, totalCount: tags.count)
+    return ClientTagEntry(
+      jellyfinId: updatedMovie.jellyfinId,
+      tags: updatedMovie.tags.map { $0.slug },
+      needsReview: false
+    )
   }
 
-  func getTag(slug: String) async throws -> TagResponse {
-    let tag = try await Tag.query(on: fluent.db())
-      .filter(\.$slug == slug)
+  /// Remove the specific tags that an auto-tag run added to a movie. Admin-added rows
+  /// (addedByAutoTag=false) are left untouched by the filter.
+  func removeAutoTags(jellyfinId: String, tagSlugs: [String]) async throws {
+    guard !tagSlugs.isEmpty else { return }
+    let movie = try await Movie.query(on: fluent.db())
+      .filter(\.$jellyfinId == jellyfinId)
       .first()
-      .unwrap(orError: MovieServiceError.tagNotFound(slug))
+      .unwrap(orError: MovieServiceError.movieNotFound(jellyfinId))
+    let movieId = try movie.requireID()
 
-    return TagResponse(tag: tag)
-  }
-
-  // MARK: - Auto-Tagging
-
-  func generateAutoTags(
-    movieId: String,
-    provider: String?,
-    suggestionsOnly: Bool,
-    customPrompt: String?
-  ) async throws -> AutoTagResponse {
-    let movie = try await getMovieEntity(id: movieId)
-
-    // Anthropic-only selection
-    let chosen = provider?.lowercased()
-    let llmProvider: LLMProvider
-    if chosen == nil || chosen == "auto" {
-      guard let key = config.anthropicApiKey, !key.isEmpty else {
-        throw MovieServiceError.missingApiKey("Anthropic")
-      }
-      llmProvider = .anthropic(apiKey: key)
-    } else {
-      switch chosen! {
-      case "anthropic":
-        guard let apiKey = config.anthropicApiKey, !apiKey.isEmpty else {
-          throw MovieServiceError.missingApiKey("Anthropic")
-        }
-        llmProvider = .anthropic(apiKey: apiKey)
-      default:
-        throw MovieServiceError.unsupportedProvider(chosen!)
-      }
+    for slug in tagSlugs {
+      guard
+        let tag = try await Tag.query(on: fluent.db()).filter(\.$slug == slug).first()
+      else { continue }
+      try await MovieTag.query(on: fluent.db())
+        .filter(\.$movie.$id == movieId)
+        .filter(\.$tag.$id == tag.requireID())
+        .filter(\.$addedByAutoTag == true)
+        .delete()
     }
 
-    // Generate suggestions
-    let external = await llmService.fetchExternalSummary(for: movie)
-    var response = try await llmService.generateTags(
-      for: movie,
-      using: llmProvider,
-      availableTags: config.moodBuckets,
-      customPrompt: customPrompt ?? config.autoTaggingPrompt,
-      maxTags: config.maxAutoTags,
-      externalInfo: external
-    )
-
-    // If confidence is low or suggestions look generic, ask the model to refine once
-    let looksGeneric =
-      Set(response.suggestions).contains("dialogue-driven")
-      || Set(response.suggestions).contains("modern-masterpieces")
-    if response.confidence < 0.72 || looksGeneric {
-      do {
-        response = try await llmService.refineTags(
-          for: movie,
-          using: llmProvider,
-          availableTags: config.moodBuckets,
-          initial: response,
-          externalInfo: external,
-          maxTags: config.maxAutoTags
-        )
-      } catch {
-        // Fall back silently if refinement fails
-      }
-    }
-
-    // Validate suggested tags
-    var validSuggestions = response.suggestions.filter { config.moodBuckets[$0] != nil }
-
-    // Heuristic post-filtering using external summary and metadata
-    validSuggestions = postFilterSuggestions(validSuggestions, summary: external, movie: movie)
-    let finalResponse = AutoTagResponse(
-      suggestions: validSuggestions,
-      confidence: response.confidence,
-      reasoning: response.reasoning
-    )
-
-    // Apply tags if not suggestions-only
-    if !suggestionsOnly && !validSuggestions.isEmpty {
-      _ = try await updateMovieTags(
-        movieId: movieId,
-        tagSlugs: validSuggestions,
-        replaceAll: false
-      )
-    }
-
-    return finalResponse
-  }
-
-  // MARK: - Post-filtering heuristics
-  private func postFilterSuggestions(_ suggestions: [String], summary: String?, movie: Movie)
-    -> [String]
-  {
-    guard let text = summary?.lowercased() ?? movie.overview?.lowercased() else {
-      return suggestions
-    }
-    var result: [String] = []
-    let words =
-      text
-      .replacingOccurrences(of: "\n", with: " ")
-      .replacingOccurrences(of: "\t", with: " ")
-
-    for tag in suggestions {
-      switch tag {
-      case "time-twists":
-        // Require explicit temporal mechanics
-        let ok = [
-          "time travel", "time-travel", "time loop", "timeloop", "looping time", "resetting day",
-          "timeline",
-          "timelines", "temporal", "time machine", "alternate timeline", "paradox",
-        ].contains(where: { words.contains($0) })
-        if ok { result.append(tag) }
-      case "modern-masterpieces":
-        // Only when there is explicit critical consensus language
-        let ok = [
-          "masterpiece", "critically acclaimed", "universal acclaim", "academy award", "oscar",
-          "palme d'or", "landmark film", "canon", "best of all time",
-        ].contains(where: { words.contains($0) })
-        if ok { result.append(tag) }
-      case "psychological-pressure-cooker":
-        // Prefer one-room-pressure-cooker when confined setting dominates
-        let hasOneRoom = [
-          "single room", "one room", "jury room", "confined space", "bottle episode", "bottle film",
-        ].contains(where: { words.contains($0) })
-        let hasPsych = [
-          "paranoia", "psychological", "mental breakdown", "gaslight", "psychosis",
-          "claustrophobic",
-        ].contains(where: { words.contains($0) })
-        if hasPsych || !hasOneRoom { result.append(tag) }
-      default:
-        result.append(tag)
-      }
-    }
-    // Deduplicate and cap at 4 (server config enforces elsewhere, but keep tidy)
-    let unique = Array(NSOrderedSet(array: result)) as? [String] ?? result
-    return Array(unique.prefix(4))
-  }
-
-  // MARK: - Search
-
-  func searchMovies(query: String, limit: Int = 20, includeTags: Bool = false) async throws
-    -> MoviesListResponse
-  {
-    let searchQuery = Movie.query(on: fluent.db())
-    // Search only in title
-    searchQuery.group(.or) { group in
-      group.filter(\.$title ~~ query)
-    }
-
-    if includeTags {
-      searchQuery.with(\.$tags)
-    }
-
-    let movies =
-      try await searchQuery
-      .sort(\.$title)
-      .limit(limit)
-      .all()
-
-    let responses = movies.map { movie in
-      MovieResponse(movie: movie, tags: includeTags ? movie.tags : [])
-    }
-
-    return MoviesListResponse(
-      movies: responses,
-      totalCount: movies.count,
-      offset: 0,
-      limit: limit
-    )
-  }
-
-  func searchTags(query: String) async throws -> TagsListResponse {
-    // Search in mood buckets
-    let matchingBuckets = config.moodBuckets.filter { slug, bucket in
-      slug.contains(query.lowercased()) || bucket.title.lowercased().contains(query.lowercased())
-        || bucket.description.lowercased().contains(query.lowercased())
-    }
-
-    // Convert to tag responses
-    let responses = matchingBuckets.map { slug, bucket in
-      TagResponse(tag: Tag(slug: slug, title: bucket.title, description: bucket.description))
-    }
-
-    return TagsListResponse(tags: responses, totalCount: responses.count)
-  }
-
-  // MARK: - Playback
-
-  
-  func getAvailableSubtitles(movieId: String) async throws -> [SubtitleTrack] {
-    let movie = try await getMovieEntity(id: movieId)
-
-    // Return embedded subtitles from Jellyfin
-    return movie.jellyfinMetadata?.mediaStreams
-      .filter { $0.type.lowercased() == "subtitle" }
-      .map { stream in
-        SubtitleTrack(
-          index: stream.index,
-          title: stream.title,
-          language: stream.language,
-          codec: stream.codec ?? "unknown",
-          isForced: stream.isForced ?? false,
-          isDefault: stream.isDefault ?? false,
-          url: nil
-        )
-      } ?? []
-  }
-
-  // MARK: - People / Cast
-  /// Return cast and crew details for a movie (resolved by UUID or Jellyfin id).
-  /// Optionally filter by types (e.g., ["Actor","Director"]) and/or limit count.
-  func getCastDetails(movieId: String, limit: Int? = nil, types: [String]? = nil) async throws -> CastResponse {
-    let movie = try await getMovieEntity(id: movieId)
-
-    // 1) Prefer cached people from DB metadata
-    if let cached = movie.jellyfinMetadata?.people, !cached.isEmpty {
-      let filtered: [JellyfinPerson] = cached.filter { p in
-        if let types = types, !types.isEmpty { return types.contains(p.type) }
-        return true
-      }
-      var people: [PersonResponse] = filtered.map { p in
-        PersonResponse(
-          id: p.id,
-          name: p.name,
-          role: p.role,
-          type: p.type,
-          imageUrl: jellyfinService.getPersonImageUrl(personId: p.id, primaryImageTag: p.primaryImageTag)
-        )
-      }
-      if let n = limit, n >= 0 { people = Array(people.prefix(n)) }
-      return CastResponse(people: people)
-    }
-
-    // 2) Fallback to Jellyfin if cache is empty
-    let live = try await jellyfinService.fetchMovie(id: movie.jellyfinId)
-    let all = (live.people ?? []).filter { $0.name?.isEmpty == false }
-    let filtered = all.filter { p in
-      if let types = types, !types.isEmpty { return types.contains(p.type ?? "") }
-      return true
-    }
-    var people: [PersonResponse] = filtered.map { p in
-      PersonResponse(
-        id: p.id ?? (p.name ?? ""),
-        name: p.name ?? "",
-        role: p.role,
-        type: p.type ?? "",
-        imageUrl: jellyfinService.getPersonImageUrl(personId: p.id, primaryImageTag: p.primaryImageTag)
-      )
-    }
-
-    // Warm DB cache with full metadata (including People)
-    do {
-      let meta = live.toJellyfinMovieMetadata()
-      movie.jellyfinMetadata = meta
-      try await movie.save(on: fluent.db())
-    } catch {
-      logger.debug("Failed to warm cache with people for movie \(movie.jellyfinId): \(error)")
-    }
-
-    if let n = limit, n >= 0 { people = Array(people.prefix(n)) }
-    return CastResponse(people: people)
+    try await updateTagUsageCounts(for: tagSlugs)
   }
 
   // MARK: - Clients API helpers
-  /// Upsert/refresh a single movie from client-provided Jellyfin payload and return updated client data
-  func refreshClientMovie(jellyfinId: String, item: BaseItemDto) async throws -> ClientMovieResponse {
-    // Convert incoming Jellyfin item to our internal metadata
-    let meta = item.toJellyfinMovieMetadata()
 
-    // Try to find existing movie by Jellyfin ID
-    let existing = try await Movie.query(on: fluent.db())
-      .filter(\.$jellyfinId == jellyfinId)
-      .with(\.$tags)
-      .first()
-
-    // Helper to compute candidate image URLs
-    func candidate(_ type: ImageType) -> String? {
-      return jellyfinService.getImageUrl(for: item, imageType: type)
-    }
-
-    if let movie = existing {
-      // Update fields from payload
-      movie.title = item.name ?? movie.title
-      movie.originalTitle = item.originalTitle ?? movie.originalTitle
-      movie.year = item.productionYear ?? movie.year
-      movie.overview = item.overview ?? movie.overview
-      movie.runtimeMinutes = item.runTimeTicks.map { Int($0 / 600_000_000) } ?? movie.runtimeMinutes
-      movie.genres = item.genres ?? movie.genres
-      // Director / Cast
-      if let director = item.people?.first(where: { ($0.type ?? "").lowercased() == "director" })?.name { movie.director = director }
-      if let actors = item.people?.filter({ ($0.type ?? "").lowercased() == "actor" }).compactMap({ $0.name }) { movie.cast = actors }
-      // Images (only overwrite if available)
-      if let p = candidate(.primary) { movie.posterUrl = p }
-      if let b = candidate(.backdrop) { movie.backdropUrl = b }
-      if let l = candidate(.logo) { movie.logoUrl = l }
-      // Trailer deeplink (only if we can compute)
-      if let deeplink = youtubeDeepLink(from: item.remoteTrailers) { movie.trailerDeepLink = deeplink }
-      // Full metadata overlay
-      movie.jellyfinMetadata = meta
-      try await movie.save(on: fluent.db())
-
-      // Reload with tags to build client response
-      let updated = try await Movie.query(on: fluent.db())
-        .filter(\.$jellyfinId == jellyfinId)
-        .with(\.$tags)
-        .first()
-        .unwrap(orError: MovieServiceError.movieNotFound(jellyfinId))
-      return buildClientMovie(from: updated, liveMeta: meta)
-    } else {
-      // Create new movie from metadata
-      let newMovie = meta.toMovie()
-      // Ensure correct Jellyfin ID from path
-      newMovie.jellyfinId = jellyfinId
-      // Images
-      newMovie.posterUrl = candidate(.primary) ?? newMovie.posterUrl
-      newMovie.backdropUrl = candidate(.backdrop) ?? newMovie.backdropUrl
-      newMovie.logoUrl = candidate(.logo) ?? newMovie.logoUrl
-      // Trailer deeplink
-      newMovie.trailerDeepLink = youtubeDeepLink(from: item.remoteTrailers) ?? newMovie.trailerDeepLink
-      try await newMovie.save(on: fluent.db())
-
-      // Reload to include tags relation (empty initially) for a consistent response
-      let created = try await Movie.query(on: fluent.db())
-        .filter(\.$jellyfinId == jellyfinId)
-        .with(\.$tags)
-        .first()
-        .unwrap(orError: MovieServiceError.movieNotFound(jellyfinId))
-      return buildClientMovie(from: created, liveMeta: meta)
-    }
-  }
-  func getClientMovies() async throws -> ClientMoviesListResponse {
-    let movies = try await Movie.query(on: fluent.db())
-      .with(\.$tags)
-      .sort(\.$title)
-      .all()
-    let total = movies.count
-    let ids = movies.map { $0.jellyfinId }
-    let live = try await jellyfinService.fetchItems(ids: ids)
-    let validItems = live.compactMap { item -> (String, JellyfinMovieMetadata)? in
-      guard !item.id.isEmpty else { return nil }
-      return (item.id, item)
-    }
-    let liveById: [String: JellyfinMovieMetadata] = Dictionary(uniqueKeysWithValues: validItems)
-    let items = movies.map { m in buildClientMovie(from: m, liveMeta: liveById[m.jellyfinId]) }
-    return ClientMoviesListResponse(movies: items, totalCount: total)
-  }
-
-  /// Return up to 24 movies similar to the given movie id (UUID or Jellyfin id)
-  /// Primary source: Jellyfin Similar API; Fallback: overlap by mood tags in local DB
-  func getSimilarClientMovies(id: String, maxCount: Int = 12) async throws -> [ClientMovieResponse] {
-    // Resolve seed movie
-    let seed = try await getMovieEntity(id: id)
-
-    // Try Jellyfin Similar first
-    do {
-      let similar = try await jellyfinService.getSimilarMovies(to: seed.jellyfinId, limit: maxCount)
-      if !similar.isEmpty {
-        let ids = similar.map { $0.id }
-        let local = try await Movie.query(on: fluent.db())
-          .filter(\.$jellyfinId ~~ ids)
-          .with(\.$tags)
-          .all()
-        if !local.isEmpty {
-          // Preserve order from Jellyfin
-          let byId = Dictionary(uniqueKeysWithValues: local.map { ($0.jellyfinId, $0) })
-          var out: [ClientMovieResponse] = []
-          out.reserveCapacity(min(maxCount, local.count))
-          for meta in similar {
-            if let m = byId[meta.id], m.jellyfinId != seed.jellyfinId {
-              out.append(buildClientMovie(from: m, liveMeta: meta))
-              if out.count >= maxCount { break }
-            }
-          }
-          if !out.isEmpty { return out }
-        }
-      }
-    } catch {
-      // Ignore and fallback
-    }
-
-    // Fallback: overlap by mood tags (descending), tie-break by year closeness and genre/director overlap
-    let seedTags = try await MovieTag.query(on: fluent.db())
-      .filter(\.$movie.$id == seed.requireID())
-      .with(\.$tag)
-      .all()
-      .map { $0.tag }
-    let seedTagSlugs = Set(seedTags.map { $0.slug })
-
-    let candidates = try await Movie.query(on: fluent.db())
-      .filter(\.$id != seed.requireID())
-      .with(\.$tags)
-      .all()
-
-    struct ScoredMovie { let movie: Movie; let score: Int; let yearDelta: Int; let bonus: Int }
-    let seedYear = seed.year
-    let seedGenres = Set(seed.jellyfinMetadata?.genres ?? [])
-    let seedDirector = seed.jellyfinMetadata?.director?.lowercased()
-
-    var scored: [ScoredMovie] = []
-    scored.reserveCapacity(candidates.count)
-    for m in candidates {
-      let slugs = Set(m.tags.map { $0.slug })
-      let overlap = slugs.intersection(seedTagSlugs).count
-      if overlap == 0 { continue }
-      let yearDelta = {
-        guard let a = seedYear, let b = m.year else { return Int.max }
-        return abs(a - b)
-      }()
-      let genres = Set(m.jellyfinMetadata?.genres ?? [])
-      let genreOverlap = genres.intersection(seedGenres).count
-      let directorBonus: Int = {
-        guard let d1 = seedDirector, let d2 = m.jellyfinMetadata?.director?.lowercased() else { return 0 }
-        return d1 == d2 ? 1 : 0
-      }()
-      let bonus = min(2, genreOverlap) + directorBonus
-      scored.append(ScoredMovie(movie: m, score: overlap, yearDelta: yearDelta, bonus: bonus))
-    }
-
-    let ordered = scored.sorted { a, b in
-      if a.score != b.score { return a.score > b.score }
-      if a.bonus != b.bonus { return a.bonus > b.bonus }
-      if a.yearDelta != b.yearDelta { return a.yearDelta < b.yearDelta }
-      return a.movie.title < b.movie.title
-    }
-    let picked = ordered.prefix(maxCount).map { $0.movie }
-    if picked.isEmpty { return [] }
-    let live = try await jellyfinService.fetchItems(ids: picked.map { $0.jellyfinId })
-    let validItems = live.compactMap { item -> (String, JellyfinMovieMetadata)? in
-      guard !item.id.isEmpty else { return nil }
-      return (item.id, item)
-    }
-    let liveById: [String: JellyfinMovieMetadata] = Dictionary(uniqueKeysWithValues: validItems)
-    return picked.map { movie in
-      return buildClientMovie(from: movie, liveMeta: liveById[movie.jellyfinId])
-    }
-  }
-
-  // MARK: - Clients Home helpers
-  /// 5 unwatched movies selected deterministically using a salt (falls back to all if none unwatched)
-  func getBannerMovies(maxCount: Int = 5, salt: String? = nil) async throws -> [ClientMovieResponse] {
-    let movies = try await Movie.query(on: fluent.db()).with(\.$tags).all()
-    guard !movies.isEmpty else { return [] }
-    
-
-    // Get live data for ALL movies with backdrops to check watch status
-    let ids = movies.map { $0.jellyfinId }
-    let live = try await jellyfinService.fetchItems(ids: ids)
-    let validItems = live.compactMap { item -> (String, JellyfinMovieMetadata)? in
-      guard !item.id.isEmpty else { return nil }
-      return (item.id, item)
-    }
-    let liveById: [String: JellyfinMovieMetadata] = Dictionary(uniqueKeysWithValues: validItems)
-    // Prefer unwatched; fallback to all movies
-    let unwatched = movies.filter { m in !(liveById[m.jellyfinId]?.userData?.played ?? false) }
-    let pool = unwatched.isEmpty ? movies : unwatched
-
-    // Deterministic ordering based on salt
-    let saltValue = salt ?? Date().iso8601String
-    func hash64(_ s: String) -> UInt64 {
-      // FNV-1a 64-bit
-      let fnvOffset: UInt64 = 14695981039346656037
-      let fnvPrime: UInt64 = 1099511628211
-      var hash = fnvOffset
-      for byte in s.utf8 { hash ^= UInt64(byte); hash = hash &* fnvPrime }
-      return hash
-    }
-    let ordered = pool.sorted { a, b in
-      let ha = hash64(saltValue + a.jellyfinId)
-      let hb = hash64(saltValue + b.jellyfinId)
-      if ha == hb { return a.jellyfinId < b.jellyfinId }
-      return ha < hb
-    }
-    let picked = Array(ordered.prefix(maxCount))
-    return picked.map { buildClientMovie(from: $0, liveMeta: liveById[$0.jellyfinId]) }
-  }
-
-  /// Movies with progress for continue watching (movies only), sorted by last played desc
-  func getContinueWatchingMovies(maxCount: Int = 10) async throws -> [ClientMovieResponse] {
-    // Pull resume items from Jellyfin and map to local movies
-    let resumeItems = try await jellyfinService.getResumeItems(limit: maxCount)
-    if resumeItems.isEmpty { return [] }
-    let ids = resumeItems.map { $0.id }
-    // Load matching local entities
-    let local = try await Movie.query(on: fluent.db())
-      .filter(\.$jellyfinId ~~ ids)
-      .with(\.$tags)
-      .all()
-    let byId = Dictionary(uniqueKeysWithValues: local.map { ($0.jellyfinId, $0) })
-    // Keep original resume order
-    var out: [ClientMovieResponse] = []
-    out.reserveCapacity(resumeItems.count)
-    for meta in resumeItems {
-      if let m = byId[meta.id] {
-        out.append(buildClientMovie(from: m, liveMeta: meta))
-      }
-    }
-    return out
-  }
-
-  /// 10 newest movies by Jellyfin DateCreated desc (server truth)
-  func getRecentlyAddedMovies(maxCount: Int = 10) async throws -> [ClientMovieResponse] {
-    let recent = try await jellyfinService.getRecentlyAddedMovies(limit: maxCount)
-    if recent.isEmpty { return [] }
-    // Map to local models preserving order
-    let ids = recent.map { $0.id }
-    let local = try await Movie.query(on: fluent.db())
-      .filter(\.$jellyfinId ~~ ids)
-      .with(\.$tags)
-      .all()
-    let byId = Dictionary(uniqueKeysWithValues: local.map { ($0.jellyfinId, $0) })
-    var out: [ClientMovieResponse] = []
-    out.reserveCapacity(recent.count)
-    for meta in recent {
-      if let m = byId[meta.id] {
-        out.append(buildClientMovie(from: m, liveMeta: meta))
-      }
-    }
-    return out
-  }
-
-  /// All Movies sorted by title (ascending) with hard limit (default 15)
-  func getAllMoviesByTitle(maxCount: Int = 15) async throws -> [ClientMovieResponse] {
-    let items = try await jellyfinService.getAllMoviesByTitle(limit: maxCount)
-    if items.isEmpty { return [] }
-    let ids = items.map { $0.id }
-    let local = try await Movie.query(on: fluent.db())
-      .filter(\.$jellyfinId ~~ ids)
-      .with(\.$tags)
-      .all()
-    let byId = Dictionary(uniqueKeysWithValues: local.map { ($0.jellyfinId, $0) })
-    var out: [ClientMovieResponse] = []
-    out.reserveCapacity(items.count)
-    for meta in items {
-      if let m = byId[meta.id] {
-        out.append(buildClientMovie(from: m, liveMeta: meta))
-      }
-    }
-    return out
-  }
-
-  /// Unwatched Movies (IsUnplayed) sorted by title (ascending) with hard limit (default 15)
-  func getUnwatchedMoviesByTitle(maxCount: Int = 15) async throws -> [ClientMovieResponse] {
-    let items = try await jellyfinService.getUnwatchedMoviesByTitle(limit: maxCount)
-    if items.isEmpty { return [] }
-    let ids = items.map { $0.id }
-    let local = try await Movie.query(on: fluent.db())
-      .filter(\.$jellyfinId ~~ ids)
-      .with(\.$tags)
-      .all()
-    let byId = Dictionary(uniqueKeysWithValues: local.map { ($0.jellyfinId, $0) })
-    var out: [ClientMovieResponse] = []
-    out.reserveCapacity(items.count)
-    for meta in items {
-      if let m = byId[meta.id] {
-        out.append(buildClientMovie(from: m, liveMeta: meta))
-      }
-    }
-    return out
-  }
-
-  /// Get total progress statistics
-  func getTotalProgress() async throws -> (totalMovies: Int, watchedMovies: Int, progressPercent: Float) {
-    // Get all movies
-    let movies = try await Movie.query(on: fluent.db()).all()
-    let totalMovies = movies.count
-    
-    if totalMovies == 0 {
-      return (totalMovies: 0, watchedMovies: 0, progressPercent: 0.0)
-    }
-    
-    // Get live data for all movies to check watch status
-    let ids = movies.map { $0.jellyfinId }
-    let live = try await jellyfinService.fetchItems(ids: ids)
-    let validItems = live.compactMap { item -> (String, JellyfinMovieMetadata)? in
-      guard !item.id.isEmpty else { return nil }
-      return (item.id, item)
-    }
-    let liveById: [String: JellyfinMovieMetadata] = Dictionary(uniqueKeysWithValues: validItems)
-    
-    // Count watched movies
-    let watchedMovies = movies.filter { m in
-      let played = liveById[m.jellyfinId]?.userData?.played ?? false
-      return played
-    }.count
-    
-    let progressPercent = Float(watchedMovies) / Float(totalMovies) * 100.0
-    
-    return (totalMovies: totalMovies, watchedMovies: watchedMovies, progressPercent: progressPercent)
-  }
-
-  /// Random mood pick (excluding provided slugs) with all movies for that mood
-  func getRandomMoodSection(excluding excluded: [String]) async throws -> (mood: String, moodTitle: String, items: [ClientMovieResponse])? {
-    // Build candidate moods
-    let allMoods = Array(config.moodBuckets.keys)
-    let excludeSet = Set(excluded.compactMap { $0.isEmpty ? nil : $0 })
-    var pool = allMoods.filter { !excludeSet.contains($0) }
-    if pool.isEmpty { pool = allMoods }
-    guard let mood = pool.randomElement() else { return nil }
-    let moodTitle = config.moodBuckets[mood]?.title ?? mood
-    // Fetch movies tagged with this mood
-    guard let tag = try await Tag.query(on: fluent.db()).filter(\.$slug == mood).first() else {
-      return nil
-    }
-    let movies = try await Movie.query(on: fluent.db())
-      .join(MovieTag.self, on: \Movie.$id == \MovieTag.$movie.$id)
-      .filter(MovieTag.self, \.$tag.$id == tag.requireID())
-      .with(\.$tags)
-      .all()
-    if movies.isEmpty { return (mood, moodTitle, []) }
-    let ids = movies.map { $0.jellyfinId }
-    let live = try await jellyfinService.fetchItems(ids: ids)
-    let validItems = live.compactMap { item -> (String, JellyfinMovieMetadata)? in
-      guard !item.id.isEmpty else { return nil }
-      return (item.id, item)
-    }
-    let liveById: [String: JellyfinMovieMetadata] = Dictionary(uniqueKeysWithValues: validItems)
-    let items = movies.map { movie in
-      return buildClientMovie(from: movie, liveMeta: liveById[movie.jellyfinId])
-    }
-    // max items at 10
-    return (mood, moodTitle, Array(items.prefix(10)))
-  }
-
-  func getClientMovies(withTag tagSlug: String) async throws -> ClientMoviesListResponse {
+  /// Movies with a given mood tag, returned as just Jellyfin IDs.
+  func getClientJellyfinIds(withTag tagSlug: String) async throws -> [String] {
     guard config.moodBuckets[tagSlug] != nil else {
       throw MovieServiceError.tagNotFound(tagSlug)
     }
@@ -916,192 +217,114 @@ final class MovieService {
     let movies = try await Movie.query(on: fluent.db())
       .join(MovieTag.self, on: \Movie.$id == \MovieTag.$movie.$id)
       .filter(MovieTag.self, \.$tag.$id == tag.requireID())
-      .with(\.$tags)
-      .sort(\.$title)
+      .sort(\.$jellyfinId)
       .all()
-    let ids = movies.map { $0.jellyfinId }
-    let live = try await jellyfinService.fetchItems(ids: ids)
-    let validItems = live.compactMap { item -> (String, JellyfinMovieMetadata)? in
-      guard !item.id.isEmpty else { return nil }
-      return (item.id, item)
-    }
-    let liveById: [String: JellyfinMovieMetadata] = Dictionary(uniqueKeysWithValues: validItems)
-    let items = movies.map { m in buildClientMovie(from: m, liveMeta: liveById[m.jellyfinId]) }
-    return ClientMoviesListResponse(movies: items, totalCount: items.count)
+    return movies.map { $0.jellyfinId }
   }
 
-  func getClientTimeline() async throws -> [ClientTimelineItem] {
-    // Fetch all with tags
+  /// Full {jellyfinId, [tagSlugs], needsReview} bulk join for clients.
+  func getClientTagMap() async throws -> [ClientTagEntry] {
     let movies = try await Movie.query(on: fluent.db())
       .with(\.$tags)
       .all()
-    // Live overlay for all movies in the response
-    let ids = movies.map { $0.jellyfinId }
-    let live = try await jellyfinService.fetchItems(ids: ids)
-    let validItems = live.compactMap { item -> (String, JellyfinMovieMetadata)? in
-      guard !item.id.isEmpty else { return nil }
-      return (item.id, item)
+    let pendingIds = try await pendingReviewJellyfinIds()
+    return movies.map { m in
+      ClientTagEntry(
+        jellyfinId: m.jellyfinId,
+        tags: m.tags.map { $0.slug },
+        needsReview: pendingIds.contains(m.jellyfinId)
+      )
     }
-    let liveById: [String: JellyfinMovieMetadata] = Dictionary(uniqueKeysWithValues: validItems)
-    // Group by year (unknown grouped under nil)
-    var groups: [Int?: [Movie]] = [:]
-    for m in movies {
-      groups[m.year, default: []].append(m)
-    }
-    // Sort groups by year asc with unknown last
-    let orderedYears: [Int?] = groups.keys.sorted { a, b in
-      switch (a, b) {
-      case (let ya?, let yb?): return ya < yb
-      case (nil, _?): return false
-      case (_?, nil): return true
-      default: return false
-      }
-    }
-    // Build response with per-year movies sorted by title
-    var timeline: [ClientTimelineItem] = []
-    for key in orderedYears {
-      let bucket = (groups[key] ?? []).sorted { $0.title < $1.title }
-      let moviesOut = bucket.map { movie in
-        return buildClientMovie(from: movie, liveMeta: liveById[movie.jellyfinId])
-      }
-      let yearOut: ClientTimelineYear = key == nil ? .unknown : .known(key!)
-      timeline.append(ClientTimelineItem(year: yearOut, movies: moviesOut))
-    }
-    // Ensure unknown group exists at end even if empty? Not required; only include present groups
-    return timeline
   }
 
-  private func buildClientMovie(from movie: Movie, liveMeta: JellyfinMovieMetadata? = nil) -> ClientMovieResponse {
-    let imdbId =
-      movie.jellyfinMetadata?.providerIds?["Imdb"] ?? movie.jellyfinMetadata?.providerIds?["IMDb"]
-    
-    // All image URLs stored in database with existence validation during sync
-    let images = ClientImages(
-      poster: movie.posterUrl,
-      backdrop: movie.backdropUrl,
-      titleLogo: movie.logoUrl
-    )
-    let effectiveMeta = liveMeta ?? movie.jellyfinMetadata
-    let ticks = effectiveMeta?.userData?.playbackPositionTicks ?? 0
-    let progressMs: Int? = ticks > 0 ? Int(ticks / 10_000) : nil
-    let totalMs: Int? = (effectiveMeta?.runTimeTicks).map { Int($0 / 10_000) }
-    let progressPercent: Float? = {
-      guard let p = progressMs, let t = totalMs, t > 0 else { return nil }
-      return min(100, max(0, (Float(p) / Float(t)) * 100))
-    }()
+  /// Tags for a caller-supplied set of Jellyfin IDs. Preserves input order;
+  /// drops IDs that aren't in the local DB so the caller can diff.
+  func getClientTagsBatch(jellyfinIds: [String]) async throws -> [ClientTagEntry] {
+    guard !jellyfinIds.isEmpty else { return [] }
+    let movies = try await Movie.query(on: fluent.db())
+      .filter(\.$jellyfinId ~~ jellyfinIds)
+      .with(\.$tags)
+      .all()
+    let pending = try await TagSuggestion.query(on: fluent.db())
+      .filter(\.$status == "pending")
+      .filter(\.$jellyfinId ~~ jellyfinIds)
+      .field(\.$jellyfinId)
+      .all()
+    let pendingSet = Set(pending.map { $0.jellyfinId })
+    let byId = Dictionary(uniqueKeysWithValues: movies.map { ($0.jellyfinId, $0) })
+    return jellyfinIds.compactMap { jid in
+      guard let m = byId[jid] else { return nil }
+      return ClientTagEntry(
+        jellyfinId: m.jellyfinId,
+        tags: m.tags.map { $0.slug },
+        needsReview: pendingSet.contains(m.jellyfinId)
+      )
+    }
+  }
 
-    // Use stored deeplink computed at sync time
-    let trailerUrl: String? = movie.trailerDeepLink
-
-    return ClientMovieResponse(
-      id: movie.id,
+  /// Tags for a single Jellyfin id.
+  func getClientTags(jellyfinId: String) async throws -> ClientTagEntry {
+    let movie = try await Movie.query(on: fluent.db())
+      .filter(\.$jellyfinId == jellyfinId)
+      .with(\.$tags)
+      .first()
+      .unwrap(orError: MovieServiceError.movieNotFound(jellyfinId))
+    let isPending = try await TagSuggestion.query(on: fluent.db())
+      .filter(\.$jellyfinId == jellyfinId)
+      .filter(\.$status == "pending")
+      .first() != nil
+    return ClientTagEntry(
       jellyfinId: movie.jellyfinId,
-      title: movie.title,
-      year: movie.year,
-      runtime: runtimeString(from: movie.runtimeMinutes),
-      runtimeMinutes: movie.runtimeMinutes,
-      description: movie.overview,
-      images: images,
-      tags: movie.tags.map(MinimalTagResponse.init),
-      imdbId: imdbId,
-      isWatched: effectiveMeta?.userData?.played ?? false,
-      progressMs: progressMs,
-      progressPercent: progressPercent,
-      trailerUrl: trailerUrl,
-      addedAt: effectiveMeta?.dateCreated ?? movie.createdAt
+      tags: movie.tags.map { $0.slug },
+      needsReview: isPending
     )
   }
 
-  // Compute YouTube deeplink from a list of Jellyfin MediaUrl
-  private func youtubeDeepLink(from trailers: [MediaUrl]?) -> String? {
-    guard let trailers = trailers, !trailers.isEmpty else { return nil }
-    struct Candidate { let url: String; let name: String? }
-    let candidates: [Candidate] = trailers.compactMap { t in
-      guard let u = t.url else { return nil }
-      let s = u.lowercased()
-      guard s.contains("youtube.com") || s.contains("youtu.be") else { return nil }
-      guard let comps = URLComponents(string: u), let host = comps.host?.lowercased() else { return nil }
-      // Skip YouTube Shorts entirely
-      if host.contains("youtube.com"), comps.path.hasPrefix("/shorts/") { return nil }
-      return Candidate(url: u, name: t.name?.lowercased())
-    }
-    guard !candidates.isEmpty else { return nil }
-
-    func isTeaserLike(_ name: String?) -> Bool {
-      guard let n = name else { return false }
-      return n.contains("teaser") || n.contains("tv spot") || n.contains(" spot") || n.contains("clip") || n.contains("sneak peek") || n.contains("featurette") || n.contains("promo")
-    }
-    func isTrailer(_ name: String?) -> Bool {
-      guard let n = name else { return false }
-      return n.contains("trailer")
-    }
-    func isOfficialTrailer(_ name: String?) -> Bool {
-      guard let n = name else { return false }
-      if isTeaserLike(name) { return false }
-      return n.contains("official") && n.contains("trailer")
-    }
-
-    func extractYouTubeId(from u: String) -> String? {
-      guard let comps = URLComponents(string: u), let host = comps.host?.lowercased() else { return nil }
-      if host.contains("youtube.com"), comps.path.hasPrefix("/shorts/") { return nil }
-      if host.contains("youtu.be") {
-        let p = comps.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        return p.isEmpty ? nil : p
-      } else if host.contains("youtube.com") {
-        if comps.path.hasPrefix("/watch") {
-          return comps.queryItems?.first(where: { $0.name == "v" })?.value
-        } else if comps.path.hasPrefix("/embed/") {
-          return comps.path.split(separator: "/").last.map(String.init)
-        }
-      }
-      return nil
-    }
-
-    let groups: [[Candidate]] = [
-      candidates.filter { isOfficialTrailer($0.name) },                          // Highest preference
-      candidates.filter { isTrailer($0.name) && !isTeaserLike($0.name) }         // Other trailers (non-teaser)
-    ]
-
-    for group in groups {
-      for c in group {
-        if let id = extractYouTubeId(from: c.url), !id.isEmpty {
-          return "youtube://watch/\(id)"
-        }
-      }
-    }
-    return nil
+  private func pendingReviewJellyfinIds() async throws -> Set<String> {
+    let rows = try await TagSuggestion.query(on: fluent.db())
+      .filter(\.$status == "pending")
+      .field(\.$jellyfinId)
+      .all()
+    return Set(rows.map { $0.jellyfinId })
   }
 
-  func runtimeString(from minutes: Int?) -> String? {
-    guard let minutes = minutes, minutes >= 0 else { return nil }
-    let h = minutes / 60
-    let m = minutes % 60
-    switch (h, m) {
-    case (0, _): return "\(m)min"
-    case (_, 0): return "\(h)h"
-    default: return "\(h)h \(m)min"
+  /// Random mood pick (excluding provided slugs) with all jellyfin IDs for that mood.
+  func getRandomMoodSection(excluding excluded: [String]) async throws -> ClientMoodBlock? {
+    let allMoods = Array(config.moodBuckets.keys)
+    let excludeSet = Set(excluded.compactMap { $0.isEmpty ? nil : $0 })
+    var pool = allMoods.filter { !excludeSet.contains($0) }
+    if pool.isEmpty { pool = allMoods }
+    guard let slug = pool.randomElement() else { return nil }
+    let title = config.moodBuckets[slug]?.title ?? slug
+    let ids = (try? await getClientJellyfinIds(withTag: slug)) ?? []
+    return ClientMoodBlock(slug: slug, title: title, jellyfinIds: ids)
+  }
+
+  /// Deterministic daily featured mood (djb2 hash of yyyy-MM-dd).
+  func getFeaturedMoodSection(excluding excluded: [String]) async throws -> ClientMoodBlock? {
+    let allMoods = Array(config.moodBuckets.keys)
+    let excludeSet = Set(excluded.compactMap { $0.isEmpty ? nil : $0 })
+    var pool = allMoods.filter { !excludeSet.contains($0) }
+    if pool.isEmpty { pool = allMoods }
+    guard !pool.isEmpty else { return nil }
+    let df = DateFormatter()
+    df.dateFormat = "yyyy-MM-dd"
+    let seed = df.string(from: Date())
+    func djb2(_ s: String) -> Int {
+      var h = 5381
+      for u in s.unicodeScalars { h = ((h << 5) &+ h) &+ Int(u.value) }
+      return abs(h)
     }
+    let slug = Array(pool.sorted())[djb2(seed) % pool.count]
+    let title = config.moodBuckets[slug]?.title ?? slug
+    let ids = (try? await getClientJellyfinIds(withTag: slug)) ?? []
+    return ClientMoodBlock(slug: slug, title: title, jellyfinIds: ids)
   }
 
   // MARK: - Maintenance
-  func resetAllTags() async throws {
-    // Delete all pivot rows
-    try await MovieTag.query(on: fluent.db()).delete()
-    // Reset tag usage counts
-    let allTags = try await Tag.query(on: fluent.db()).all()
-    for tag in allTags {
-      tag.usageCount = 0
-      try await tag.save(on: fluent.db())
-    }
-  }
-
-  /// Delete all movies and their tag relations; reset tag usage counts.
   func clearAllMovies() async throws {
-    // Delete all pivots first to avoid orphans
     try await MovieTag.query(on: fluent.db()).delete()
-    // Delete all movies
     try await Movie.query(on: fluent.db()).delete()
-    // Reset tag usage counts
     let allTags = try await Tag.query(on: fluent.db()).all()
     for tag in allTags {
       tag.usageCount = 0
@@ -1117,49 +340,25 @@ final class MovieService {
       .all()
     var map: [String: ExportMovieTags] = [:]
     for m in movies {
-      // Always export using Jellyfin ID as the key so imports are stable across DB resets
-      let idString = m.jellyfinId
-      map[idString] = ExportMovieTags(title: m.title, tags: m.tags.map { $0.slug })
+      map[m.jellyfinId] = ExportMovieTags(tags: m.tags.map { $0.slug })
     }
     return map
   }
 
   func importTagsMap(_ map: [String: ExportMovieTags], replaceAll: Bool = true) async throws {
-    for (movieKey, payload) in map {
+    for (jellyfinId, payload) in map {
       do {
-        // First try by provided key (Jellyfin ID preferred; UUID supported)
-        do {
-          _ = try await updateMovieTags(
-            movieId: movieKey, tagSlugs: payload.tags, replaceAll: replaceAll)
-          continue
-        } catch {
-          // Fall through to title-based matching
-        }
-
-        // Fallback: match by exact title/originalTitle
-        let title = payload.title
-        let titleQuery = Movie.query(on: fluent.db())
-        titleQuery.group(.or) { qb in
-          qb.filter(\.$title == title)
-          qb.filter(\.$originalTitle == title)
-        }
-        if let byTitle = try await titleQuery.first() {
-          let idString = (try? byTitle.requireID().uuidString) ?? byTitle.jellyfinId
-          _ = try await updateMovieTags(
-            movieId: idString, tagSlugs: payload.tags, replaceAll: replaceAll)
-        } else {
-          logger.error("Import: No movie found for key=\(movieKey) or title=\(title)")
-        }
+        _ = try await updateMovieTags(
+          jellyfinId: jellyfinId, tagSlugs: payload.tags, replaceAll: replaceAll)
       } catch {
-        logger.error(
-          "Failed to import tags for movie key=\(movieKey) title=\(payload.title): \(error)")
+        logger.error("Failed to import tags for jellyfinId=\(jellyfinId): \(error)")
       }
     }
     let uniqueSlugs = Array(Set(map.values.flatMap { $0.tags }))
     try await updateTagUsageCounts(for: uniqueSlugs)
   }
 
-  // MARK: - Jellyfin Sync
+  // MARK: - Jellyfin Sync (ID-only reconciliation)
 
   func syncWithJellyfin(fullSync: Bool = false) async throws -> SyncStatusResponse {
     guard !isSyncing else {
@@ -1180,17 +379,16 @@ final class MovieService {
     logger.info("Starting Jellyfin sync (full: \(fullSync))")
 
     do {
-      var jellyfinMovies: [JellyfinMovieMetadata]
+      var jellyfinIdsList: [String]
       do {
-        jellyfinMovies = try await jellyfinService.fetchAllMovies()
+        jellyfinIdsList = try await jellyfinService.fetchAllMovieIds()
       } catch let e as JellyfinError {
-        // Attempt auto-login and retry once on 401
         switch e {
         case .httpError(let code, _):
           if code == 401 {
             let refreshed = try await attemptAutoLoginAndUpdate()
             if refreshed {
-              jellyfinMovies = try await jellyfinService.fetchAllMovies()
+              jellyfinIdsList = try await jellyfinService.fetchAllMovieIds()
             } else {
               throw e
             }
@@ -1201,106 +399,41 @@ final class MovieService {
           throw e
         }
       }
-      stats.moviesFound = jellyfinMovies.count
-      // Publish initial totals so clients can compute progress
+      stats.moviesFound = jellyfinIdsList.count
       self.lastSyncStats = stats
 
-      for jellyfinMovie in jellyfinMovies {
+      let now = Date()
+      let jellyfinIds = Set(jellyfinIdsList)
+
+      // Upsert movies: insert new IDs, bump last_seen_at on existing.
+      // New insertions fire-and-forget an auto-tag suggestion into the queue.
+      for jid in jellyfinIdsList {
         do {
-          let existingMovie = try await Movie.query(on: fluent.db())
-            .filter(\.$jellyfinId == jellyfinMovie.id)
+          if let existing = try await Movie.query(on: fluent.db())
+            .filter(\.$jellyfinId == jid)
             .first()
-
-          if let existing = existingMovie {
-            // Update existing movie
-            existing.title = jellyfinMovie.name
-            existing.originalTitle = jellyfinMovie.originalTitle
-            existing.year = jellyfinMovie.productionYear
-            existing.overview = jellyfinMovie.overview
-            existing.runtimeMinutes = jellyfinMovie.runtimeMinutes
-            existing.genres = jellyfinMovie.genres
-            existing.director = jellyfinMovie.director
-            existing.cast = jellyfinMovie.cast
-            // Store all image URLs with existence validation
-            if let baseItem = try? await jellyfinService.fetchMovie(id: jellyfinMovie.id) {
-              logger.info("Fetching images for existing movie: \(jellyfinMovie.name)")
-              existing.posterUrl = jellyfinService.getImageUrl(for: baseItem, imageType: .primary, quality: 85)
-              existing.backdropUrl = jellyfinService.getImageUrl(for: baseItem, imageType: .backdrop, quality: 85)
-              existing.logoUrl = jellyfinService.getImageUrl(for: baseItem, imageType: .logo, quality: 85)
-              logger.info("Image URLs - Poster: \(existing.posterUrl ?? "nil"), Backdrop: \(existing.backdropUrl ?? "nil"), Logo: \(existing.logoUrl ?? "nil")")
-            }
-            // Compute trailer deeplink and strip raw remote trailer URLs from stored metadata
-            let deeplink = youtubeDeepLink(from: jellyfinMovie.remoteTrailers)
-            existing.trailerDeepLink = deeplink
-            let strippedMeta = JellyfinMovieMetadata(
-              id: jellyfinMovie.id,
-              name: jellyfinMovie.name,
-              originalTitle: jellyfinMovie.originalTitle,
-              overview: jellyfinMovie.overview,
-              productionYear: jellyfinMovie.productionYear,
-              runTimeTicks: jellyfinMovie.runTimeTicks,
-              genres: jellyfinMovie.genres,
-              people: jellyfinMovie.people,
-              mediaStreams: jellyfinMovie.mediaStreams,
-              providerIds: jellyfinMovie.providerIds,
-              studios: jellyfinMovie.studios,
-              imageBlurHashes: jellyfinMovie.imageBlurHashes,
-              userData: jellyfinMovie.userData,
-              remoteTrailers: nil,
-              dateCreated: jellyfinMovie.dateCreated
-            )
-            existing.jellyfinMetadata = strippedMeta
-
+          {
+            existing.lastSeenAt = now
             try await existing.save(on: fluent.db())
             stats.moviesUpdated += 1
-            // Publish progress after each update
-            self.lastSyncStats = stats
           } else {
-            // Create new movie
-            let movie = jellyfinMovie.toMovie()
-            // Store all image URLs with existence validation
-            if let baseItem = try? await jellyfinService.fetchMovie(id: jellyfinMovie.id) {
-              logger.info("Fetching images for new movie: \(jellyfinMovie.name)")
-              movie.posterUrl = jellyfinService.getImageUrl(for: baseItem, imageType: .primary, quality: 85)
-              movie.backdropUrl = jellyfinService.getImageUrl(for: baseItem, imageType: .backdrop, quality: 85)
-              movie.logoUrl = jellyfinService.getImageUrl(for: baseItem, imageType: .logo, quality: 85)
-              logger.info("Image URLs - Poster: \(movie.posterUrl ?? "nil"), Backdrop: \(movie.backdropUrl ?? "nil"), Logo: \(movie.logoUrl ?? "nil")")
-            }
-            // Compute trailer deeplink and strip raw remote trailer URLs from stored metadata
-            movie.trailerDeepLink = youtubeDeepLink(from: jellyfinMovie.remoteTrailers)
-            let strippedMeta = JellyfinMovieMetadata(
-              id: jellyfinMovie.id,
-              name: jellyfinMovie.name,
-              originalTitle: jellyfinMovie.originalTitle,
-              overview: jellyfinMovie.overview,
-              productionYear: jellyfinMovie.productionYear,
-              runTimeTicks: jellyfinMovie.runTimeTicks,
-              genres: jellyfinMovie.genres,
-              people: jellyfinMovie.people,
-              mediaStreams: jellyfinMovie.mediaStreams,
-              providerIds: jellyfinMovie.providerIds,
-              studios: jellyfinMovie.studios,
-              imageBlurHashes: jellyfinMovie.imageBlurHashes,
-              userData: jellyfinMovie.userData,
-              remoteTrailers: nil,
-              dateCreated: jellyfinMovie.dateCreated
-            )
-            movie.jellyfinMetadata = strippedMeta
+            let movie = Movie(jellyfinId: jid, lastSeenAt: now)
             try await movie.save(on: fluent.db())
             stats.moviesUpdated += 1
-            // Publish progress after each creation
-            self.lastSyncStats = stats
+            if config.enableAutoTagging {
+              suggestionService?.enqueueInBackground(jellyfinId: jid)
+            }
           }
+          self.lastSyncStats = stats
         } catch {
-          stats.errors.append("Failed to sync movie \(jellyfinMovie.name): \(error)")
-          logger.error("Failed to sync movie \(jellyfinMovie.name): \(error)")
-          // Publish errors as they happen
+          stats.errors.append("Failed to sync movie \(jid): \(error)")
+          logger.error("Failed to sync movie \(jid): \(error)")
           self.lastSyncStats = stats
         }
       }
+
       // Delete movies that no longer exist in Jellyfin
       do {
-        let jellyfinIds = Set(jellyfinMovies.map { $0.id })
         let allDbMovies = try await Movie.query(on: fluent.db()).all()
         let orphaned = allDbMovies.filter { !jellyfinIds.contains($0.jellyfinId) }
         if !orphaned.isEmpty {
@@ -1308,19 +441,17 @@ final class MovieService {
         }
         for movie in orphaned {
           do {
-            let title = movie.title
+            let jid = movie.jellyfinId
             try await movie.delete(on: fluent.db())
             stats.moviesDeleted += 1
-            // Publish progress as deletions complete
             self.lastSyncStats = stats
-            logger.info("Deleted movie '\(title)' (jellyfinId=\(movie.jellyfinId)) from local DB")
+            logger.info("Deleted movie (jellyfinId=\(jid)) from local DB")
           } catch {
             stats.errors.append("Failed to delete movie \(movie.jellyfinId): \(error)")
             logger.error("Failed to delete orphaned movie \(movie.jellyfinId): \(error)")
             self.lastSyncStats = stats
           }
         }
-        // Recalculate tag usage counts since pivots may have been removed via cascade
         let allTags = try await Tag.query(on: fluent.db()).all()
         let allSlugs = allTags.map { $0.slug }
         try await updateTagUsageCounts(for: allSlugs)
@@ -1332,7 +463,6 @@ final class MovieService {
       logger.info(
         "Jellyfin sync completed: \(stats.moviesFound) found, \(stats.moviesUpdated) updated, \(stats.moviesDeleted) deleted"
       )
-
     } catch {
       stats.errors.append("Sync failed: \(error)")
       logger.error("Jellyfin sync failed: \(error)")
@@ -1380,65 +510,21 @@ final class MovieService {
 
   // MARK: - Private Helpers
 
-  private func validateImageUrl(_ url: String) async -> Bool {
-    guard !url.isEmpty else { return false }
-    
-    do {
-      var request = HTTPClientRequest(url: url)
-      request.method = .HEAD
-      request.headers.add(name: "Accept", value: "image/*")
-      let response = try await jellyfinService.httpClient.execute(request, timeout: .seconds(5))
-      let code = Int(response.status.code)
-      if (200...399).contains(code) { return true }
-      // Fallback to small GET range
-      var getReq = HTTPClientRequest(url: url)
-      getReq.method = .GET
-      getReq.headers.add(name: "Accept", value: "image/*")
-      getReq.headers.add(name: "Range", value: "bytes=0-1")
-      let getRes = try await jellyfinService.httpClient.execute(getReq, timeout: .seconds(6))
-      let gcode = Int(getRes.status.code)
-      return (200...399).contains(gcode)
-    } catch {
-      // Fallback to GET if HEAD failed (some proxies block HEAD)
-      do {
-        var getReq = HTTPClientRequest(url: url)
-        getReq.method = .GET
-        getReq.headers.add(name: "Accept", value: "image/*")
-        getReq.headers.add(name: "Range", value: "bytes=0-1")
-        let getRes = try await jellyfinService.httpClient.execute(getReq, timeout: .seconds(6))
-        let gcode = Int(getRes.status.code)
-        return (200...399).contains(gcode)
-      } catch {
-        logger.debug("Image validation failed for \(url): \(error)")
-        return false
-      }
-    }
-  }
-
-  private func getMovieEntity(id: String) async throws -> Movie {
-    if let uuid = UUID(uuidString: id) {
-      return try await Movie.query(on: fluent.db())
-        .filter(\.$id == uuid)
-        .first()
-        .unwrap(orError: MovieServiceError.movieNotFound(id))
-    } else {
-      return try await Movie.query(on: fluent.db())
-        .filter(\.$jellyfinId == id)
-        .first()
-        .unwrap(orError: MovieServiceError.movieNotFound(id))
-    }
+  private func getMovieEntity(jellyfinId: String) async throws -> Movie {
+    try await Movie.query(on: fluent.db())
+      .filter(\.$jellyfinId == jellyfinId)
+      .first()
+      .unwrap(orError: MovieServiceError.movieNotFound(jellyfinId))
   }
 
   private func validateTagSlugs(_ slugs: [String]) throws -> [String] {
     var validSlugs: [String] = []
-
     for slug in slugs {
       guard config.moodBuckets[slug] != nil else {
         throw MovieServiceError.tagNotFound(slug)
       }
       validSlugs.append(slug)
     }
-
     return validSlugs
   }
 
@@ -1446,11 +532,9 @@ final class MovieService {
     if let existing = try await Tag.query(on: fluent.db()).filter(\.$slug == slug).first() {
       return existing
     }
-
     guard let bucket = config.moodBuckets[slug] else {
       throw MovieServiceError.tagNotFound(slug)
     }
-
     let tag = Tag(slug: slug, title: bucket.title, description: bucket.description)
     try await tag.save(on: fluent.db())
     return tag
@@ -1482,8 +566,6 @@ enum MovieServiceError: Error, CustomStringConvertible {
   case movieNotFound(String)
   case tagNotFound(String)
   case syncAlreadyRunning
-  case missingApiKey(String)
-  case unsupportedProvider(String)
 
   var description: String {
     switch self {
@@ -1493,10 +575,33 @@ enum MovieServiceError: Error, CustomStringConvertible {
       return "Tag not found: \(slug)"
     case .syncAlreadyRunning:
       return "Sync is already running"
-    case .missingApiKey(let provider):
-      return "Missing API key for \(provider)"
-    case .unsupportedProvider(let provider):
-      return "Unsupported LLM provider: \(provider)"
     }
+  }
+}
+
+// MARK: - LLM context
+
+/// Plain-struct movie context for LLM prompts; decouples LLMService from the slim DB Movie model.
+struct MovieContext {
+  let title: String
+  let originalTitle: String?
+  let year: Int?
+  let overview: String?
+  let runtimeMinutes: Int?
+  let director: String?
+  let genres: [String]
+  let cast: [String]
+
+  init(from item: BaseItemDto) {
+    self.title = item.name ?? ""
+    self.originalTitle = item.originalTitle
+    self.year = item.productionYear
+    self.overview = item.overview
+    self.runtimeMinutes = item.runTimeTicks.map { Int($0 / 600_000_000) }
+    self.director = item.people?.first { ($0.type ?? "").lowercased() == "director" }?.name
+    self.genres = item.genres ?? []
+    self.cast = (item.people ?? [])
+      .filter { ($0.type ?? "").lowercased() == "actor" }
+      .compactMap { $0.name }
   }
 }

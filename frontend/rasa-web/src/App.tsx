@@ -5,7 +5,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 
 type Tag = { id?: string; slug: string; title: string }
-type Movie = { id: string; jellyfinId: string; title: string; posterUrl?: string; tags?: Tag[] }
+type Movie = { jellyfinId: string; title: string; year?: number; posterUrl?: string; tags?: Tag[]; needsReview?: boolean }
+type AdminMovieApi = { jellyfinId: string; title: string; year?: number; posterUrl?: string; tags: string[]; needsReview: boolean }
+type TagSuggestionApi = { id: string; jellyfinId: string; suggestedTags: string[]; confidence: number; reasoning?: string; status: string; createdAt?: string; resolvedAt?: string }
+type BackfillStatusApi = { running: boolean; total: number; processed: number; startedAt?: string; cancelled?: boolean }
 type MoodBuckets = Record<string, { title: string, description: string }>
 type SyncStatus = {
   isRunning: boolean
@@ -37,7 +40,8 @@ export default function App() {
   const [autoTaggerOpen, setAutoTaggerOpen] = useState(false)
   const [autoTagIndex, setAutoTagIndex] = useState(0)
   const [autoTagging, setAutoTagging] = useState(false)
-  const [autoSuggestion, setAutoSuggestion] = useState<{ suggestions: string[]; confidence: number; reasoning?: string } | null>(null)
+  const [autoSuggestion, setAutoSuggestion] = useState<{ suggestions: string[]; confidence: number; reasoning?: string; suggestionId?: string } | null>(null)
+  const [pendingSuggestions, setPendingSuggestions] = useState<TagSuggestionApi[]>([])
   const [autoError, setAutoError] = useState<string | null>(null)
   const [selectedAutoTags, setSelectedAutoTags] = useState<string[]>([])
   const [autoQueue, setAutoQueue] = useState<string[]>([])
@@ -52,8 +56,22 @@ export default function App() {
   const [version, setVersion] = useState<string>("")
   const [anthKeySet, setAnthKeySet] = useState(false)
   const [omdbKeySet, setOmdbKeySet] = useState(false)
+  const [autoTagEnabled, setAutoTagEnabled] = useState(false)
   const [anthInput, setAnthInput] = useState("")
   const [omdbInput, setOmdbInput] = useState("")
+  const [viewMode, setViewMode] = useState<'tile' | 'list'>(() => {
+    const stored = typeof window !== 'undefined' ? window.localStorage.getItem('rasa.viewMode') : null
+    return stored === 'list' ? 'list' : 'tile'
+  })
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.localStorage.setItem('rasa.viewMode', viewMode)
+  }, [viewMode])
+  const [backfillStatus, setBackfillStatus] = useState<BackfillStatusApi | null>(null)
+  const backfillPollRef = useRef<number | null>(null)
+
+  // Per-row edited tag sets for the pending-review list. Undefined = use original suggestion.
+  const [editedPendingTags, setEditedPendingTags] = useState<Record<string, string[]>>({})
+  const [pendingPickerId, setPendingPickerId] = useState<string | null>(null)
 
   // Emoji map for moods (fallback to 🎬)
   const moodEmojiMap = useMemo<Record<string, string>>(() => ({
@@ -94,13 +112,14 @@ export default function App() {
     return moodEmojiMap[key] || '🎬'
   }
 
-  useEffect(() => { fetchMoods(); fetchAllMovies(); fetchVersion() }, [])
+  useEffect(() => { fetchMoods(); fetchAllMovies(); fetchVersion(); fetchPendingSuggestions() }, [])
 
   async function fetchSettingsInfo() {
     try {
-      const info = await api<{ jellyfin_url: string; jellyfin_api_key_set: boolean; jellyfin_user_id: string; anthropic_key_set: boolean; omdb_key_set: boolean }>(`/settings/info`)
+      const info = await api<{ jellyfin_url: string; jellyfin_api_key_set: boolean; jellyfin_user_id: string; anthropic_key_set: boolean; omdb_key_set: boolean; enable_auto_tagging: boolean }>(`/settings/info`)
       setAnthKeySet(!!info.anthropic_key_set)
       setOmdbKeySet(!!info.omdb_key_set)
+      setAutoTagEnabled(!!info.enable_auto_tagging)
     } catch {}
   }
 
@@ -120,9 +139,17 @@ export default function App() {
   async function fetchAllMovies() {
     setLoading(true)
     try {
-      // Fetch all movies at once with a high limit
-      const data = await api<{ movies: Movie[] }>(`/movies?with_tags=true&limit=10000&offset=0`)
-      setMovies(data.movies)
+      // Admin proxy: live Jellyfin fetch enriched with local tags + needs-review flag.
+      const data = await api<{ items: AdminMovieApi[]; totalCount: number }>(`/admin/movies?limit=10000&offset=0`)
+      const mapped: Movie[] = data.items.map(it => ({
+        jellyfinId: it.jellyfinId,
+        title: it.title,
+        year: it.year,
+        posterUrl: it.posterUrl,
+        needsReview: it.needsReview,
+        tags: it.tags.map(slug => ({ slug, title: moods[slug]?.title || slug })),
+      }))
+      setMovies(mapped)
     } catch (error) {
       console.error('Failed to fetch movies:', error)
     } finally {
@@ -182,8 +209,7 @@ export default function App() {
 
   async function saveTags(movie: Movie, selectedTags: string[]) {
     try {
-      // Server now allows empty tag arrays → send exactly what the user selected
-      await api(`/movies/${movie.id}/tags`, {
+      await api(`/movies/${movie.jellyfinId}/tags`, {
         method: 'PUT',
         body: JSON.stringify({ tagSlugs: selectedTags, replaceAll: true })
       })
@@ -198,7 +224,7 @@ export default function App() {
   async function removeTag(movie: Movie, tagSlug: string) {
     try {
       const remainingTags = (movie.tags || []).filter(t => t.slug !== tagSlug).map(t => t.slug)
-      await api(`/movies/${movie.id}/tags`, {
+      await api(`/movies/${movie.jellyfinId}/tags`, {
         method: 'PUT',
         body: JSON.stringify({ tagSlugs: remainingTags, replaceAll: true })
       })
@@ -208,43 +234,40 @@ export default function App() {
       alert('Failed to remove tag. Please try again.')
     }
   }
-  
+
+  // Queues a Claude suggestion. Approval happens in the pending-suggestions review UI.
   async function autoTag(movie: Movie) {
     try {
       setLoading(true)
-      await api(`/movies/${movie.id}/auto-tag`, { method: 'POST', body: JSON.stringify({ provider: 'anthropic', suggestionsOnly: false }) })
-      await fetchAllMovies() // Refresh to show new tags
+      await api(`/movies/${movie.jellyfinId}/auto-tag`, { method: 'POST', body: JSON.stringify({}) })
+      await fetchPendingSuggestions()
+      await fetchAllMovies()
     } catch (error: any) {
       console.error('Failed to auto-tag:', error)
-      let message = 'Failed to auto-tag movie.'
-      
+      let message = 'Failed to queue suggestion.'
       if (error.message?.includes('429')) {
         message = 'Anthropic API rate limit reached. Please wait a moment and try again.'
       } else if (error.message?.includes('401') || error.message?.includes('Invalid API key')) {
         message = 'Invalid Anthropic API key. Please check your API key settings.'
-      } else if (error.message?.includes('Internal Server Error')) {
-        message = 'Anthropic API error. This might be a rate limit or server issue. Try again in a few minutes.'
       }
-      
       alert(message)
     } finally {
       setLoading(false)
     }
   }
 
-  async function suggestFor(movieId: string) {
+  async function suggestFor(jellyfinId: string) {
     setAutoError(null)
     setAutoSuggestion(null)
     setAutoTagging(true)
     try {
-      const resp = await api<{ suggestions: string[]; confidence: number; reasoning?: string }>(`/movies/${movieId}/auto-tag`, {
+      const resp = await api<TagSuggestionApi>(`/movies/${jellyfinId}/auto-tag`, {
         method: 'POST',
-        body: JSON.stringify({ provider: 'anthropic', suggestionsOnly: true })
+        body: JSON.stringify({})
       })
-      // Ignore late responses if user navigated to a different movie
-      if (currentAutoId !== movieId) return
-      setAutoSuggestion(resp)
-      setSelectedAutoTags(resp.suggestions || [])
+      if (currentAutoId !== jellyfinId) return
+      setAutoSuggestion({ suggestions: resp.suggestedTags, confidence: resp.confidence, reasoning: resp.reasoning, suggestionId: resp.id })
+      setSelectedAutoTags(resp.suggestedTags || [])
     } catch (e: any) {
       setAutoError(e.message || 'Failed to get suggestions')
     } finally {
@@ -264,12 +287,61 @@ export default function App() {
   async function applyFor(movie: Movie) {
     if (!autoSuggestion) return
     try {
-      await api(`/movies/${movie.id}/tags`, {
-        method: 'PUT',
-        body: JSON.stringify({ tagSlugs: selectedAutoTags, replaceAll: false })
-      })
+      // Approve the queued suggestion if we have one; otherwise write tags directly.
+      if (autoSuggestion.suggestionId) {
+        await api(`/admin/suggestions/${autoSuggestion.suggestionId}/approve`, { method: 'POST' })
+      } else {
+        await api(`/movies/${movie.jellyfinId}/tags`, {
+          method: 'PUT',
+          body: JSON.stringify({ tagSlugs: selectedAutoTags, replaceAll: false })
+        })
+      }
+      await fetchPendingSuggestions()
+      await fetchAllMovies()
     } catch (e) {
       console.error('Failed to save tags', e)
+    }
+  }
+
+  async function fetchPendingSuggestions() {
+    try {
+      const resp = await api<{ items: TagSuggestionApi[] }>(`/admin/suggestions?status=pending`)
+      setPendingSuggestions(resp.items)
+    } catch (e) {
+      console.error('Failed to fetch pending suggestions:', e)
+    }
+  }
+
+  async function approveSuggestion(id: string, overrideTags?: string[]) {
+    try {
+      const init: RequestInit = { method: 'POST' }
+      if (overrideTags) {
+        init.body = JSON.stringify({ tags: overrideTags })
+      }
+      await api(`/admin/suggestions/${id}/approve`, init)
+      setEditedPendingTags(prev => {
+        const { [id]: _removed, ...rest } = prev
+        return rest
+      })
+      await fetchPendingSuggestions()
+      await fetchAllMovies()
+    } catch (e) {
+      console.error('Failed to approve:', e)
+      alert('Failed to approve suggestion')
+    }
+  }
+
+  async function rejectSuggestion(id: string) {
+    try {
+      await api(`/admin/suggestions/${id}/reject`, { method: 'POST' })
+      setEditedPendingTags(prev => {
+        const { [id]: _removed, ...rest } = prev
+        return rest
+      })
+      await fetchPendingSuggestions()
+    } catch (e) {
+      console.error('Failed to reject:', e)
+      alert('Failed to reject suggestion')
     }
   }
 
@@ -352,6 +424,92 @@ export default function App() {
     }
   }
 
+  async function toggleAutoTagging(next: boolean) {
+    const prev = autoTagEnabled
+    setAutoTagEnabled(next)
+    try {
+      await api('/settings/keys', { method: 'POST', body: JSON.stringify({ enable_auto_tagging: next }) })
+    } catch (error) {
+      console.error('Failed to toggle auto-tagging:', error)
+      setAutoTagEnabled(prev)
+      alert('Failed to update auto-tagging setting')
+    }
+  }
+
+  async function startBackfill() {
+    try {
+      const status = await api<BackfillStatusApi>('/admin/auto-tag/backfill', { method: 'POST' })
+      setBackfillStatus(status)
+      schedulePollBackfill()
+    } catch (error) {
+      console.error('Failed to start backfill:', error)
+      alert('Failed to start auto-tag backfill. Check that the Anthropic API key is set.')
+    }
+  }
+
+  async function startReprocessAll() {
+    try {
+      const status = await api<BackfillStatusApi>('/admin/auto-tag/reprocess-all', { method: 'POST' })
+      setBackfillStatus(status)
+      schedulePollBackfill()
+    } catch (error) {
+      console.error('Failed to start reprocess-all:', error)
+      alert('Failed to start reprocess. Check that the Anthropic API key is set.')
+    }
+  }
+
+  async function cancelBackfill() {
+    if (!confirm('Stop the auto-tagger? The current movie will finish, but no more will be processed.')) return
+    try {
+      const status = await api<BackfillStatusApi>('/admin/auto-tag/cancel', { method: 'POST' })
+      setBackfillStatus(status)
+    } catch (error) {
+      console.error('Failed to cancel:', error)
+      alert('Failed to cancel auto-tagger.')
+    }
+  }
+
+  function schedulePollBackfill() {
+    if (backfillPollRef.current) window.clearTimeout(backfillPollRef.current)
+    backfillPollRef.current = window.setTimeout(pollBackfillOnce, 3000)
+  }
+
+  async function pollBackfillOnce() {
+    try {
+      const status = await api<BackfillStatusApi>('/admin/auto-tag/backfill/status')
+      setBackfillStatus(status)
+      if (status.running) {
+        // Refresh the movie list periodically so newly-tagged rows appear without waiting for done.
+        await fetchAllMovies()
+        await fetchPendingSuggestions()
+        schedulePollBackfill()
+      } else {
+        // Final refresh so the grid reflects the finished run.
+        await fetchAllMovies()
+        await fetchPendingSuggestions()
+      }
+    } catch {
+      // Transient errors — keep trying until status says done.
+      schedulePollBackfill()
+    }
+  }
+
+  // On mount, pick up a backfill that's still running from a previous session.
+  useEffect(() => {
+    (async () => {
+      try {
+        const status = await api<BackfillStatusApi>('/admin/auto-tag/backfill/status')
+        if (status.running) {
+          setBackfillStatus(status)
+          schedulePollBackfill()
+        }
+      } catch {}
+    })()
+    return () => {
+      if (backfillPollRef.current) window.clearTimeout(backfillPollRef.current)
+    }
+  }, [])
+
   const filtered = useMemo(() => {
     return movies.filter(m => (
       (!q || m.title.toLowerCase().includes(q.toLowerCase())) &&
@@ -366,14 +524,16 @@ export default function App() {
     return { total, tagged, untagged }
   }, [movies])
 
-  // Untagged first, then alphabetical by title
+  // Needs review first, then untagged, then tagged — all alphabetical within their bucket.
   const ordered = useMemo(() => {
-    const untagged = filtered.filter(m => (m.tags||[]).length === 0).sort((a,b)=>a.title.localeCompare(b.title))
-    const tagged = filtered.filter(m => (m.tags||[]).length > 0).sort((a,b)=>a.title.localeCompare(b.title))
-    return [...untagged, ...tagged]
+    const needsReview = filtered.filter(m => m.needsReview).sort((a,b)=>a.title.localeCompare(b.title))
+    const rest = filtered.filter(m => !m.needsReview)
+    const untagged = rest.filter(m => (m.tags||[]).length === 0).sort((a,b)=>a.title.localeCompare(b.title))
+    const tagged = rest.filter(m => (m.tags||[]).length > 0).sort((a,b)=>a.title.localeCompare(b.title))
+    return [...needsReview, ...untagged, ...tagged]
   }, [filtered])
   
-  const currentAutoMovie = useMemo(() => movies.find(m => m.id === currentAutoId) || null, [movies, currentAutoId])
+  const currentAutoMovie = useMemo(() => movies.find(m => m.jellyfinId === currentAutoId) || null, [movies, currentAutoId])
   const moodCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     movies.forEach(m => (m.tags||[]).forEach(t => { counts[t.slug] = (counts[t.slug]||0)+1 }))
@@ -422,9 +582,53 @@ export default function App() {
                       </span>
                     </p>
                   </div>
-                  <div className="hidden sm:flex items-center gap-3">
+                  <div className="flex items-center gap-3">
+                    <div
+                      role="group"
+                      aria-label="View mode"
+                      className="inline-flex items-center gap-1 p-1 rounded-full bg-black/5 border border-black/5"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setViewMode('tile')}
+                        aria-pressed={viewMode === 'tile'}
+                        title="Tile view"
+                        aria-label="Tile view"
+                        className={`p-1.5 rounded-full transition flex items-center justify-center ${
+                          viewMode === 'tile'
+                            ? 'bg-white text-[#0f1222] shadow-sm'
+                            : 'text-black/50 hover:text-black'
+                        }`}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                          <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                          <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                          <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setViewMode('list')}
+                        aria-pressed={viewMode === 'list'}
+                        title="List view"
+                        aria-label="List view"
+                        className={`p-1.5 rounded-full transition flex items-center justify-center ${
+                          viewMode === 'list'
+                            ? 'bg-white text-[#0f1222] shadow-sm'
+                            : 'text-black/50 hover:text-black'
+                        }`}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="5" cy="6" r="1" fill="currentColor" stroke="none" />
+                          <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
+                          <circle cx="5" cy="18" r="1" fill="currentColor" stroke="none" />
+                          <path d="M9 6h12M9 12h12M9 18h12" />
+                        </svg>
+                      </button>
+                    </div>
                     <button
-                      className="px-4 py-2.5 bg-[#0f1222] hover:bg-black text-white rounded-full text-sm transition disabled:opacity-50"
+                      className="hidden sm:inline-flex px-4 py-2.5 bg-[#0f1222] hover:bg-black text-white rounded-full text-sm transition disabled:opacity-50"
                       onClick={syncAll}
                       disabled={loading}
                     >
@@ -520,14 +724,149 @@ export default function App() {
             </div>
           </header>
 
+          {/* Auto-tag backfill progress */}
+          {backfillStatus?.running && (
+            <section className="px-3 sm:px-6 pt-4">
+              <div className="mx-auto w-full max-w-[1600px]">
+                <div className="rounded-2xl bg-emerald-50 ring-1 ring-emerald-200 px-4 py-3 flex items-center gap-3">
+                  <svg className="h-4 w-4 text-emerald-700 animate-spin flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                  </svg>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-emerald-900">
+                      Auto-tagging {backfillStatus.processed} / {backfillStatus.total} untagged movies…
+                    </div>
+                    <div className="text-[11px] text-emerald-800/70 mt-0.5">
+                      Claude is working in the background. Tags will appear as they come in.
+                    </div>
+                  </div>
+                  <div className="hidden sm:block w-40 h-2 rounded-full bg-emerald-200 overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-600 transition-all"
+                      style={{ width: `${backfillStatus.total > 0 ? Math.min(100, (backfillStatus.processed / backfillStatus.total) * 100) : 0}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Pending Suggestions Queue */}
+          {pendingSuggestions.length > 0 && (
+            <section className="px-3 sm:px-6 pt-4">
+              <div className="mx-auto w-full max-w-[1600px]">
+                <div className="rounded-2xl bg-white shadow-sm ring-1 ring-black/5 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <div className="text-sm font-semibold text-[#0f1222]">
+                        Tags needing review ({pendingSuggestions.length})
+                      </div>
+                      <div className="text-[11px] text-black/50 mt-0.5">
+                        These tags are already live. Approve to confirm, or reject to remove them.
+                      </div>
+                    </div>
+                    <button
+                      className="text-xs text-black/60 hover:text-black"
+                      onClick={() => fetchPendingSuggestions()}
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {pendingSuggestions.slice(0, 8).map(s => {
+                      const movie = movies.find(m => m.jellyfinId === s.jellyfinId)
+                      const currentTags = editedPendingTags[s.id] ?? s.suggestedTags
+                      const isEdited = editedPendingTags[s.id] !== undefined
+                      const addableTags = Object.keys(moods)
+                        .filter(slug => !currentTags.includes(slug))
+                        .sort((a, b) => (moods[a]?.title || a).localeCompare(moods[b]?.title || b))
+                      return (
+                        <div key={s.id} className="flex flex-col sm:flex-row sm:items-start gap-3 py-2 border-t border-black/5 first:border-t-0">
+                          <div className="flex items-start gap-3 min-w-0 flex-1">
+                            {movie?.posterUrl && (
+                              <img src={movie.posterUrl} alt="" className="w-8 h-12 object-cover rounded flex-shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium truncate">{movie?.title || s.jellyfinId}</div>
+                              <div className="mt-1 flex flex-wrap items-center gap-1">
+                                {currentTags.map(slug => (
+                                  <span key={slug} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/[0.04] text-[11px]">
+                                    {moods[slug]?.title || slug}
+                                    <button
+                                      className="text-black/40 hover:text-rose-600 leading-none text-sm"
+                                      onClick={() => setEditedPendingTags(prev => ({ ...prev, [s.id]: currentTags.filter(t => t !== slug) }))}
+                                      aria-label={`Remove ${moods[slug]?.title || slug}`}
+                                    >
+                                      ×
+                                    </button>
+                                  </span>
+                                ))}
+                                <div className="relative inline-block">
+                                  <button
+                                    className="text-[11px] px-2 py-0.5 rounded-full border border-dashed border-black/25 text-black/50 hover:text-black hover:border-black/40"
+                                    onClick={() => setPendingPickerId(pendingPickerId === s.id ? null : s.id)}
+                                  >
+                                    + Add
+                                  </button>
+                                  {pendingPickerId === s.id && addableTags.length > 0 && (
+                                    <div className="absolute z-20 mt-1 max-h-56 w-56 overflow-auto rounded-lg border border-black/10 bg-white shadow-lg py-1">
+                                      {addableTags.map(slug => (
+                                        <button
+                                          key={slug}
+                                          className="block w-full text-left px-3 py-1.5 text-xs hover:bg-black/[0.04]"
+                                          onClick={() => {
+                                            setEditedPendingTags(prev => ({ ...prev, [s.id]: [...currentTags, slug] }))
+                                            setPendingPickerId(null)
+                                          }}
+                                        >
+                                          {moods[slug]?.title || slug}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-[10px] text-black/40 mt-1">
+                                confidence {(s.confidence * 100).toFixed(0)}%
+                                {isEdited && <span className="ml-1 text-amber-600">· edited</span>}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex gap-2 sm:flex-shrink-0">
+                            <button
+                              className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs disabled:opacity-50"
+                              onClick={() => approveSuggestion(s.id, isEdited ? currentTags : undefined)}
+                              disabled={currentTags.length === 0}
+                              title={currentTags.length === 0 ? 'Add at least one tag or reject instead' : undefined}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg border border-black/10 hover:bg-black/5 text-xs"
+                              onClick={() => rejectSuggestion(s.id)}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
           {/* Movies Grid */}
           <main className="px-3 sm:px-6 py-6">
+            {viewMode === 'tile' ? (
             <div className="mx-auto w-full max-w-[1600px] grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(140px,1fr))] sm:[grid-template-columns:repeat(auto-fill,minmax(180px,1fr))]">
               {ordered.map((m, idx) => {
                 const chips = m.tags || [];
                 return (
                   <motion.div
-                    key={m.id}
+                    key={m.jellyfinId}
                     className="group"
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -552,7 +891,14 @@ export default function App() {
                           }}
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-                        {/* removed heart icon */}
+                        {m.needsReview && (
+                          <span
+                            className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/95 text-white shadow"
+                            title="Auto-tagged with low confidence — please review."
+                          >
+                            Needs review
+                          </span>
+                        )}
                       </div>
                       {/* Details strip under image (not covering poster) */}
                       <div className="p-3 border-t border-black/5">
@@ -609,6 +955,99 @@ export default function App() {
                 );
               })}
             </div>
+            ) : (
+            <div className="mx-auto w-full max-w-[1600px] rounded-2xl bg-white shadow-sm ring-1 ring-black/5 divide-y divide-black/5 overflow-hidden">
+              {ordered.map((m, idx) => {
+                const chips = m.tags || [];
+                return (
+                  <motion.div
+                    key={m.jellyfinId}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      delay: Math.min(idx * 0.008, 0.2),
+                      duration: 0.2,
+                      ease: "easeOut",
+                    }}
+                    className="flex items-center gap-3 px-3 sm:px-4 py-2 hover:bg-black/[0.02] transition"
+                  >
+                    <img
+                      className="w-10 h-14 object-cover rounded-md bg-black/5 flex-shrink-0"
+                      src={m.posterUrl || ""}
+                      alt={m.title}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src =
+                          "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjMwMCIgdmlld0JveD0iMCAwIDIwMCAzMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xMDAgMTQwTDEzMCAxNjBIMTMwTDEwMCAxODBMNzAgMTYwSDcwTDEwMCAxNDBaIiBmaWxsPSIjRDFENUQ5Ii8+Cjx0ZXh0IHg9IjEwMCIgeT0iMjIwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjNjg3Mjc2IiBmb250LWZhbWlseT0ic3lzdGVtLXVpIiBmb250LXNpemU9IjE0Ij5ObyBQb3N0ZXI8L3RleHQ+Cjwvc3ZnPgo=";
+                      }}
+                    />
+                    <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center sm:gap-3">
+                      <div className="min-w-0 sm:w-72 sm:flex-shrink-0">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="text-[14px] font-medium truncate text-[#0f1222]"
+                            title={m.title}
+                          >
+                            {m.title}
+                            {m.year ? (
+                              <span className="ml-1 text-black/40 font-normal">
+                                ({m.year})
+                              </span>
+                            ) : null}
+                          </div>
+                          {m.needsReview && (
+                            <span
+                              className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-amber-500/95 text-white"
+                              title="Auto-tagged with low confidence — please review."
+                            >
+                              Review
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-1 sm:mt-0 flex-1 min-w-0 flex flex-wrap items-center gap-1">
+                        {chips.length === 0 ? (
+                          <span className="text-[11px] text-black/40 italic">
+                            No tags
+                          </span>
+                        ) : (
+                          chips.map((t) => (
+                            <span
+                              key={t.slug}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-black/[0.06] text-[#0f1222] border border-black/5"
+                            >
+                              <span>{getMoodEmoji(t.slug, t.title)}</span>
+                              {t.title}
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingMovie(m)}
+                      title="Edit tags"
+                      aria-label={`Edit tags for ${m.title}`}
+                      className="flex-shrink-0 p-2 rounded-full text-black/50 hover:text-black hover:bg-black/5 transition"
+                    >
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                      </svg>
+                    </button>
+                  </motion.div>
+                );
+              })}
+            </div>
+            )}
 
             {/* Empty State */}
             {filtered.length === 0 && !loading && (
@@ -694,7 +1133,15 @@ export default function App() {
       )}
 
       {/* Settings Modal */}
-      {settingsOpen && (
+      {settingsOpen && (() => {
+        const untaggedCount = movies.filter(m => (m.tags || []).length === 0 && !m.needsReview).length
+        const reviewCount = pendingSuggestions.length
+        const autoTaggerQueue = untaggedCount + reviewCount
+        const backfillRunning = backfillStatus?.running === true
+        const backfillPct = backfillStatus && backfillStatus.total > 0
+          ? Math.min(100, Math.round((backfillStatus.processed / backfillStatus.total) * 100))
+          : 0
+        return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-white rounded-3xl p-5 max-w-2xl w-full mx-4 shadow-2xl border border-black/10 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
@@ -706,19 +1153,128 @@ export default function App() {
                 ✕
               </button>
             </div>
-            <div className="space-y-6">
+            <div className="space-y-8">
 
-              {/* API Keys */}
+              {/* ─────────── SECTION A: ACTIONS ─────────── */}
               <div className="space-y-3">
-                <div className="text-sm font-medium text-[#0f1222]">API Keys</div>
-                <div className="grid grid-cols-1 gap-4">
+                <div className="text-[11px] uppercase tracking-wide text-black/50 font-semibold">Actions</div>
+
+                {/* Sync Library */}
+                <div className="rounded-2xl border border-black/10 p-4 bg-white">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-[#0f1222]">Sync Library</div>
+                      <p className="text-xs text-black/50 mt-1">
+                        Pull the latest movies from Jellyfin into Rasa's catalog.
+                        {movies.length > 0 && <span className="block mt-0.5">{movies.length} movies in local catalog.</span>}
+                      </p>
+                    </div>
+                    <button
+                      className="shrink-0 px-4 py-2 rounded-lg bg-[#0f1222] text-white hover:bg-black disabled:opacity-50 text-sm"
+                      onClick={() => { setSettingsOpen(false); syncAll(); }}
+                      disabled={loading}
+                    >
+                      {loading ? 'Syncing…' : 'Sync now'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* AI Auto-Tagger */}
+                <div className="rounded-2xl border border-black/10 p-4 bg-white">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-[#0f1222]">AI Auto-Tagger</div>
+                      <p className="text-xs text-black/50 mt-1">
+                        Tags untagged movies and re-reviews the ones flagged for review.
+                        {!anthKeySet && <span className="block mt-0.5 text-amber-600">Requires an Anthropic API key.</span>}
+                        {anthKeySet && !backfillRunning && (
+                          <span className="block mt-0.5">
+                            {untaggedCount} untagged · {reviewCount} in review
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <button
+                      className="shrink-0 px-4 py-2 rounded-lg bg-[#0f1222] text-white hover:bg-black disabled:opacity-50 text-sm"
+                      onClick={async () => { await startBackfill() }}
+                      disabled={!anthKeySet || backfillRunning || autoTaggerQueue === 0}
+                    >
+                      {backfillRunning ? 'Running…' : 'Start auto-tag'}
+                    </button>
+                  </div>
+                  {backfillRunning && (
+                    <div className="mt-3">
+                      <div className="h-1.5 rounded-full bg-black/10 overflow-hidden">
+                        <div className="h-full bg-emerald-600 transition-all" style={{ width: `${backfillPct}%` }} />
+                      </div>
+                      <div className="mt-1.5 flex items-center justify-between gap-3">
+                        <span className="text-[11px] text-black/60">
+                          {backfillStatus?.processed ?? 0} / {backfillStatus?.total ?? 0} processed
+                          {backfillStatus?.cancelled && <span className="ml-2 text-rose-600">· cancelling…</span>}
+                        </span>
+                        {!backfillStatus?.cancelled && (
+                          <button
+                            className="text-[11px] text-rose-600 hover:text-rose-800 underline decoration-dotted underline-offset-2"
+                            onClick={cancelBackfill}
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  <div className="mt-3 text-[11px]">
+                    <button
+                      className="text-black/50 hover:text-black underline decoration-dotted underline-offset-2"
+                      onClick={() => {
+                        const queue = movies.filter(m => (m.tags || []).length === 0).map(m => m.jellyfinId)
+                        setAutoQueue(queue); setAutoTagIndex(0); setCurrentAutoId(queue[0] || null); setAutoTaggerOpen(true); setSettingsOpen(false)
+                      }}
+                    >
+                      Review untagged manually instead →
+                    </button>
+                  </div>
+                </div>
+
+                {/* Reprocess All */}
+                <div className="rounded-2xl border border-black/10 p-4 bg-white">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-[#0f1222]">Reprocess all tagged movies</div>
+                      <p className="text-xs text-black/50 mt-1">
+                        Clear every movie's tags and re-run the auto-tagger against the whole library. Useful after taxonomy changes. Uses Anthropic API for every movie.
+                      </p>
+                    </div>
+                    <button
+                      className="shrink-0 px-4 py-2 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 disabled:opacity-50 text-sm"
+                      onClick={async () => {
+                        if (!confirm(`This will clear tags on all ${movies.length} movies and re-tag them with Claude. Continue?`)) return
+                        await startReprocessAll()
+                      }}
+                      disabled={!anthKeySet || backfillRunning || movies.length === 0}
+                    >
+                      Reprocess all
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ─────────── SECTION B: CONFIGURATION ─────────── */}
+              <div className="space-y-3">
+                <div className="text-[11px] uppercase tracking-wide text-black/50 font-semibold">Configuration</div>
+
+                {/* Jellyfin */}
+                <JellyfinSetup />
+
+                {/* API Keys */}
+                <div className="rounded-2xl border border-black/10 p-4 bg-white space-y-3">
                   <div className="space-y-1">
                     <label className="block text-xs text-black/60">Anthropic API Key</label>
                     <div className="flex gap-2">
                       <input id="anthropic-key-inline" className="flex-1 h-10 px-3 rounded-lg border border-black/10 focus:outline-none focus:ring-2 focus:ring-black/10" type="password" placeholder={anthKeySet && !anthInput ? '••••••••••••' : 'sk-ant-…'} value={anthInput} onChange={(e)=>setAnthInput(e.target.value)} onKeyDown={async (e)=>{ if(e.key==='Enter'){ const v=anthInput.trim(); if(v) await saveOpenAIKey(v) } }} />
                       <button className="px-3 py-2 rounded-lg bg-[#0f1222] text-white hover:bg-black" onClick={async()=>{ const v=anthInput.trim(); if(v) await saveOpenAIKey(v) }}>Save</button>
                     </div>
-                    <div className="text-[11px] text-black/50">Optional: Anthropic API Key for automatic movie tagging with AI.</div>
+                    <div className="text-[11px] text-black/50">Required for AI auto-tagging.</div>
                   </div>
                   <div className="space-y-1">
                     <label className="block text-xs text-black/60">OMDb API Key</label>
@@ -726,63 +1282,65 @@ export default function App() {
                       <input id="omdb-key-inline" className="flex-1 h-10 px-3 rounded-lg border border-black/10 focus:outline-none focus:ring-2 focus:ring-black/10" type="password" placeholder={omdbKeySet && !omdbInput ? '••••••••••••' : 'omdb api key'} value={omdbInput} onChange={(e)=>setOmdbInput(e.target.value)} onKeyDown={async (e)=>{ if(e.key==='Enter'){ const v=omdbInput.trim(); if(v) await saveOmdbKey(v) } }} />
                       <button className="px-3 py-2 rounded-lg bg-[#0f1222] text-white hover:bg-black" onClick={async()=>{ const v=omdbInput.trim(); if(v) await saveOmdbKey(v) }}>Save</button>
                     </div>
+                    <div className="text-[11px] text-black/50">Optional: IMDb, Rotten Tomatoes and Metacritic ratings.</div>
                   </div>
                 </div>
-                <div className="text-[11px] text-black/50">Optional: OMDb API Key for IMDb, Rotten Tomatoes and Metacritic ratings.</div>
+
+                {/* Auto-tag on sync toggle */}
+                <div className="rounded-2xl border border-black/10 p-4 bg-white flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-[#0f1222]">Auto-tag on sync</div>
+                    <p className="text-xs text-black/50 mt-1">
+                      When on, new movies found during sync are queued for AI tagging automatically. Low-confidence suggestions are flagged for review.
+                      {!anthKeySet && <span className="block mt-1 text-amber-600">Requires an Anthropic API key.</span>}
+                    </p>
+                  </div>
+                  <button
+                    role="switch"
+                    aria-checked={autoTagEnabled}
+                    onClick={() => toggleAutoTagging(!autoTagEnabled)}
+                    disabled={!anthKeySet}
+                    className={`shrink-0 mt-1 inline-flex h-6 w-11 items-center rounded-full transition ${autoTagEnabled ? 'bg-emerald-600' : 'bg-black/20'} ${!anthKeySet ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${autoTagEnabled ? 'translate-x-5' : 'translate-x-1'}`} />
+                  </button>
+                </div>
               </div>
 
-              <div className="h-px bg-black/10" />
-
-              {/* Grid cards: Library, Auto Tagger, Data, Maintenance */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="rounded-2xl border border-black/10 p-4 bg-white">
-                  <div className="text-sm font-medium text-[#0f1222] mb-2">Library</div>
-                  <p className="text-xs text-black/50 mb-3">Sync your Jellyfin library now.</p>
-                  <button className="px-4 py-2.5 rounded-lg bg-[#0f1222] text-white hover:bg-black disabled:opacity-50" onClick={() => { setSettingsOpen(false); syncAll(); }} disabled={loading}>
-                    {loading ? 'Syncing…' : 'Sync Library'}
-                  </button>
-                </div>
-                <div className="rounded-2xl border border-black/10 p-4 bg-white">
-                  <div className="text-sm font-medium text-[#0f1222] mb-2">AI Auto Tagger</div>
-                  <p className="text-xs text-black/50 mb-3">Run AI suggestions for untagged movies.</p>
-                  <button className="px-4 py-2.5 rounded-lg border border-black/10 hover:bg-black/5" onClick={() => { const queue = movies.filter(m => (m.tags||[]).length === 0).map(m => m.id as string); setAutoQueue(queue); setAutoTagIndex(0); setCurrentAutoId(queue[0] || null); setAutoTaggerOpen(true); setSettingsOpen(false) }}>
-                    Launch Auto Tagger
-                  </button>
-                </div>
-                <div className="rounded-2xl border border-black/10 p-4 bg-white">
-                  <div className="text-sm font-medium text-[#0f1222] mb-2">Data</div>
+              {/* ─────────── SECTION C: DATA / MAINTENANCE ─────────── */}
+              <div className="space-y-3">
+                <div className="text-[11px] uppercase tracking-wide text-black/50 font-semibold">Data & Maintenance</div>
+                <div className="rounded-2xl border border-black/10 p-4 bg-white space-y-3">
                   <div className="flex flex-wrap gap-2">
-                    <button className="px-4 py-2 rounded-lg border border-black/10 hover:bg-black/5" onClick={()=>importInputRef.current?.click()}>Import from JSON</button>
-                    <button className="px-4 py-2 rounded-lg border border-black/10 hover:bg-black/5" onClick={exportTags}>Export as JSON</button>
+                    <button className="px-4 py-2 rounded-lg border border-black/10 hover:bg-black/5 text-sm" onClick={()=>importInputRef.current?.click()}>Import tags (JSON)</button>
+                    <button className="px-4 py-2 rounded-lg border border-black/10 hover:bg-black/5 text-sm" onClick={exportTags}>Export tags (JSON)</button>
                     <input ref={importInputRef} type="file" accept="application/json" hidden onChange={async (e)=>{ const file=e.target.files?.[0]; if(file) await importTagsFile(file); if(e.target) e.target.value='' }} />
                   </div>
+                  <div className="pt-3 border-t border-black/5">
+                    <button
+                      className="px-4 py-2 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 text-sm"
+                      onClick={async()=>{ if(!confirm('This will delete all movies from Rasa (not Jellyfin) and reset tag usage counts. Continue?')) return; try { await api('/settings/clear-movies', { method: 'POST' }); setSettingsOpen(false); await fetchAllMovies(); } catch { alert('Failed to clear movies') } }}
+                    >
+                      Clear local movies
+                    </button>
+                    <p className="mt-1 text-[11px] text-black/50">Deletes local catalog and resets tag usage. Jellyfin untouched.</p>
+                  </div>
                 </div>
-                <div className="rounded-2xl border border-black/10 p-4 bg-white">
-                  <div className="text-sm font-medium text-[#0f1222] mb-2">Maintenance</div>
-                  <p className="text-xs text-black/50 mb-3">Deletes local catalog and resets tag usage.</p>
-                  <button className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white" onClick={async()=>{ if(!confirm('This will delete all movies from Rasa (not Jellyfin) and reset tag usage counts. Continue?')) return; try { await api('/settings/clear-movies', { method: 'POST' }); setSettingsOpen(false); await fetchAllMovies(); } catch { alert('Failed to clear movies') } }}>Clear Local Movies</button>
-                </div>
-              </div>
-
-              <div className="h-px bg-black/10" />
-
-              {/* Jellyfin */}
-              <div className="space-y-3">
-                <JellyfinSetup />
               </div>
 
               {version && <div className="pt-1 text-center text-xs text-black/50">{version}</div>}
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* Edit Tags Modal */}
       {editingMovie && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-8 max-w-lg w-full mx-4 shadow-2xl border border-gray-100">
-            <div className="flex items-center justify-between mb-8">
-              <h2 className="text-2xl font-light text-gray-900">Edit Tags</h2>
+          <div className="bg-white rounded-3xl p-5 sm:p-8 max-w-lg w-full mx-4 shadow-2xl border border-gray-100">
+            <div className="flex items-center justify-between mb-6 sm:mb-8">
+              <h2 className="text-xl sm:text-2xl font-light text-gray-900">Edit Tags</h2>
               <button
                 className="text-gray-400 hover:text-gray-600 transition-colors rounded-full p-1 hover:bg-gray-100"
                 onClick={() => setEditingMovie(null)}
@@ -803,7 +1361,7 @@ export default function App() {
               </button>
             </div>
 
-            <div className="mb-8">
+            <div className="mb-6 sm:mb-8">
               <h3 className="font-medium text-gray-900 mb-2">
                 {editingMovie.title}
               </h3>
@@ -828,16 +1386,16 @@ export default function App() {
       {/* AI Auto Tagger Modal */}
       {autoTaggerOpen && currentAutoMovie && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-6 max-w-4xl w-full mx-4 shadow-2xl border border-gray-100">
-            <div className="flex items-start gap-6">
-              <div className="w-1/3 bg-gray-100 rounded-2xl overflow-hidden">
+          <div className="bg-white rounded-3xl p-4 sm:p-6 max-w-4xl w-full mx-4 shadow-2xl border border-gray-100">
+            <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
+              <div className="w-full sm:w-1/3 aspect-[2/3] sm:aspect-auto bg-gray-100 rounded-2xl overflow-hidden">
                 <img
                   src={currentAutoMovie.posterUrl || ""}
                   alt={currentAutoMovie.title}
                   className="w-full h-full object-cover"
                 />
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0 w-full">
                 <div className="flex items-start justify-between mb-3">
                   <h2 className="text-xl font-light text-gray-900">
                     {currentAutoMovie.title}
@@ -1243,8 +1801,10 @@ function JellyfinSetup() {
   async function testConnection() {
     try {
       setTesting(true)
+      // Trigger a real sync test against Jellyfin via the unified jellyfin endpoint.
+      // Saves as a side effect — use `/sync/test-connection` separately for a dry-run.
       const r = await api<{ success: boolean; error?: string; userId?: string; serverName?: string; version?: string; localAddress?: string }>(
-        `/settings/login?save=false`, { method: 'POST', body: JSON.stringify({ jellyfin_url: url, username: apiKey, password: (document.getElementById('jf-pass') as HTMLInputElement)?.value || '' }) }
+        `/sync/test-connection`, { method: 'POST' }
       )
       if (r.success) {
         setResult('Connection OK')
@@ -1264,7 +1824,11 @@ function JellyfinSetup() {
   async function saveConfig() {
     try {
       const password = (document.getElementById('jf-pass') as HTMLInputElement)?.value || ''
-      const resp = await fetch('/api/v1/settings/login?save=true', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jellyfin_url: url, username: apiKey, password }) })
+      const resp = await fetch('/api/v1/settings/jellyfin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jellyfin_url: url, jellyfin_username: apiKey, jellyfin_password: password })
+      })
       const j = await resp.json()
       if (j.success) {
         setResult('Saved & authenticated')

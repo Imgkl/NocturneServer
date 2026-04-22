@@ -26,51 +26,63 @@ RasaServer is a vibe-based movie discovery layer that sits alongside Jellyfin, o
 ---
 
 ## Architecture
-```
-┌──────────────┐
-│   Jellyfin   │ ← Your existing media server (source of truth)
-└──────┬───────┘
-       │ webhooks (real-time sync)
-       ▼
-┌──────────────────────────┐
-│     RasaServer           │ ← Mood tagging + transformation layer
-│  ┌────────────────────┐  │
-│  │ Web UI (Admin)     │  │ ← Setup, sync, manual / automatic tagging
-│  └────────────────────┘  │
-│  ┌────────────────────┐  │
-│  │ REST API           │  │ ← Powers client apps
-│  └────────────────────┘  │
-└──────────┬───────────────┘
-           │ API
-           ▼
-    ┌──────────────┐
-    │  RasaPlay    │ ← Client app (browse by mood, watch)
-    └──────────────┘
+
+```mermaid
+flowchart TB
+    Jellyfin[("Jellyfin<br/>source of truth<br/>catalog · playback · watched")]
+
+    subgraph Rasa["RasaServer — vibe index layer"]
+        direction LR
+        API["Hummingbird API<br/>:3242"]
+        WS["Jellyfin Realtime<br/>WebSocket listener"]
+        SuggQ["Claude suggestion<br/>queue"]
+        OMDbProxy["OMDb proxy<br/>(15-day cache)"]
+        WebUI["Web UI<br/>setup · tagging · approvals"]
+        DB[("SQLite<br/>jellyfinId ↔ mood tags")]
+
+        WebUI --- API
+        API --- DB
+        WS --- DB
+        SuggQ --- DB
+        OMDbProxy --- DB
+    end
+
+    Client["Client<br/>(RasaPlay, etc.)"]
+    Claude["Claude API<br/>(BYOK)"]
+    OMDb["OMDb API<br/>(BYOK)"]
+
+    Jellyfin <-- "REST + WebSocket" --> WS
+    Client -- "streams · catalog · watched" --> Jellyfin
+    Client -- "mood queries · tag reads" --> API
+
+    SuggQ -- "mood suggestions" --> Claude
+    OMDbProxy -- "ratings lookup" --> OMDb
 ```
 
 > [!Important]
-> Jellyfin is always the source of truth. RasaServer is just an intelligent vibe index layer.
->
+> Jellyfin is the source of truth. RasaServer is a pure vibe-index layer — it stores only
+> `jellyfinId → mood tags` and never mirrors Jellyfin metadata. Clients (e.g. RasaPlay) talk to
+> Jellyfin directly for catalog/playback and to RasaServer for mood curation.
 
 **How it works:**
-1. RasaServer syncs your Jellyfin library (one-time setup via Web UI)
-2. Automatically tags movies into mood buckets
-3. Stays in sync via Jellyfin webhooks (real-time updates)
-4. Web UI for admin tasks: configuration, manual tagging, sync management
-5. RasaPlay app (or any client) queries RasaServer API for mood-organized content
+1. RasaServer syncs your Jellyfin library by ID only (one-time setup via Web UI, then real-time WebSocket reconciliation)
+2. New movies auto-queue a Claude mood-tag suggestion (hybrid approval flow)
+3. Admin reviews suggestions in the Web UI and approves/rejects before tags are written
+4. Clients join their Jellyfin data with RasaServer's mood tags on the fly
 
 ---
 
 ## Features
 
 ### Core
-- ✅ **Movie's mood-based organization** - 36 curated moods (see full list below)
-- ✅ **Real-time sync** - Jellyfin webhooks keep data fresh
-- ✅ **Auto-tagging** - Optional AI suggestions (BYOK: Claude)
-- ✅ **Manual tagging** - Web UI for fine-tuning
-- ✅ **Import/Export** - Backup your mood mappings
-- ✅ **External ratings** - Optional OMDB integration (IMDb, RT, Metacritic)
-- ✅ **Built-in Web UI** - No separate admin tools needed
+- ✅ **Mood-based organization** — 36 curated moods (see full list below)
+- ✅ **Real-time sync** — Jellyfin WebSocket listener keeps the ID set fresh
+- ✅ **Hybrid auto-tagging** — Claude queues mood suggestions, admin approves
+- ✅ **Manual tagging** — Web UI for fine-tuning
+- ✅ **Import/Export** — Backup your mood mappings
+- ✅ **External ratings** — OMDb proxy for IMDb/RT/Metacritic (BYOK, shared 15-day cache)
+- ✅ **Built-in Web UI** — No separate admin tools needed
+- ✅ **Slim by design** — stores only Jellyfin IDs + tags; no mirrored metadata
 
 ### Privacy
 - 🔒 **Local-first** - All data in `./data/rasa.sqlite`
