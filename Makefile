@@ -6,19 +6,19 @@ VERSION ?= $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
 .PHONY: web build package docker clean
 
 web:
-	cd frontend/rasa-web && npm ci && npm run build && rm -rf ../../public && mkdir -p ../../public && cp -R dist/* ../../public
+	cd frontend/nocturne-web && npm ci && npm run build && rm -rf ../../public && mkdir -p ../../public && cp -R dist/* ../../public
 
 build:
 	swift build -c release
 
 package: web build
-	mkdir -p release && cp .build/release/RasaServer release/ && cp -R public release/public
+	mkdir -p release && cp .build/release/NocturneServer release/ && cp -R public release/public
 
 docker:
-	docker build --build-arg RASA_VERSION=$(VERSION) -t rasa-server:$(VERSION) -t rasa-server:latest .
+	docker build --build-arg NOCTURNE_VERSION=$(VERSION) -t nocturne-server:$(VERSION) -t nocturne-server:latest .
 
 clean:
-	rm -rf .build public release rasa.sqlite secrets
+	rm -rf .build public release nocturne.sqlite secrets
 
 .PHONY: build run test clean docker-build docker-run setup migrate sync check fmt
 
@@ -27,7 +27,7 @@ all: build
 
 # Build the application
 build:
-	@echo "🔨 Building Rasa Server..."
+	@echo "🔨 Building Nocturne..."
 	swift build -c release
 
 # Build for development
@@ -38,25 +38,25 @@ build-dev:
 # Run the server
 run: build-dev
 	@echo "🚀 Starting server..."
-	./.build/debug/RasaServer
+	./.build/debug/NocturneServer
 
 # Frontend (React + Vite)
 fe-install:
 	@echo "📦 Installing frontend deps..."
-	cd frontend/rasa-web && npm install
+	cd frontend/nocturne-web && npm install
 
 fe-dev:
 	@echo "▶️  Starting Vite dev server (proxy to :8003)..."
-	cd frontend/rasa-web && npm run dev
+	cd frontend/nocturne-web && npm run dev
 
 fe-build:
 	@echo "🏗️  Building frontend into public/ ..."
-	cd frontend/rasa-web && npm run build
+	cd frontend/nocturne-web && npm run build
 
 # Run with verbose logging  
 run-verbose: build-dev
 	@echo "🚀 Starting server..."
-	./.build/debug/RasaServer
+	./.build/debug/NocturneServer
 
 # Setup development environment
 setup:
@@ -93,11 +93,11 @@ test-unit:
 # Docker commands
 docker-build:
 	@echo "🐳 Building Docker image..."
-	docker build --build-arg RASA_VERSION=$(VERSION) -t rasa-server:$(VERSION) -t rasa-server:latest .
+	docker build --build-arg NOCTURNE_VERSION=$(VERSION) -t nocturne-server:$(VERSION) -t nocturne-server:latest .
 
 docker-build-pi:
 	@echo "🫐 Building Docker image for Raspberry Pi (ARM64)..."
-	docker buildx build --platform linux/arm64 --build-arg RASA_VERSION=$(VERSION) -t rasa-server:arm64-$(VERSION) -t rasa-server:arm64-latest .
+	docker buildx build --platform linux/arm64 --build-arg NOCTURNE_VERSION=$(VERSION) -t nocturne-server:arm64-$(VERSION) -t nocturne-server:arm64-latest .
 
 docker-run: docker-build
 	@echo "🐳 Running Docker container..."
@@ -112,13 +112,13 @@ deploy-pi:
 # Production deployment with multi-arch support
 deploy-prod:
 	@echo "🚀 Building multi-architecture images..."
-	docker buildx create --use --name rasa-builder || true
-	docker buildx build --platform linux/amd64,linux/arm64 --build-arg RASA_VERSION=$(VERSION) -t rasa-server:$(VERSION) -t rasa-server:latest --push .
+	docker buildx create --use --name nocturne-builder || true
+	docker buildx build --platform linux/amd64,linux/arm64 --build-arg NOCTURNE_VERSION=$(VERSION) -t nocturne-server:$(VERSION) -t nocturne-server:latest --push .
 	docker compose -f docker-compose.prod.yml up -d
 
 docker-logs:
 	@echo "📋 Showing Docker logs..."
-	docker compose logs -f rasa
+	docker compose logs -f nocturne
 
 docker-stop:
 	@echo "🛑 Stopping Docker containers..."
@@ -127,7 +127,7 @@ docker-stop:
 docker-clean:
 	@echo "🧹 Cleaning Docker containers and images..."
 	docker compose down --volumes --remove-orphans
-	docker rmi rasa-server:latest 2>/dev/null || true
+	docker rmi nocturne-server:latest 2>/dev/null || true
 
 # Health check
 health:
@@ -157,7 +157,7 @@ deploy: docker-build
 
 # Show help
 help:
-	@echo "Rasa Server - Available Commands:"
+	@echo "Nocturne - Available Commands:"
 	@echo ""
 	@echo "Development:"
 	@echo "  setup       - Setup development environment"

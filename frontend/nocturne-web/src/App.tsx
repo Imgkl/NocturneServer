@@ -60,11 +60,11 @@ export default function App() {
   const [anthInput, setAnthInput] = useState("")
   const [omdbInput, setOmdbInput] = useState("")
   const [viewMode, setViewMode] = useState<'tile' | 'list'>(() => {
-    const stored = typeof window !== 'undefined' ? window.localStorage.getItem('rasa.viewMode') : null
+    const stored = typeof window !== 'undefined' ? window.localStorage.getItem('nocturne.viewMode') : null
     return stored === 'list' ? 'list' : 'tile'
   })
   useEffect(() => {
-    if (typeof window !== 'undefined') window.localStorage.setItem('rasa.viewMode', viewMode)
+    if (typeof window !== 'undefined') window.localStorage.setItem('nocturne.viewMode', viewMode)
   }, [viewMode])
   const [backfillStatus, setBackfillStatus] = useState<BackfillStatusApi | null>(null)
   const backfillPollRef = useRef<number | null>(null)
@@ -354,7 +354,7 @@ export default function App() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = 'rasa-tags.json'
+      a.download = 'nocturne-tags.json'
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -1165,7 +1165,7 @@ export default function App() {
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium text-[#0f1222]">Sync Library</div>
                       <p className="text-xs text-black/50 mt-1">
-                        Pull the latest movies from Jellyfin into Rasa's catalog.
+                        Pull the latest movies from Jellyfin into Nocturne's catalog.
                         {movies.length > 0 && <span className="block mt-0.5">{movies.length} movies in local catalog.</span>}
                       </p>
                     </div>
@@ -1319,7 +1319,7 @@ export default function App() {
                   <div className="pt-3 border-t border-black/5">
                     <button
                       className="px-4 py-2 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 text-sm"
-                      onClick={async()=>{ if(!confirm('This will delete all movies from Rasa (not Jellyfin) and reset tag usage counts. Continue?')) return; try { await api('/settings/clear-movies', { method: 'POST' }); setSettingsOpen(false); await fetchAllMovies(); } catch { alert('Failed to clear movies') } }}
+                      onClick={async()=>{ if(!confirm('This will delete all movies from Nocturne (not Jellyfin) and reset tag usage counts. Continue?')) return; try { await api('/settings/clear-movies', { method: 'POST' }); setSettingsOpen(false); await fetchAllMovies(); } catch { alert('Failed to clear movies') } }}
                     >
                       Clear local movies
                     </button>

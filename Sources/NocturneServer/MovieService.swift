@@ -5,13 +5,13 @@ import HummingbirdFluent
 import Logging
 
 final class MovieService {
-  let config: RasaConfiguration
+  let config: NocturneConfiguration
   let fluent: Fluent
   var jellyfinService: JellyfinService
   let llmService: LLMService
   private let logger = Logger(label: "MovieService")
 
-  /// Wired post-construction by RasaServerApp to break the cycle with SuggestionService.
+  /// Wired post-construction by NocturneServerApp to break the cycle with SuggestionService.
   weak var suggestionService: SuggestionService?
 
   // Sync status tracking
@@ -21,7 +21,7 @@ final class MovieService {
   private var lastSyncStats = SyncStats()
 
   init(
-    config: RasaConfiguration,
+    config: NocturneConfiguration,
     fluent: Fluent,
     jellyfinService: JellyfinService,
     llmService: LLMService

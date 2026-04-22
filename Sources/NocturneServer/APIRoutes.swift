@@ -9,14 +9,14 @@ import NIOCore
 final class APIRoutes: @unchecked Sendable {
   let movieService: MovieService
   let suggestionService: SuggestionService
-  let config: RasaConfiguration
+  let config: NocturneConfiguration
   let logger = Logger(label: "APIRoutes")
   let httpClient: HTTPClient
 
   init(
     movieService: MovieService,
     suggestionService: SuggestionService,
-    config: RasaConfiguration,
+    config: NocturneConfiguration,
     httpClient: HTTPClient
   ) {
     self.movieService = movieService
@@ -31,7 +31,7 @@ final class APIRoutes: @unchecked Sendable {
     // Version endpoint
     router.get("/version") { _, _ in
       struct VersionResponse: Codable { let version: String }
-      let v = ProcessInfo.processInfo.environment["RASA_VERSION"] ?? "dev"
+      let v = ProcessInfo.processInfo.environment["NOCTURNE_VERSION"] ?? "dev"
       return try jsonResponse(VersionResponse(version: v))
     }
 
@@ -135,7 +135,7 @@ final class APIRoutes: @unchecked Sendable {
     }
   }
 
-  // MARK: - Clients Routes (ID-only surface for RasaPlay-style clients)
+  // MARK: - Clients Routes (ID-only surface for mobile/desktop clients)
   private func addClientRoutes(to router: RouterGroup<BasicRequestContext>) {
     let clients = router.group("clients")
 

@@ -7,7 +7,7 @@ import NIOHTTP1
 /// Background service that listens to Jellyfin WebSocket `/socket` for real-time library changes
 /// and applies them to the local database by upserting new/updated items and deleting removed ones.
 final class JellyfinRealtimeService: @unchecked Sendable {
-    private let config: RasaConfiguration
+    private let config: NocturneConfiguration
     private let movieService: MovieService
     private let suggestionService: SuggestionService
     private let eventLoopGroup: EventLoopGroup
@@ -19,7 +19,7 @@ final class JellyfinRealtimeService: @unchecked Sendable {
     // No additional debounce; Jellyfin already batches LibraryChanged
 
     init(
-        config: RasaConfiguration,
+        config: NocturneConfiguration,
         movieService: MovieService,
         suggestionService: SuggestionService,
         eventLoopGroup: EventLoopGroup,
@@ -56,7 +56,7 @@ final class JellyfinRealtimeService: @unchecked Sendable {
         comps.path = "/socket"
         var q: [URLQueryItem] = [
             URLQueryItem(name: "api_key", value: config.jellyfinApiKey),
-            URLQueryItem(name: "deviceId", value: "RasaServer-\(UUID().uuidString)"),
+            URLQueryItem(name: "deviceId", value: "Nocturne-\(UUID().uuidString)"),
             URLQueryItem(name: "format", value: "json")
         ]
         // Some servers expect UserId as well; include if available
@@ -68,8 +68,8 @@ final class JellyfinRealtimeService: @unchecked Sendable {
 
     private func authHeader() -> HTTPHeaders {
         var headers = HTTPHeaders()
-        let deviceId = "RasaServer-\(UUID().uuidString)"
-        let auth = "MediaBrowser Client=\"Rasa\", Device=\"RasaServer\", DeviceId=\"\(deviceId)\", Version=\"1.0.0\""
+        let deviceId = "Nocturne-\(UUID().uuidString)"
+        let auth = "MediaBrowser Client=\"Nocturne\", Device=\"Nocturne\", DeviceId=\"\(deviceId)\", Version=\"1.0.0\""
         headers.add(name: "X-Emby-Authorization", value: auth)
         return headers
     }

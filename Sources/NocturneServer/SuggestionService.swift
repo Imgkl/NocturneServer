@@ -9,7 +9,7 @@ final class SuggestionService: @unchecked Sendable {
   let fluent: Fluent
   let jellyfinService: JellyfinService
   let llmService: LLMService
-  let config: RasaConfiguration
+  let config: NocturneConfiguration
   private let logger = Logger(label: "SuggestionService")
 
   /// Set after construction to avoid a circular init between MovieService and SuggestionService.
@@ -22,7 +22,7 @@ final class SuggestionService: @unchecked Sendable {
     fluent: Fluent,
     jellyfinService: JellyfinService,
     llmService: LLMService,
-    config: RasaConfiguration
+    config: NocturneConfiguration
   ) {
     self.fluent = fluent
     self.jellyfinService = jellyfinService
