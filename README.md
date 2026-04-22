@@ -223,11 +223,3 @@ Please open an issue first to discuss major changes.
 ## License
 
 MIT - Use it, fork it, modify it. Just don't blame me if your movie night goes wrong.
-
----
-
-## Credits
-
-Built to solve a personal problem: "I have 500 movies but can't decide what to watch."
-
-Inspired by the realization that mood > genre for actually picking movies.
