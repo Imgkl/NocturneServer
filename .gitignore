@@ -24,6 +24,9 @@ data/
 .vscode/
 *.swp
 
+# Superpowers brainstorm scratch (mockups, session state)
+.superpowers/
+
 # Env files
 .env
 .env.*

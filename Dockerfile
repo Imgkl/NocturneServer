@@ -127,6 +127,7 @@ WORKDIR /app
 # Create application directory structure
 RUN mkdir -p \
         /app/data \
+        /app/data/cache/posters \
         /app/config \
         /app/logs \
         /app/public \

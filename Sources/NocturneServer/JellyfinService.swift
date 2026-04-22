@@ -134,6 +134,29 @@ final class JellyfinService: Sendable {
 
     // MARK: - Images (admin proxy uses this for posters)
 
+    /// Fetch raw primary-image bytes for an item. Used by the poster cache / proxy.
+    /// - Parameters:
+    ///   - itemId: Jellyfin item ID
+    ///   - fillWidth: Optional `fillWidth` param for server-side resizing. Nil = original.
+    /// - Returns: Image bytes + the upstream Content-Type header.
+    func fetchPosterBytes(itemId: String, fillWidth: Int?) async throws -> (data: Data, contentType: String) {
+        var url = "\(baseURL)/Items/\(itemId)/Images/Primary"
+        if let w = fillWidth {
+            url += "?fillWidth=\(w)&quality=85"
+        }
+        var request = HTTPClientRequest(url: url)
+        request.method = .GET
+        request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
+        let response = try await httpClient.execute(request, timeout: .seconds(30))
+        guard response.status == .ok else {
+            throw JellyfinError.httpError(Int(response.status.code), "Poster fetch failed: \(response.status)")
+        }
+        let contentType = response.headers.first(name: "Content-Type") ?? "image/jpeg"
+        let buffer = try await response.body.collect(upTo: 10 * 1024 * 1024)
+        let data = Data(buffer: buffer)
+        return (data, contentType)
+    }
+
     func getImageUrl(for item: BaseItemDto, imageType: ImageType, quality: Int = 85) -> String? {
         if imageType == .backdrop {
             guard let backdropTags = item.backdropImageTags, !backdropTags.isEmpty else {

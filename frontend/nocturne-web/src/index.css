@@ -1,8 +1,47 @@
 @import "tailwindcss";
 
+@theme {
+  /* Direction — Editorial Light (paper off-white, warm stone neutrals) */
+  --color-bg: #fafaf9;
+  --color-surface: #f5f5f4;
+  --color-border: #e7e5e4;
+  --color-border-hover: #d6d3d1;
+  --color-muted: #78716c;
+  --color-text: #0c0a09;
+  --color-text-dim: #44403c;
+
+  --font-serif: "EB Garamond", Georgia, serif;
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --radius-DEFAULT: 0px;
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+
+  --tracking-wider: 0.12em;
+  --tracking-widest: 0.18em;
+}
+
 html, body, #root { height: 100%; }
-body { margin: 0; }
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 
 /* Utilities */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Horizontal scroll fade masks for chip rows */
+.fade-mask-x {
+  mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent);
+}
