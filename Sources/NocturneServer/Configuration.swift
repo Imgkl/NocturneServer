@@ -18,6 +18,13 @@ final class NocturneConfiguration: @unchecked Sendable {
     var anthropicApiKey: String? = nil
     var omdbApiKey: String? = nil
 
+    // Poster cache (on-disk LRU, proxies Jellyfin images)
+    var posterCacheDir: String = "/app/data/cache/posters"
+    var posterCacheMaxBytes: Int64 = 1_073_741_824  // 1 GiB
+
+    // Jellyfin auto-discovery (UDP broadcast on :7359)
+    var jellyfinDiscoveryTimeoutMs: Int = 2000
+
     // Auto-tagging settings
     var enableAutoTagging: Bool = false
     var maxAutoTags: Int = 5
@@ -865,6 +872,16 @@ You leave having experienced FORM directly — structure, sound, or image pushed
             self.databasePath = path
         } else {
             self.databasePath = "/app/data/nocturne.sqlite"
+        }
+        // Poster cache lives alongside the database so they share volume lifecycle.
+        let dbDir = (self.databasePath as NSString).deletingLastPathComponent
+        self.posterCacheDir = (dbDir as NSString).appendingPathComponent("cache/posters")
+        if let override = ProcessInfo.processInfo.environment["NOCTURNE_POSTER_CACHE_DIR"], !override.isEmpty {
+            self.posterCacheDir = override
+        }
+        if let raw = ProcessInfo.processInfo.environment["NOCTURNE_POSTER_CACHE_MAX_BYTES"],
+           let bytes = Int64(raw), bytes > 0 {
+            self.posterCacheMaxBytes = bytes
         }
     }
 }

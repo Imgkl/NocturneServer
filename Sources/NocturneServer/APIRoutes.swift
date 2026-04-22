@@ -12,6 +12,7 @@ final class APIRoutes: @unchecked Sendable {
   let config: NocturneConfiguration
   let logger = Logger(label: "APIRoutes")
   let httpClient: HTTPClient
+  let posterCache: PosterCache?
 
   init(
     movieService: MovieService,
@@ -23,6 +24,13 @@ final class APIRoutes: @unchecked Sendable {
     self.suggestionService = suggestionService
     self.config = config
     self.httpClient = httpClient
+    self.posterCache = (try? PosterCache(
+      dir: config.posterCacheDir,
+      maxBytes: config.posterCacheMaxBytes
+    ))
+    if self.posterCache == nil {
+      logger.warning("PosterCache init failed; poster endpoint will proxy without caching")
+    }
   }
 
   func addRoutes(to router: Router<BasicRequestContext>) {
@@ -44,6 +52,8 @@ final class APIRoutes: @unchecked Sendable {
     addImportExportRoutes(to: api)
     addClientRoutes(to: api)
     addAdminRoutes(to: api)
+    addJellyfinDiscoveryRoutes(to: api)
+    addOnboardingRoutes(to: api)
   }
 
   // MARK: - Mood Routes (admin needs the bucket list for display names)
@@ -85,6 +95,52 @@ final class APIRoutes: @unchecked Sendable {
       let sugg = try await self.suggestionService.enqueue(jellyfinId: String(jellyfinId))
       return try jsonResponse(TagSuggestionResponse(sugg))
     }
+
+    // Poster proxy: fetches from Jellyfin on cache miss, serves from disk on hit.
+    // Sizes: thumb=200w, medium=400w, full=original.
+    movies.get(":id/poster") { request, context -> Response in
+      let jellyfinId = String(try context.parameters.require("id"))
+      let size = request.uri.queryParameters["size"].map { String($0) } ?? "medium"
+      let fillWidth: Int?
+      switch size {
+      case "thumb":  fillWidth = 200
+      case "full":   fillWidth = nil
+      default:       fillWidth = 400  // "medium" and unknown
+      }
+      let cacheKey = "\(jellyfinId)-\(size)"
+
+      // Cache hit
+      if let entry = self.posterCache?.get(key: cacheKey) {
+        return Self.imageResponse(
+          data: entry.data,
+          contentType: entry.contentType,
+          cacheHit: true
+        )
+      }
+
+      // Miss — fetch from Jellyfin
+      let (data, contentType): (Data, String)
+      do {
+        (data, contentType) = try await self.movieService.jellyfinService
+          .fetchPosterBytes(itemId: jellyfinId, fillWidth: fillWidth)
+      } catch {
+        self.logger.info("Poster fetch failed for \(jellyfinId) size=\(size): \(error)")
+        throw HTTPError(.notFound)
+      }
+
+      self.posterCache?.set(key: cacheKey, data: data, contentType: contentType)
+      return Self.imageResponse(data: data, contentType: contentType, cacheHit: false)
+    }
+  }
+
+  private static func imageResponse(data: Data, contentType: String, cacheHit: Bool) -> Response {
+    let body = responseBody(from: data)
+    let headers = HTTPFields([
+      HTTPField(name: .contentType, value: contentType),
+      HTTPField(name: .cacheControl, value: "public, max-age=604800, immutable"),
+      HTTPField(name: HTTPField.Name("X-Nocturne-Cache")!, value: cacheHit ? "hit" : "miss"),
+    ])
+    return Response(status: .ok, headers: headers, body: body)
   }
 
   // MARK: - Sync Routes
@@ -111,6 +167,24 @@ final class APIRoutes: @unchecked Sendable {
 
     sync.post("test-connection") { request, context in
       return try jsonResponse(try await self.movieService.testJellyfinConnection())
+    }
+  }
+
+  // MARK: - Jellyfin Discovery (UDP broadcast on :7359)
+
+  private func addJellyfinDiscoveryRoutes(to router: RouterGroup<BasicRequestContext>) {
+    let jellyfin = router.group("jellyfin")
+    struct DiscoveryResponse: Codable { let servers: [JellyfinDiscovery.Server] }
+
+    jellyfin.post("discover") { request, context in
+      let timeout = self.config.jellyfinDiscoveryTimeoutMs
+      do {
+        let servers = try await JellyfinDiscovery.discover(timeoutMs: timeout)
+        return try jsonResponse(DiscoveryResponse(servers: servers))
+      } catch {
+        self.logger.warning("Jellyfin discovery failed: \(error)")
+        return try jsonResponse(DiscoveryResponse(servers: []))
+      }
     }
   }
 
@@ -506,6 +580,7 @@ final class APIRoutes: @unchecked Sendable {
       let jellyfin_url: String
       let jellyfin_api_key_set: Bool
       let jellyfin_user_id: String
+      let jellyfin_username: String
       let anthropic_key_set: Bool
       let omdb_key_set: Bool
       let enable_auto_tagging: Bool
@@ -516,12 +591,14 @@ final class APIRoutes: @unchecked Sendable {
       let url = try await store.get("jellyfin_url") ?? self.config.jellyfinUrl
       let uid = try await store.get("jellyfin_user_id") ?? self.config.jellyfinUserId
       let api = (try await store.get("jellyfin_api_key")) ?? self.config.jellyfinApiKey
+      let user = (try await store.get("jellyfin_username")) ?? ""
       let anth = (try await store.get("anthropic_api_key")) ?? (self.config.anthropicApiKey ?? "")
       let omdb = (try await store.get("omdb_api_key")) ?? (self.config.omdbApiKey ?? "")
       let info = SettingsInfo(
         jellyfin_url: url,
         jellyfin_api_key_set: !api.isEmpty,
         jellyfin_user_id: uid,
+        jellyfin_username: user,
         anthropic_key_set: !anth.isEmpty,
         omdb_key_set: !omdb.isEmpty,
         enable_auto_tagging: self.config.enableAutoTagging
@@ -529,6 +606,34 @@ final class APIRoutes: @unchecked Sendable {
       return try jsonResponse(info)
     }
 
+  }
+
+  // MARK: - Onboarding status (first-run detection)
+
+  private func addOnboardingRoutes(to router: RouterGroup<BasicRequestContext>) {
+    let onboarding = router.group("onboarding")
+    struct OnboardingStatusResponse: Codable {
+      let configured: Bool
+      let has_jellyfin: Bool
+      let has_anthropic_key: Bool
+      let has_omdb_key: Bool
+    }
+    onboarding.get("status") { request, context in
+      let store = SettingsStore(db: self.movieService.fluent.db(), logger: self.logger)
+      try await store.ensureTable()
+      let url = (try await store.get("jellyfin_url")) ?? self.config.jellyfinUrl
+      let api = (try await store.get("jellyfin_api_key")) ?? self.config.jellyfinApiKey
+      let uid = (try await store.get("jellyfin_user_id")) ?? self.config.jellyfinUserId
+      let anth = (try await store.get("anthropic_api_key")) ?? (self.config.anthropicApiKey ?? "")
+      let omdb = (try await store.get("omdb_api_key")) ?? (self.config.omdbApiKey ?? "")
+      let hasJellyfin = !url.isEmpty && !api.isEmpty && !uid.isEmpty
+      return try jsonResponse(OnboardingStatusResponse(
+        configured: hasJellyfin,
+        has_jellyfin: hasJellyfin,
+        has_anthropic_key: !anth.isEmpty,
+        has_omdb_key: !omdb.isEmpty
+      ))
+    }
   }
 }
 
