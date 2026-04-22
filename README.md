@@ -1,4 +1,4 @@
-# RasaServer
+# Nocturne
 
 > [!NOTE]
 **Answer "What should I watch tonight?" based on how you feel, not just by genre.**
@@ -7,11 +7,11 @@
 >
 > I wanted to browse by *mood*, not just category. So I built this.
 
-RasaServer is a vibe-based movie discovery layer that sits alongside Jellyfin, organizing your library by each film's atmosphere and tone instead of generic genres. It powers the [RasaPlay (WIP)](https://github.com/imgkl/RasaPlay) viewing app and includes a web UI for setup and tag management.
+Nocturne is a vibe-based movie discovery layer that sits alongside Jellyfin, organizing your library by each film's atmosphere and tone instead of generic genres. It powers a dedicated viewer app and includes a web UI for setup and tag management.
 
 ---
 
-## Why RasaServer?
+## Why Nocturne?
 
 **The Problem:** Browsing by genre doesn't match how you actually choose movies. "Action" doesn't tell you if it's a brainless popcorn flick or a slow-burn thriller.
 
@@ -31,7 +31,7 @@ RasaServer is a vibe-based movie discovery layer that sits alongside Jellyfin, o
 flowchart TB
     Jellyfin[("Jellyfin<br/>source of truth<br/>catalog · playback · watched")]
 
-    subgraph Rasa["RasaServer — vibe index layer"]
+    subgraph Nocturne["Nocturne — vibe index layer"]
         direction LR
         API["Hummingbird API<br/>:3242"]
         WS["Jellyfin Realtime<br/>WebSocket listener"]
@@ -47,7 +47,7 @@ flowchart TB
         OMDbProxy --- DB
     end
 
-    Client["Client<br/>(RasaPlay, etc.)"]
+    Client["Client<br/>(viewer apps)"]
     Claude["Claude API<br/>(BYOK)"]
     OMDb["OMDb API<br/>(BYOK)"]
 
@@ -60,15 +60,15 @@ flowchart TB
 ```
 
 > [!Important]
-> Jellyfin is the source of truth. RasaServer is a pure vibe-index layer — it stores only
-> `jellyfinId → mood tags` and never mirrors Jellyfin metadata. Clients (e.g. RasaPlay) talk to
-> Jellyfin directly for catalog/playback and to RasaServer for mood curation.
+> Jellyfin is the source of truth. Nocturne is a pure vibe-index layer — it stores only
+> `jellyfinId → mood tags` and never mirrors Jellyfin metadata. Clients talk to
+> Jellyfin directly for catalog/playback and to Nocturne for mood curation.
 
 **How it works:**
-1. RasaServer syncs your Jellyfin library by ID only (one-time setup via Web UI, then real-time WebSocket reconciliation)
+1. Nocturne syncs your Jellyfin library by ID only (one-time setup via Web UI, then real-time WebSocket reconciliation)
 2. New movies auto-queue a Claude mood-tag suggestion (hybrid approval flow)
 3. Admin reviews suggestions in the Web UI and approves/rejects before tags are written
-4. Clients join their Jellyfin data with RasaServer's mood tags on the fly
+4. Clients join their Jellyfin data with Nocturne's mood tags on the fly
 
 ---
 
@@ -85,7 +85,7 @@ flowchart TB
 - ✅ **Slim by design** — stores only Jellyfin IDs + tags; no mirrored metadata
 
 ### Privacy
-- 🔒 **Local-first** - All data in `./data/rasa.sqlite`
+- 🔒 **Local-first** - All data in `./data/nocturne.sqlite`
 - 🔒 **No telemetry** - Zero tracking, no accounts
 - 🔒 **BYOK only** - AI tagging requires your own API key (optional)
 
@@ -95,14 +95,14 @@ flowchart TB
 
 ### Option 1: Docker (Recommended)
 ```bash
-docker run -d --name rasa-server -p 3242:3242 \
+docker run -d --name nocturne-server -p 3242:3242 \
   -v "$(pwd)/data:/app/data" \
   -v "$(pwd)/config:/app/config" \
   -v "$(pwd)/logs:/app/logs" \
   -e WEBUI_PORT=3242 \
-  -e RASA_DATABASE_PATH=/app/data/rasa.sqlite \
+  -e NOCTURNE_DATABASE_PATH=/app/data/nocturne.sqlite \
   --restart unless-stopped \
-  ghcr.io/imgkl/rasaserver:latest
+  ghcr.io/imgkl/nocturneserver:latest
 ```
 
 Then:
@@ -112,8 +112,8 @@ Then:
 
 ### Option 2: Local Development
 ```bash
-git clone https://github.com/imgkl/RasaServer
-cd RasaServer
+git clone https://github.com/imgkl/NocturneServer
+cd NocturneServer
 ./run.sh
 ```
 
@@ -223,11 +223,3 @@ Please open an issue first to discuss major changes.
 ## License
 
 MIT - Use it, fork it, modify it. Just don't blame me if your movie night goes wrong.
-
----
-
-## Credits
-
-Built to solve a personal problem: "I have 500 movies but can't decide what to watch."
-
-Inspired by the realization that mood > genre for actually picking movies.

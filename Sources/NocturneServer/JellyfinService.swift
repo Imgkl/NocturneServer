@@ -17,14 +17,14 @@ final class JellyfinService: Sendable {
         self.apiKey = apiKey
         self.userId = userId
         self.httpClient = httpClient
-        self.deviceId = "RasaServer-\(UUID().uuidString)"
+        self.deviceId = "Nocturne-\(UUID().uuidString)"
     }
 
     // MARK: - Authentication (Username/Password)
 
     static func login(baseURL: String, username: String, password: String, httpClient: HTTPClient) async throws -> (token: String, userId: String) {
         let cleanBaseURL = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let deviceId = "RasaServer-\(UUID().uuidString)"
+        let deviceId = "Nocturne-\(UUID().uuidString)"
 
         let loginData = [
             "Username": username,
@@ -36,7 +36,7 @@ final class JellyfinService: Sendable {
         var request = HTTPClientRequest(url: "\(cleanBaseURL)/Users/AuthenticateByName")
         request.method = .POST
         request.headers.add(name: "Content-Type", value: "application/json")
-        request.headers.add(name: "Authorization", value: "MediaBrowser Client=\"Rasa\", Device=\"RasaServer\", DeviceId=\"\(deviceId)\", Version=\"1.0.0\"")
+        request.headers.add(name: "Authorization", value: "MediaBrowser Client=\"Nocturne\", Device=\"Nocturne\", DeviceId=\"\(deviceId)\", Version=\"1.0.0\"")
         request.body = .bytes(ByteBuffer(data: jsonData))
 
         let response = try await httpClient.execute(request, timeout: .seconds(30))
@@ -54,7 +54,7 @@ final class JellyfinService: Sendable {
     // MARK: - Library Reconciliation
 
     /// Fetch the full movie catalog as a list of Jellyfin IDs only.
-    /// RasaServer doesn't mirror Jellyfin metadata anymore — it only needs IDs to
+    /// Nocturne doesn't mirror Jellyfin metadata anymore — it only needs IDs to
     /// maintain tag associations.
     func fetchAllMovieIds() async throws -> [String] {
         logger.info("Fetching movie IDs from Jellyfin")

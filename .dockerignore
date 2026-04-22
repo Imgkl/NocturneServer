@@ -4,7 +4,7 @@
 Packages
 
 # Local data/config
-rasa.sqlite
+nocturne.sqlite
 config
 logs
 data
@@ -14,9 +14,9 @@ data
 .gitignore
 
 # Node install caches
-frontend/rasa-web/node_modules
-frontend/rasa-web/.vite
-frontend/rasa-web/dist
+frontend/nocturne-web/node_modules
+frontend/nocturne-web/.vite
+frontend/nocturne-web/dist
 
 # OS/editor noise
 .DS_Store

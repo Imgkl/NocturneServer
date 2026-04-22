@@ -1,13 +1,13 @@
 version: '3.8'
 
 services:
-  rasa:
-    build: 
+  nocturne:
+    build:
       context: .
       platforms:
         - linux/arm64  # Pi 4/5 ARM64
         - linux/amd64  # Development/x86
-    container_name: rasa-server
+    container_name: nocturne-server
     restart: unless-stopped
     ports:
       - "3242:3242"
@@ -16,12 +16,12 @@ services:
       - ./config:/app/config
       - ./logs:/app/logs
     environment:
-      - RASA_HOST=0.0.0.0
+      - NOCTURNE_HOST=0.0.0.0
       - WEBUI_PORT=3242
-      - RASA_DATABASE_PATH=/app/data/rasa.sqlite
-      - RASA_LOG_LEVEL=info
+      - NOCTURNE_DATABASE_PATH=/app/data/nocturne.sqlite
+      - NOCTURNE_LOG_LEVEL=info
     networks:
-      - rasa-network
+      - nocturne-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3242/health"]
       interval: 30s
@@ -34,7 +34,7 @@ services:
     cpu_count: 2
 
 networks:
-  rasa-network:
+  nocturne-network:
     driver: bridge
 
 volumes:

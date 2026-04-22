@@ -1,7 +1,7 @@
 import Foundation
 import Logging
 
-final class RasaConfiguration: @unchecked Sendable {
+final class NocturneConfiguration: @unchecked Sendable {
     // Server Settings
     var host: String = "0.0.0.0"
     var port: Int = 8001
@@ -12,7 +12,7 @@ final class RasaConfiguration: @unchecked Sendable {
     var jellyfinUserId: String = ""
 
     // Database
-    var databasePath: String = "rasa.sqlite"
+    var databasePath: String = "nocturne.sqlite"
 
     // BYOK - Bring Your Own Key (Optional)
     var anthropicApiKey: String? = nil
@@ -861,10 +861,10 @@ You leave having experienced FORM directly — structure, sound, or image pushed
     ]
 
     init() {
-        if let path = ProcessInfo.processInfo.environment["RASA_DATABASE_PATH"], !path.isEmpty {
+        if let path = ProcessInfo.processInfo.environment["NOCTURNE_DATABASE_PATH"], !path.isEmpty {
             self.databasePath = path
         } else {
-            self.databasePath = "/app/data/rasa.sqlite"
+            self.databasePath = "/app/data/nocturne.sqlite"
         }
     }
 }

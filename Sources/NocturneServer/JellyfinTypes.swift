@@ -1,6 +1,6 @@
 import Foundation
 
-// Minimal Jellyfin DTO surface — only what RasaServer actually decodes.
+// Minimal Jellyfin DTO surface — only what Nocturne actually decodes.
 //
 // We talk to Jellyfin for four things:
 //   1. Login (AuthenticationResult → token + user id)
