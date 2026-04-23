@@ -48,3 +48,37 @@ body {
   mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent);
   -webkit-mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent);
 }
+
+/* Marching-ants dashes along the button perimeter on hover.
+   Four 1px background gradients — top, right, bottom, left — each tiling dashes along
+   its edge. Animating background-position shifts the dashes around the rectangle
+   clockwise (top → right → bottom → left) without touching the button's shape. */
+@keyframes btn-line-march {
+  to {
+    background-position: 12px 0, 100% 12px, -12px 100%, 0 -12px;
+  }
+}
+
+.btn-line-animated:hover:not(:disabled) {
+  border-color: transparent;
+  background-image:
+    linear-gradient(90deg, var(--color-text) 50%, transparent 50%),
+    linear-gradient(0deg, var(--color-text) 50%, transparent 50%),
+    linear-gradient(90deg, var(--color-text) 50%, transparent 50%),
+    linear-gradient(0deg, var(--color-text) 50%, transparent 50%);
+  background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+  background-repeat: repeat-x, repeat-y, repeat-x, repeat-y;
+  background-position: 0 0, 100% 0, 0 100%, 0 0;
+  background-origin: border-box;
+  background-clip: border-box;
+  animation: btn-line-march 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-line-animated:hover:not(:disabled) {
+    animation: none;
+    border-color: var(--color-text);
+    border-style: dashed;
+    background-image: none;
+  }
+}

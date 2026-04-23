@@ -18,7 +18,9 @@ const sizes: Record<Size, string> = {
 
 const variants: Record<Variant, string> = {
   primary: 'bg-text text-bg hover:bg-text-dim',
-  line: 'bg-transparent text-text border border-border hover:border-border-hover',
+  // Resting: solid thin border. Hover: dashes march clockwise around the perimeter (see
+  // .btn-line-animated in index.css). No shape change — same rectangle.
+  line: 'bg-transparent text-text border border-border btn-line-animated',
   ghost: 'bg-transparent text-muted hover:text-text',
   // Destructive: outlined in danger red at rest so it's recognisable from across the dialog;
   // fills on hover to make the "about to do something serious" moment feel deliberate.
