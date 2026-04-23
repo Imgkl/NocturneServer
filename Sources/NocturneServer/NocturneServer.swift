@@ -181,8 +181,6 @@ func createApplication(
     router.middlewares.add(CORSMiddleware())
     router.middlewares.add(JSONErrorMiddleware())
 
-    // Always register routes; gate behavior dynamically based on configuration
-    setupWizardRoutes(router: router, config: config, movieService: movieService, httpClient: httpClient, fluent: fluent)
     let apiRoutes = APIRoutes(
         movieService: movieService,
         suggestionService: suggestionService,
@@ -190,15 +188,10 @@ func createApplication(
         httpClient: httpClient
     )
     apiRoutes.addRoutes(to: router)
-    
-    // Root: serve SPA index (from public/) or redirect to /setup if not configured
+
+    // Root: always serve the SPA. The React app calls /api/v1/onboarding/status
+    // on mount and renders the OnboardingView if Jellyfin isn't configured.
     router.get("/") { _, _ in
-        let dbExists = FileManager.default.fileExists(atPath: config.databasePath)
-        let needsConfig = !dbExists || config.jellyfinApiKey.isEmpty || config.jellyfinUserId.isEmpty
-        if needsConfig {
-            return Response(status: .found, headers: HTTPFields([HTTPField(name: .location, value: "/setup")]))
-        }
-        // Serve built index.html
         if let htmlData = try? Data(contentsOf: URL(fileURLWithPath: "public/index.html")),
            let htmlString = String(data: htmlData, encoding: .utf8) {
             return textResponse(htmlString, contentType: "text/html; charset=utf-8")
@@ -258,167 +251,6 @@ func staticFileResponse(path: String) throws -> Response {
     buf.writeBytes(data)
     let headers = HTTPFields([HTTPField(name: .contentType, value: mime)])
     return Response(status: .ok, headers: headers, body: .init(byteBuffer: buf))
-}
-
-// MARK: - Setup Wizard Routes
-
-func setupWizardRoutes(
-    router: Router<BasicRequestContext>,
-    config: NocturneConfiguration,
-    movieService: MovieService,
-    httpClient: HTTPClient,
-    fluent: Fluent
-) {
-    let logger = Logger(label: "SetupWizard")
-    router.get("/setup") { _, _ in getSetupWizard() }
-    
-    // Handle setup form submission (username/password login)
-    router.post("/setup") { request, context in
-        let setupData = try await request.decode(as: SetupRequest.self, context: context)
-        
-        // Login to Jellyfin using username/password to obtain token and userId
-        let auth = try await JellyfinService.login(
-            baseURL: setupData.jellyfinUrl,
-            username: setupData.jellyfinUsername,
-            password: setupData.jellyfinPassword,
-            httpClient: httpClient
-        )
-        
-        // Update configuration with resolved values
-        config.jellyfinUrl = setupData.jellyfinUrl
-        config.jellyfinApiKey = auth.token
-        config.jellyfinUserId = auth.userId
-
-        // Persist to DB settings store
-        let store = SettingsStore(db: fluent.db(), logger: logger)
-        try await store.ensureTable()
-        try await store.set("jellyfin_url", config.jellyfinUrl)
-        try await store.set("jellyfin_api_key", config.jellyfinApiKey)
-        try await store.set("jellyfin_user_id", config.jellyfinUserId)
-        // Hot‑reload runtime Jellyfin client so first sync works immediately after setup
-        // Reconfigure: call via DB flag checked on first /sync; here we only persist
-        
-        // Respond with redirect to root
-        return try jsonResponse(SetupResponse(
-            success: true,
-            message: "Configuration saved successfully! Redirecting...",
-            redirectUrl: "/"
-        ))
-    }
-    
-    // Block API routes during setup
-    router.get("/api") { _, _ in Response(status: .serviceUnavailable) }
-}
-
-// MARK: - Setup Data Models
-
-struct SetupRequest: Codable {
-    let jellyfinUrl: String
-    let jellyfinUsername: String
-    let jellyfinPassword: String
-}
-
-struct SetupResponse: Codable {
-    let success: Bool
-    let message: String
-    let redirectUrl: String
-}
-
-// MARK: - Setup Wizard HTML
-
-func getSetupWizard() -> Response {
-    let html = """
-    <!DOCTYPE html>
-    <html lang=\"en\">
-    <head>
-        <meta charset=\"UTF-8\" />
-        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
-        <title>🎞️ Nocturne Setup</title>
-        <style>
-            *{margin:0;padding:0;box-sizing:border-box}
-            body{
-                font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Inter,system-ui,sans-serif;
-                min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px;
-                background: radial-gradient(1200px 600px at 10% 10%, #c7d2fe55 0%, transparent 60%),
-                            radial-gradient(1000px 500px at 90% 20%, #f0abfc55 0%, transparent 60%),
-                            linear-gradient(135deg,#eef2ff 0%,#f5f3ff 100%);
-            }
-            .card{
-                width:100%;max-width:560px;border-radius:28px;padding:28px 28px 24px;position:relative;
-                background:rgba(255,255,255,0.75);backdrop-filter:saturate(140%) blur(10px);
-                border:1px solid rgba(17,24,39,0.06);
-                box-shadow:0 20px 50px -20px rgba(16,24,40,.35), 0 0 0 1px rgba(16,24,40,.04) inset;
-            }
-            .logo{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:6px}
-            .logo .badge{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;
-                background:linear-gradient(135deg,#6366f1,#a855f7);color:white;box-shadow:0 8px 20px -10px #7c3aed}
-            h1{font-size:28px;letter-spacing:-.02em;text-align:center;
-                background:linear-gradient(45deg,#4338ca,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-            .sub{color:#6b7280;text-align:center;margin-top:4px;margin-bottom:18px}
-            .chips{display:flex;gap:8px;justify-content:center;margin-bottom:14px}
-            .chip{font-size:12px;padding:8px 12px;border-radius:9999px;border:1px solid rgba(17,24,39,.08);background:#fff}
-            label{display:block;font-weight:600;color:#111827;margin:10px 0 6px 4px}
-            input{width:100%;padding:14px 16px;border-radius:14px;border:1px solid rgba(17,24,39,.12);
-                background:#fff;font-size:15px;outline:none;transition:box-shadow .2s,border-color .2s}
-            input:focus{border-color:#6366f1;box-shadow:0 0 0 4px rgba(99,102,241,.15)}
-            .hint{font-size:12px;color:#6b7280;margin-top:6px}
-            .btn{width:100%;margin-top:18px;padding:14px 18px;border:none;border-radius:9999px;cursor:pointer;
-                background:linear-gradient(90deg,#111827,#0b1220);color:#fff;font-weight:600;letter-spacing:.2px;
-                box-shadow:0 18px 40px -18px rgba(16,24,40,.45)}
-            .btn:disabled{opacity:.6;cursor:not-allowed}
-            .alert{display:none;margin-top:12px;padding:12px 14px;border-radius:12px;font-size:14px}
-            .error{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
-            .success{background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
-        </style>
-    </head>
-    <body>
-        <div class=\"card\">
-            <div class=\"logo\"><h1>Nocturne</h1></div>
-            <div class=\"sub\">Configure your Jellyfin connection</div>
-            <div id=\"error\" class=\"alert error\"></div>
-            <div id=\"success\" class=\"alert success\"></div>
-            <form id=\"setupForm\">
-                <label for=\"jellyfinUrl\">Jellyfin Server URL</label>
-                <input id=\"jellyfinUrl\" name=\"jellyfinUrl\" type=\"url\" placeholder=\"http://192.168.0.111:8097\" required />
-                <div class=\"hint\">Your Jellyfin server address with port</div>
-                <label for=\"jellyfinUsername\">Jellyfin Username</label>
-                <input id=\"jellyfinUsername\" name=\"jellyfinUsername\" type=\"text\" placeholder=\"Your Jellyfin username\" required />
-                <label for=\"jellyfinPassword\">Jellyfin Password</label>
-                <input id=\"jellyfinPassword\" name=\"jellyfinPassword\" type=\"password\" placeholder=\"Your Jellyfin password\" required />
-                <button id=\"submitBtn\" type=\"submit\" class=\"btn\">🚀 Configure & Start Nocturne</button>
-            </form>
-        </div>
-        <script>
-            const form = document.getElementById('setupForm');
-            const submitBtn = document.getElementById('submitBtn');
-            const err = document.getElementById('error');
-            const ok = document.getElementById('success');
-            form.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                submitBtn.disabled = true; submitBtn.textContent = '🔄 Testing connection...';
-                err.style.display='none'; ok.style.display='none';
-                const data = Object.fromEntries(new FormData(form));
-                try {
-                    const res = await fetch('/setup', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
-                    const result = await res.json();
-                    if(res.ok && result.success){
-                        ok.textContent = result.message; ok.style.display='block';
-                        submitBtn.textContent = '✅ Success! Redirecting...';
-                        setTimeout(()=>{ window.location.href = result.redirectUrl; }, 1200);
-                    } else {
-                        throw new Error(result.message || 'Configuration failed');
-                    }
-                } catch (e) {
-                    err.textContent = 'Error: ' + (e.message || e); err.style.display='block';
-                    submitBtn.disabled = false; submitBtn.textContent = '🚀 Configure & Start Nocturne';
-                }
-            });
-        </script>
-    </body>
-    </html>
-    """
-    
-    return textResponse(html, contentType: "text/html; charset=utf-8")
 }
 
 // MARK: - Middleware
