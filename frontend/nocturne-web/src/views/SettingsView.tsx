@@ -147,7 +147,7 @@ export function SettingsView(props: SettingsViewProps) {
             help="Clear every movie's tags and re-run the tagger against the whole library. Uses the Anthropic API per movie."
             action={
               <Button
-                variant="line"
+                variant="destructive"
                 size="sm"
                 onClick={async () => {
                   if (!confirm(`Clear tags on all ${movieCount} films and re-tag them with Claude?`)) return;
@@ -217,7 +217,7 @@ export function SettingsView(props: SettingsViewProps) {
           <div className="border border-border p-5">
             <div className="text-[11px] uppercase tracking-widest text-muted mb-3">Danger zone</div>
             <Button
-              variant="line"
+              variant="destructive"
               size="sm"
               onClick={async () => {
                 if (!confirm('Delete all films from Nocturne (not Jellyfin) and reset tag usage counts?')) return;

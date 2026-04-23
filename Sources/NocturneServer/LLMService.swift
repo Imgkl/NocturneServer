@@ -65,14 +65,55 @@ final class LLMService: Sendable {
         }
     }
 
+    /// Per-tag verification pass: given a single focus tag and the movie currently carrying it,
+    /// ask the model whether the tag still describes the residue and — if not — which tags
+    /// would fit better. Used by the tag-refinement worker to prune over-applied tags (e.g.
+    /// the classic "bittersweet" sprawl).
+    func refineTagForMovie(
+        tagSlug: String,
+        tag: MoodBucket,
+        movie: MovieContext,
+        using provider: LLMProvider,
+        availableTags: [String: MoodBucket],
+        calibration: [String: TagCalibration] = [:],
+        externalInfo: String?,
+        maxSuggestions: Int = 3
+    ) async throws -> TagRefinementResponse {
+        let movieContext = buildMovieContext(from: movie)
+        let tagsContext = buildTagsContext(availableTags: availableTags, calibration: calibration)
+        let prompt = buildTagRefinePrompt(
+            tagSlug: tagSlug,
+            tag: tag,
+            movieContext: movieContext,
+            tagsContext: tagsContext,
+            externalInfo: externalInfo,
+            maxSuggestions: maxSuggestions
+        )
+
+        logger.info("Refining tag \(tagSlug) for movie: \(movie.title) using \(provider.name)")
+
+        switch provider {
+        case .anthropic(let apiKey):
+            let content = try await callAnthropicText(prompt: prompt, apiKey: apiKey, maxTokens: 600)
+            return try parseTagRefinementResponse(content)
+        }
+    }
+
     // MARK: - Anthropic Integration
 
     private func generateWithAnthropic(prompt: String, apiKey: String, maxTags: Int) async throws -> AutoTagResponse {
+        let content = try await callAnthropicText(prompt: prompt, apiKey: apiKey, maxTokens: 500)
+        return try parseTagResponse(content)
+    }
+
+    /// Shared Anthropic HTTP call: builds the request, retries on 429/529, and returns the raw
+    /// assistant text. Callers parse the content into whichever response shape they need.
+    private func callAnthropicText(prompt: String, apiKey: String, maxTokens: Int) async throws -> String {
         let url = "https://api.anthropic.com/v1/messages"
 
         let requestBody = AnthropicRequest(
             model: anthropicModel,
-            maxTokens: 500,
+            maxTokens: maxTokens,
             messages: [
                 AnthropicMessage(
                     role: "user",
@@ -139,7 +180,7 @@ final class LLMService: Sendable {
             throw LLMError.invalidResponse("No content in Anthropic response")
         }
 
-        return try parseTagResponse(content)
+        return content
     }
 
     // MARK: - Prompt Building
@@ -323,7 +364,110 @@ final class LLMService: Sendable {
         """
     }
 
+    private func buildTagRefinePrompt(
+        tagSlug: String,
+        tag: MoodBucket,
+        movieContext: String,
+        tagsContext: String,
+        externalInfo: String?,
+        maxSuggestions: Int
+    ) -> String {
+        // Compact focus-tag block so the model keeps its attention on the one tag under review
+        // even though the full available-tags list is also supplied (for `suggestedTags`).
+        var focusBlock = """
+        Focus tag: \(tagSlug) — \(tag.title)
+          Residue: \(tag.description.trimmingCharacters(in: .whitespacesAndNewlines))
+        """
+        if let keywords = tag.tags, !keywords.isEmpty {
+            focusBlock += "\n  Keywords: \(keywords.joined(separator: ", "))"
+        }
+        if let fits = tag.anchorsFit, !fits.isEmpty {
+            focusBlock += "\n  Fits:\n    - " + fits.joined(separator: "\n    - ")
+        }
+        if let misses = tag.anchorsMiss, !misses.isEmpty {
+            focusBlock += "\n  Does NOT fit:\n    - " + misses.joined(separator: "\n    - ")
+        }
+        let floor = tag.minConfidence ?? 0.72
+        focusBlock += "\n  Min confidence to keep: \(floor)"
+
+        let rules = """
+        You are reviewing ONE tag on ONE movie. Apply the RESIDUE test: the tag is valid only if it
+        describes the feeling a viewer carries AFTER THE CREDITS — not a scene, subplot, or flavor note.
+
+        Drop the tag if ANY of these are true:
+        • The residue the viewer leaves with is a different register than the tag describes.
+        • Evidence from the overview / external summary cannot cite a concrete phrase for the tag.
+        • The tag is one of the common over-applications (bittersweet-aftermath on triumphant or
+          devastating films; dialogue-driven on films with real set pieces; modern-masterpieces on
+          popular-but-not-landmark films; time-twists without explicit temporal mechanics;
+          crime-grit-style on Bond/caper/sport; feel-good-romance on ambivalent or tragic romances).
+        • Confidence that the tag describes the residue is below its Min confidence floor.
+
+        Keep the tag only if you can cite a specific residue-level justification.
+
+        If you drop the tag, optionally suggest up to \(maxSuggestions) alternate tags from the
+        available list that would better describe the residue. Each must have its own evidence and
+        clear its own Min confidence floor.
+        """
+
+        return """
+        \(rules)
+
+        \(focusBlock)
+
+        Movie information:
+        \(movieContext)
+
+        Additional external context (optional):
+        \(externalInfo ?? "(none)")
+
+        \(tagsContext)
+
+        Respond with a JSON object in exactly this format:
+        {
+          "keep": true,
+          "confidence": 0.0,
+          "residue": "one-sentence description of the viewer's residue",
+          "evidence": "exact phrase from the overview/summary justifying your keep/drop verdict",
+          "suggestedTags": [
+            {"slug": "alternate-tag-slug", "confidence": 0.80, "evidence": "exact phrase"}
+          ]
+        }
+
+        Rules:
+        - `keep` MUST be true or false.
+        - `confidence` in [0.0, 1.0] is how sure you are of the keep/drop verdict.
+        - When `keep` is true, `suggestedTags` SHOULD be an empty array — don't propose alternates
+          alongside a kept tag.
+        - When `keep` is false, `suggestedTags` MAY contain up to \(maxSuggestions) alternates.
+          Never propose the focus tag itself or tags already on the movie.
+        - Return only valid JSON, nothing else.
+        """
+    }
+
     // MARK: - Response Parsing
+
+    private func parseTagRefinementResponse(_ content: String) throws -> TagRefinementResponse {
+        let cleanContent = content
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let data = cleanContent.data(using: .utf8) else {
+            throw LLMError.invalidResponse("Could not encode refinement response as UTF-8")
+        }
+        do {
+            let parsed = try JSONDecoder().decode(TagRefinementResponse.self, from: data)
+            logger.info(
+                "Refine verdict: keep=\(parsed.keep) conf=\(parsed.confidence) alts=\(parsed.suggestedTags.count)")
+            return parsed
+        } catch {
+            let preview = String(cleanContent.prefix(400))
+            logger.error("Failed to parse refinement response. Raw (first 400): \(preview)")
+            throw LLMError.invalidResponse("Failed to parse refinement JSON: \(error)")
+        }
+    }
 
     private func parseTagResponse(_ content: String) throws -> AutoTagResponse {
         let cleanContent = content

@@ -6,6 +6,7 @@ import type {
   MoodBuckets,
   Movie,
   OnboardingStatus,
+  TagRefinementStatusApi,
   TagSuggestionApi,
 } from './lib/types';
 import { Sidebar } from './components/Sidebar';
@@ -14,6 +15,7 @@ import { LibraryView } from './views/LibraryView';
 import { MovieDetailPanel } from './components/MovieDetailPanel';
 import { AutoTagQueue } from './components/AutoTagQueue';
 import { BackfillProgress } from './components/BackfillProgress';
+import { TagRefineProgress } from './components/TagRefineProgress';
 import { SettingsView } from './views/SettingsView';
 import { OnboardingView } from './views/onboarding/OnboardingView';
 import { Spinner } from './ui/Spinner';
@@ -49,6 +51,9 @@ export default function App() {
   }, [viewMode])
   const [backfillStatus, setBackfillStatus] = useState<BackfillStatusApi | null>(null)
   const backfillPollRef = useRef<number | null>(null)
+  const [refineStatus, setRefineStatus] = useState<TagRefinementStatusApi | null>(null)
+  const refinePollRef = useRef<number | null>(null)
+  const refineClearRef = useRef<number | null>(null)
 
   // Per-row edited tag sets for the pending-review list. Undefined = use original suggestion.
   const [editedPendingTags, setEditedPendingTags] = useState<Record<string, string[]>>({})
@@ -376,6 +381,69 @@ export default function App() {
     }
   }, [])
 
+  async function refineTag(slug: string) {
+    try {
+      if (refineClearRef.current) {
+        window.clearTimeout(refineClearRef.current)
+        refineClearRef.current = null
+      }
+      const status = await api.tags.refine(slug)
+      setRefineStatus(status)
+      schedulePollRefine(slug)
+    } catch (e: any) {
+      const msg = String(e?.message || '')
+      if (msg.includes('409')) {
+        alert('A backfill is running. Cancel it first, then refine the tag.')
+      } else {
+        console.error('Failed to start refinement:', e)
+        alert('Failed to start tag refinement. Check that the Anthropic API key is set.')
+      }
+    }
+  }
+
+  async function cancelRefine() {
+    if (!refineStatus?.tagSlug) return
+    if (!confirm('Stop refining this tag? The current movie will finish, but no more will be processed.')) return
+    try {
+      const status = await api.tags.refineCancel(refineStatus.tagSlug)
+      setRefineStatus(status)
+    } catch (e) {
+      console.error('Failed to cancel refinement:', e)
+    }
+  }
+
+  function schedulePollRefine(slug: string) {
+    if (refinePollRef.current) window.clearTimeout(refinePollRef.current)
+    refinePollRef.current = window.setTimeout(() => pollRefineOnce(slug), 3000)
+  }
+
+  async function pollRefineOnce(slug: string) {
+    try {
+      const status = await api.tags.refineStatus(slug)
+      setRefineStatus(status)
+      if (status.running) {
+        await fetchAllMovies()
+        await fetchPendingSuggestions()
+        schedulePollRefine(slug)
+      } else {
+        await fetchAllMovies()
+        await fetchPendingSuggestions()
+        // Leave the summary up for ~8s so the user can read "N removed · M for review", then drop.
+        if (refineClearRef.current) window.clearTimeout(refineClearRef.current)
+        refineClearRef.current = window.setTimeout(() => setRefineStatus(null), 8000)
+      }
+    } catch {
+      schedulePollRefine(slug)
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (refinePollRef.current) window.clearTimeout(refinePollRef.current)
+      if (refineClearRef.current) window.clearTimeout(refineClearRef.current)
+    }
+  }, [])
+
   const filtered = useMemo(() => {
     return movies.filter(m => (
       (!q || m.title.toLowerCase().includes(q.toLowerCase())) &&
@@ -432,6 +500,54 @@ export default function App() {
         <div>
           {pendingSuggestions.slice(0, 8).map((s) => {
             const movie = movies.find((m) => m.jellyfinId === s.jellyfinId);
+            // Removal rows are simpler: one focus tag to drop, no add/edit picker, different verbs.
+            if (s.kind === 'removal') {
+              const removalSlug = s.removalTagSlug || '';
+              const removalTitle = moods[removalSlug]?.title || removalSlug;
+              return (
+                <div key={s.id} className="flex flex-col sm:flex-row sm:items-start gap-3 px-5 py-3 border-t border-border first:border-t-0">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    {movie?.posterUrl && (
+                      <img src={movie.posterUrl} alt="" className="w-8 h-12 object-cover flex-shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] text-text truncate">{movie?.title || s.jellyfinId}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        <span className="inline-flex items-center gap-1 border border-border text-[10px] uppercase tracking-wider text-text-dim px-2 py-0.5 line-through decoration-text-dim">
+                          {removalTitle}
+                        </span>
+                        <span className="text-[10px] uppercase tracking-wider text-muted">
+                          — Claude suggests dropping this tag
+                        </span>
+                      </div>
+                      {s.reasoning && (
+                        <div className="text-[11px] text-text-dim mt-1 italic">“{s.reasoning}”</div>
+                      )}
+                      <div className="text-[10px] uppercase tracking-widest text-muted mt-1">
+                        confidence {(s.confidence * 100).toFixed(0)}%
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 sm:flex-shrink-0">
+                    <button
+                      className="text-[10px] uppercase tracking-widest px-3 py-1.5 bg-text text-bg hover:bg-text-dim cursor-pointer"
+                      onClick={() => approveSuggestion(s.id)}
+                      title="Drop the tag from this movie"
+                    >
+                      Remove
+                    </button>
+                    <button
+                      className="text-[10px] uppercase tracking-widest px-3 py-1.5 border border-border hover:border-border-hover text-text cursor-pointer"
+                      onClick={() => rejectSuggestion(s.id)}
+                      title="Keep the tag on this movie"
+                    >
+                      Keep
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
             const currentTags = editedPendingTags[s.id] ?? s.suggestedTags;
             const isEdited = editedPendingTags[s.id] !== undefined;
             const addableTags = Object.keys(moods)
@@ -543,9 +659,16 @@ export default function App() {
             selectedMood={mood}
             onMoodChange={setMood}
             loading={loading}
+            refineRunning={!!refineStatus?.running}
             onSync={syncAll}
             onEditMovie={setEditingMovie}
-            backfillBanner={<BackfillProgress status={backfillStatus} />}
+            onRefineTag={refineTag}
+            backfillBanner={
+              <>
+                <BackfillProgress status={backfillStatus} />
+                <TagRefineProgress status={refineStatus} moods={moods} onCancel={cancelRefine} />
+              </>
+            }
             pendingSuggestionsPanel={pendingSuggestionsPanel}
           />
         </div>

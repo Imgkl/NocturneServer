@@ -47,6 +47,7 @@ final class APIRoutes: @unchecked Sendable {
 
     addMoodRoutes(to: api)
     addMovieRoutes(to: api)
+    addTagRoutes(to: api)
     addSyncRoutes(to: api)
     addSettingsRoutes(to: api)
     addImportExportRoutes(to: api)
@@ -130,6 +131,37 @@ final class APIRoutes: @unchecked Sendable {
 
       self.posterCache?.set(key: cacheKey, data: data, contentType: contentType)
       return Self.imageResponse(data: data, contentType: contentType, cacheHit: false)
+    }
+  }
+
+  // MARK: - Tag Routes (per-tag AI refinement)
+  private func addTagRoutes(to router: RouterGroup<BasicRequestContext>) {
+    let tags = router.group("tags")
+
+    // POST /api/v1/tags/:slug/refine — start a per-tag refinement pass against every movie
+    // currently carrying this tag via auto-apply. Shares the long-running-worker mutex with
+    // the backfill flow.
+    tags.post(":slug/refine") { request, context in
+      let slug = String(try context.parameters.require("slug"))
+      do {
+        let status = try await self.suggestionService.startTagRefinement(tagSlug: slug)
+        return try jsonResponse(status)
+      } catch SuggestionError.tagNotFound {
+        throw HTTPError(.badRequest)
+      } catch SuggestionError.backfillInProgress {
+        throw HTTPError(.conflict)
+      }
+    }
+
+    tags.get(":slug/refine/status") { request, context in
+      let status = await self.suggestionService.getTagRefinementStatus()
+      return try jsonResponse(status)
+    }
+
+    tags.post(":slug/refine/cancel") { request, context in
+      await self.suggestionService.cancelTagRefinement()
+      let status = await self.suggestionService.getTagRefinementStatus()
+      return try jsonResponse(status)
     }
   }
 

@@ -25,6 +25,8 @@ export type TagSuggestionApi = {
   confidence: number;
   reasoning?: string;
   status: string;
+  kind: 'additive' | 'removal';
+  removalTagSlug?: string;
   createdAt?: string;
   resolvedAt?: string;
 };
@@ -33,6 +35,18 @@ export type BackfillStatusApi = {
   running: boolean;
   total: number;
   processed: number;
+  startedAt?: string;
+  cancelled?: boolean;
+};
+
+export type TagRefinementStatusApi = {
+  running: boolean;
+  tagSlug?: string;
+  total: number;
+  processed: number;
+  removed: number;
+  addSuggestions: number;
+  removeSuggestions: number;
   startedAt?: string;
   cancelled?: boolean;
 };

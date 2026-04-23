@@ -249,3 +249,21 @@ struct CreateTagSuggestions: AsyncMigration {
         try await database.schema("tag_suggestions").delete()
     }
 }
+
+/// Adds `kind` + `removal_tag_slug` to `tag_suggestions` so per-tag refinement runs can queue
+/// proposed removals alongside the existing additive suggestion flow. Existing rows default to
+/// `additive` so the old review UI keeps working unchanged.
+struct AddKindToTagSuggestions: AsyncMigration {
+    func prepare(on database: Database) async throws {
+        guard let sql = database as? SQLDatabase else { return }
+        try await sql.raw("ALTER TABLE tag_suggestions ADD COLUMN kind TEXT NOT NULL DEFAULT 'additive'").run()
+        try await sql.raw("ALTER TABLE tag_suggestions ADD COLUMN removal_tag_slug TEXT").run()
+    }
+
+    func revert(on database: Database) async throws {
+        guard let sql = database as? SQLDatabase else { return }
+        // SQLite ≥3.35 supports DROP COLUMN; older versions no-op safely.
+        try? await sql.raw("ALTER TABLE tag_suggestions DROP COLUMN kind").run()
+        try? await sql.raw("ALTER TABLE tag_suggestions DROP COLUMN removal_tag_slug").run()
+    }
+}

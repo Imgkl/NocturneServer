@@ -24,7 +24,15 @@ export function Dialog({ open, onClose, size = 'md', title, children }: DialogPr
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // Lock page scroll while the dialog is up so wheel/touch inside the dialog doesn't chain
+    // back into the library grid behind it. Restore on close — the prior value handles the
+    // case where something else already locked it (e.g. nested modal).
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
   }, [open, onClose]);
 
   if (!open) return null;
@@ -53,7 +61,7 @@ export function Dialog({ open, onClose, size = 'md', title, children }: DialogPr
             </button>
           </div>
         )}
-        <div className="flex-1 overflow-y-auto px-5 lg:px-6 py-5">{children}</div>
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 lg:px-6 py-5">{children}</div>
       </div>
     </div>
   );

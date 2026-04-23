@@ -20,8 +20,10 @@ interface LibraryViewProps {
   selectedMood: string;
   onMoodChange: (slug: string) => void;
   loading: boolean;
+  refineRunning?: boolean;
   onSync: () => void;
   onEditMovie: (movie: Movie) => void;
+  onRefineTag?: (slug: string) => void;
   // Render slots (stay in App.tsx for now; extracted later)
   backfillBanner?: ReactNode;
   pendingSuggestionsPanel?: ReactNode;
@@ -39,12 +41,15 @@ export function LibraryView({
   selectedMood,
   onMoodChange,
   loading,
+  refineRunning,
   onSync,
   onEditMovie,
+  onRefineTag,
   backfillBanner,
   pendingSuggestionsPanel,
 }: LibraryViewProps) {
   const collapsed = useHeaderCollapsed();
+  const focusedMood = selectedMood ? moods[selectedMood] : undefined;
 
   return (
     <>
@@ -61,16 +66,42 @@ export function LibraryView({
         >
           <div className="overflow-hidden min-h-0">
             <div className="px-5 lg:px-10 pt-6 lg:pt-8 pb-5 flex flex-col gap-6">
-              <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
-                <div>
-                  <h1 className="font-serif italic text-3xl lg:text-4xl text-text">Library</h1>
-                  <p className="text-[11px] uppercase tracking-widest text-muted mt-2">
-                    {movies.length.toLocaleString()} shown · {stats.tagged} tagged · {stats.untagged} untagged
-                  </p>
+              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  {focusedMood ? (
+                    <>
+                      <h1 className="font-serif italic text-3xl lg:text-4xl text-text">
+                        {focusedMood.title}
+                      </h1>
+                      <p className="text-[13px] lg:text-[14px] text-text-dim mt-3 max-w-3xl leading-relaxed">
+                        {focusedMood.description}
+                      </p>
+                      <p className="text-[11px] uppercase tracking-widest text-muted mt-3">
+                        {movies.length.toLocaleString()} in this mood
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h1 className="font-serif italic text-3xl lg:text-4xl text-text">Library</h1>
+                      <p className="text-[11px] uppercase tracking-widest text-muted mt-2">
+                        {movies.length.toLocaleString()} shown · {stats.tagged} tagged · {stats.untagged} untagged
+                      </p>
+                    </>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {focusedMood && onRefineTag && (
+                    <Button
+                      variant="line"
+                      onClick={() => onRefineTag(selectedMood)}
+                      disabled={!!refineRunning}
+                      title="Ask Claude to verify every movie in this bucket still fits the tag"
+                    >
+                      {refineRunning ? 'Refining…' : 'Refine tag'}
+                    </Button>
+                  )}
                   <ViewModeToggle value={viewMode} onChange={onViewModeChange} />
-                  <Button variant="line" onClick={onSync} disabled={loading}>
+                  <Button variant="primary" onClick={onSync} disabled={loading}>
                     {loading ? 'Syncing…' : 'Sync library'}
                   </Button>
                 </div>

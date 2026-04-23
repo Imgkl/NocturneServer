@@ -10,6 +10,9 @@
   --color-text: #0a0a0a;
   --color-text-dim: #404040;
 
+  /* Danger — muted oxblood. Reserved for destructive actions only so it keeps its weight. */
+  --color-danger: #991b1b;
+
   --font-serif: "EB Garamond", Georgia, serif;
   --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
 

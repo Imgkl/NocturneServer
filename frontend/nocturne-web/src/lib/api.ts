@@ -8,6 +8,7 @@ import type {
   OnboardingStatus,
   SettingsInfo,
   SyncStatus,
+  TagRefinementStatusApi,
   TagSuggestionApi,
 } from './types';
 
@@ -98,6 +99,14 @@ export const api = {
     reprocessAll: () => post<BackfillStatusApi>('/admin/auto-tag/reprocess-all'),
     cancel: () => post<BackfillStatusApi>('/admin/auto-tag/cancel'),
     status: () => get<BackfillStatusApi>('/admin/auto-tag/backfill/status'),
+  },
+  tags: {
+    refine: (slug: string) =>
+      post<TagRefinementStatusApi>(`/tags/${encodeURIComponent(slug)}/refine`),
+    refineStatus: (slug: string) =>
+      get<TagRefinementStatusApi>(`/tags/${encodeURIComponent(slug)}/refine/status`),
+    refineCancel: (slug: string) =>
+      post<TagRefinementStatusApi>(`/tags/${encodeURIComponent(slug)}/refine/cancel`),
   },
   data: {
     export: () => get<Record<string, string[]>>('/data/export'),

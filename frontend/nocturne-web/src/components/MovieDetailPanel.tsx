@@ -35,6 +35,7 @@ function EditForm({
   const originalTags = useMemo(() => new Set((movie.tags || []).map((t) => t.slug)), [movie]);
   const [selected, setSelected] = useState<Set<string>>(() => new Set(originalTags));
   const [filter, setFilter] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
   const toggle = (slug: string) => {
     setSelected((prev) => {
@@ -44,6 +45,14 @@ function EditForm({
       } else if (next.size < MAX_TAGS) {
         next.add(slug);
       }
+      return next;
+    });
+  };
+
+  const toggleExpanded = (slug: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug); else next.add(slug);
       return next;
     });
   };
@@ -113,11 +122,36 @@ function EditForm({
                     </span>
                   )}
                 </div>
-                {mood.description && (
-                  <p className="text-[12px] text-text-dim mt-1 leading-snug line-clamp-2">
-                    {mood.description}
-                  </p>
-                )}
+                {mood.description && (() => {
+                  // ~140-char heuristic maps roughly to the 2-line clamp at this container
+                  // width; shorter descriptions render whole without a toggle.
+                  const needsToggle = mood.description.length > 140;
+                  const isExpanded = expanded.has(slug);
+                  return (
+                    <div className="mt-1">
+                      <p
+                        className={`text-[12px] text-text-dim leading-snug ${
+                          needsToggle && !isExpanded ? 'line-clamp-2' : ''
+                        }`}
+                      >
+                        {mood.description}
+                      </p>
+                      {needsToggle && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleExpanded(slug);
+                          }}
+                          className="mt-1 text-[10px] uppercase tracking-widest text-muted hover:text-text cursor-pointer"
+                        >
+                          {isExpanded ? 'Show less' : 'Read more'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </label>
           );

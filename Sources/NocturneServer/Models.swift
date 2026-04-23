@@ -107,7 +107,7 @@ final class MovieTag: Model, @unchecked Sendable {
     }
 }
 
-// MARK: - Tag Suggestion Model (auto-tag queue)
+// MARK: - Tag Suggestion Model (auto-tag queue + per-tag refinement proposals)
 final class TagSuggestion: Model, @unchecked Sendable {
     static let schema = "tag_suggestions"
 
@@ -127,7 +127,15 @@ final class TagSuggestion: Model, @unchecked Sendable {
     var reasoning: String?
 
     @Field(key: "status")
-    var status: String  // "pending" | "approved" | "rejected"
+    var status: String  // "pending" | "approved" | "rejected" | "superseded"
+
+    /// "additive" — row proposes adding the tags in `suggestedTags` (the standard auto-tag flow).
+    /// "removal"  — row proposes dropping `removalTagSlug`, surfaced by the per-tag refine pass.
+    @Field(key: "kind")
+    var kind: String
+
+    @OptionalField(key: "removal_tag_slug")
+    var removalTagSlug: String?
 
     @Timestamp(key: "created_at", on: .create)
     var createdAt: Date?
@@ -143,7 +151,9 @@ final class TagSuggestion: Model, @unchecked Sendable {
         suggestedTags: [String],
         confidence: Double,
         reasoning: String?,
-        status: String = "pending"
+        status: String = "pending",
+        kind: String = "additive",
+        removalTagSlug: String? = nil
     ) {
         self.id = id
         self.jellyfinId = jellyfinId
@@ -151,6 +161,8 @@ final class TagSuggestion: Model, @unchecked Sendable {
         self.confidence = confidence
         self.reasoning = reasoning
         self.status = status
+        self.kind = kind
+        self.removalTagSlug = removalTagSlug
     }
 }
 
@@ -189,6 +201,8 @@ struct TagSuggestionResponse: Codable, Sendable {
     let confidence: Double
     let reasoning: String?
     let status: String
+    let kind: String
+    let removalTagSlug: String?
     let createdAt: Date?
     let resolvedAt: Date?
 
@@ -199,6 +213,8 @@ struct TagSuggestionResponse: Codable, Sendable {
         self.confidence = s.confidence
         self.reasoning = s.reasoning
         self.status = s.status
+        self.kind = s.kind
+        self.removalTagSlug = s.removalTagSlug
         self.createdAt = s.createdAt
         self.resolvedAt = s.resolvedAt
     }
@@ -213,6 +229,20 @@ struct BackfillStatus: Codable, Sendable {
     let running: Bool
     let total: Int
     let processed: Int
+    let startedAt: Date?
+    let cancelled: Bool?
+}
+
+/// Per-tag refinement progress. Shares the mutex with backfill — only one long-running job
+/// runs at a time, so `running` being true for refinement implies backfill is idle.
+struct TagRefinementStatus: Codable, Sendable {
+    let running: Bool
+    let tagSlug: String?
+    let total: Int
+    let processed: Int
+    let removed: Int
+    let addSuggestions: Int
+    let removeSuggestions: Int
     let startedAt: Date?
     let cancelled: Bool?
 }
@@ -293,6 +323,45 @@ struct AutoTagResponse: Codable, Sendable {
         try c.encodeIfPresent(residue, forKey: .residue)
         try c.encode(tags, forKey: .tags)
         try c.encodeIfPresent(reasoning, forKey: .reasoning)
+    }
+}
+
+/// Per-tag refinement verdict from Claude. `keep=false` means the focus tag doesn't describe
+/// the movie's residue; caller decides auto-remove vs queue-for-review based on `confidence`
+/// against the tag's `minConfidence` floor. `suggestedTags` proposes alternate tags that fit
+/// the movie better — handled separately via the existing additive suggestion flow.
+struct TagRefinementResponse: Codable, Sendable {
+    let keep: Bool
+    let confidence: Double
+    let evidence: String?
+    let residue: String?
+    let suggestedTags: [AutoTagResponse.TagWithConfidence]
+
+    enum CodingKeys: String, CodingKey {
+        case keep, confidence, evidence, residue, suggestedTags
+    }
+
+    init(
+        keep: Bool,
+        confidence: Double,
+        evidence: String?,
+        residue: String?,
+        suggestedTags: [AutoTagResponse.TagWithConfidence]
+    ) {
+        self.keep = keep
+        self.confidence = confidence
+        self.evidence = evidence
+        self.residue = residue
+        self.suggestedTags = suggestedTags
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.keep = (try? c.decode(Bool.self, forKey: .keep)) ?? true
+        self.confidence = (try? c.decode(Double.self, forKey: .confidence)) ?? 0
+        self.evidence = try? c.decodeIfPresent(String.self, forKey: .evidence)
+        self.residue = try? c.decodeIfPresent(String.self, forKey: .residue)
+        self.suggestedTags = (try? c.decode([AutoTagResponse.TagWithConfidence].self, forKey: .suggestedTags)) ?? []
     }
 }
 
