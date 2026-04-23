@@ -6,6 +6,7 @@ import { MoodChips } from '../components/MoodChips';
 import { MovieGrid } from '../components/MovieGrid';
 import type { ViewMode } from '../components/MovieGrid';
 import type { MoodBuckets, Movie } from '../lib/types';
+import { useHeaderCollapsed } from '../lib/useHeaderCollapsed';
 
 interface LibraryViewProps {
   movies: Movie[];
@@ -43,36 +44,51 @@ export function LibraryView({
   backfillBanner,
   pendingSuggestionsPanel,
 }: LibraryViewProps) {
+  const collapsed = useHeaderCollapsed();
+
   return (
     <>
       <header className="border-b border-border bg-bg sticky top-14 lg:top-0 z-20">
-        <div className="px-5 lg:px-10 py-6 lg:py-8 flex flex-col gap-6">
-          {/* Title row */}
-          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
-            <div>
-              <h1 className="font-serif italic text-3xl lg:text-4xl text-text">Library</h1>
-              <p className="text-[11px] uppercase tracking-widest text-muted mt-2">
-                {movies.length.toLocaleString()} shown · {stats.tagged} tagged · {stats.untagged} untagged
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <ViewModeToggle value={viewMode} onChange={onViewModeChange} />
-              <Button variant="line" onClick={onSync} disabled={loading}>
-                {loading ? 'Syncing…' : 'Sync library'}
-              </Button>
+        {/* Collapsible top: title + stats + actions + search.
+            `grid-rows-[1fr → 0fr]` gives a smooth height transition without
+            hard-coding a max-height. The inner div clips overflow so the
+            content doesn't bleed while animating. */}
+        <div
+          className={`grid transition-[grid-template-rows] duration-300 ease-out ${
+            collapsed ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'
+          }`}
+          aria-hidden={collapsed}
+        >
+          <div className="overflow-hidden min-h-0">
+            <div className="px-5 lg:px-10 pt-6 lg:pt-8 pb-5 flex flex-col gap-6">
+              <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+                <div>
+                  <h1 className="font-serif italic text-3xl lg:text-4xl text-text">Library</h1>
+                  <p className="text-[11px] uppercase tracking-widest text-muted mt-2">
+                    {movies.length.toLocaleString()} shown · {stats.tagged} tagged · {stats.untagged} untagged
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ViewModeToggle value={viewMode} onChange={onViewModeChange} />
+                  <Button variant="line" onClick={onSync} disabled={loading}>
+                    {loading ? 'Syncing…' : 'Sync library'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="max-w-md">
+                <Input
+                  placeholder="Search films…"
+                  value={searchQuery}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                />
+              </div>
             </div>
           </div>
+        </div>
 
-          {/* Search */}
-          <div className="max-w-md">
-            <Input
-              placeholder="Search films…"
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-            />
-          </div>
-
-          {/* Mood chips */}
+        {/* Always-visible strip: mood chips */}
+        <div className="px-5 lg:px-10 py-3">
           <MoodChips
             moods={moods}
             counts={moodCounts}
