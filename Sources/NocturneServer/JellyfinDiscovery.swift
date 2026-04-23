@@ -3,8 +3,11 @@ import Logging
 
 #if canImport(Darwin)
 import Darwin
+private let SOCK_DGRAM_INT32: Int32 = SOCK_DGRAM
 #elseif canImport(Glibc)
 import Glibc
+// On glibc, SOCK_DGRAM is an enum (__socket_type) rather than an Int32.
+private let SOCK_DGRAM_INT32: Int32 = Int32(SOCK_DGRAM.rawValue)
 #endif
 
 /// Jellyfin server auto-discovery using the standard client-discovery protocol.
@@ -53,7 +56,7 @@ enum JellyfinDiscovery {
     }
 
     private static func performDiscovery(timeoutMs: Int, logger: Logger) throws -> [Server] {
-        let fd = socket(AF_INET, SOCK_DGRAM, 0)
+        let fd = socket(AF_INET, SOCK_DGRAM_INT32, 0)
         guard fd >= 0 else {
             throw DiscoveryError.socketFailed(errno)
         }
@@ -113,10 +116,15 @@ enum JellyfinDiscovery {
         while Date() < deadline {
             let remaining = deadline.timeIntervalSinceNow
             guard remaining > 0 else { break }
-            var tv = timeval(
-                tv_sec: Int(remaining),
-                tv_usec: Int32((remaining - Double(Int(remaining))) * 1_000_000)
-            )
+            let secs = Int(remaining)
+            let usecsDouble = (remaining - Double(secs)) * 1_000_000
+            // timeval.tv_usec is __darwin_suseconds_t (Int32) on macOS but
+            // suseconds_t (Int) on glibc — pick the right width at compile time.
+            #if canImport(Darwin)
+            var tv = timeval(tv_sec: secs, tv_usec: Int32(usecsDouble))
+            #else
+            var tv = timeval(tv_sec: secs, tv_usec: Int(usecsDouble))
+            #endif
             var readSet = fd_set()
             fdZero(&readSet)
             fdSet(fd, set: &readSet)
