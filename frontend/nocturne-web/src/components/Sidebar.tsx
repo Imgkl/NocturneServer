@@ -20,7 +20,7 @@ export function Sidebar({ onSettingsClick, version }: SidebarProps) {
       </SidebarButton>
       {version && (
         <span className="text-[8px] uppercase tracking-widest text-muted mt-3">
-          v{version}
+          {version}
         </span>
       )}
     </aside>
