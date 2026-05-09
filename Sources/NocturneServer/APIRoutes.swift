@@ -589,6 +589,17 @@ final class APIRoutes: @unchecked Sendable {
       let address = String(cString: host)
       // Reject link-local AutoIP.
       if address.hasPrefix("169.254.") { continue }
+      // Reject the 172.16/12 range — it's overwhelmingly Docker bridge
+      // networks in practice, and a phone on the user's LAN can't reach
+      // them. If a user genuinely has a 172.16/12 LAN they'd be browsing
+      // the admin UI from that range too, in which case the Host-header
+      // path catches it before we ever fall back here.
+      if address.hasPrefix("172.") {
+        let parts = address.split(separator: ".")
+        if parts.count > 1, let second = Int(parts[1]), (16...31).contains(second) {
+          continue
+        }
+      }
 
       let name = String(cString: cur.pointee.ifa_name)
       candidates.append((name: name, address: address))

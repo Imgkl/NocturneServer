@@ -9,15 +9,25 @@ export function LinkAppPanel() {
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    // The browser address bar IS the right answer — that's a URL the
+    // user already proved is reachable from the rest of the LAN. Only
+    // ask the backend when the browser is on loopback (someone SSH'd
+    // into the host and curls localhost). The backend's own answer is
+    // unreliable inside Docker — getifaddrs only sees the bridge IP.
+    const origin = window.location.origin;
+    if (!isLoopbackOrigin(origin)) {
+      setUrl(origin);
+      return;
+    }
     let cancelled = false;
     api.link
       .lanAddress()
       .then((res) => {
         if (cancelled) return;
-        setUrl(res.url ?? window.location.origin);
+        setUrl(res.url ?? origin);
       })
       .catch(() => {
-        if (!cancelled) setUrl(window.location.origin);
+        if (!cancelled) setUrl(origin);
       });
     return () => {
       cancelled = true;
@@ -52,4 +62,13 @@ export function LinkAppPanel() {
       </p>
     </div>
   );
+}
+
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const u = new URL(origin);
+    return u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]';
+  } catch {
+    return false;
+  }
 }
