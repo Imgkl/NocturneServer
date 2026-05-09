@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Button } from '../ui/Button';
+import { Dialog } from '../ui/Dialog';
 import { Input } from '../ui/Input';
 import { Spinner } from '../ui/Spinner';
+import { LinkAppPanel } from '../components/LinkAppPanel';
 import { MoodChips } from '../components/MoodChips';
 import { MovieGrid } from '../components/MovieGrid';
 import type { ViewMode } from '../components/MovieGrid';
@@ -49,6 +52,7 @@ export function LibraryView({
   pendingSuggestionsPanel,
 }: LibraryViewProps) {
   const collapsed = useHeaderCollapsed();
+  const [linkAppOpen, setLinkAppOpen] = useState(false);
   const focusedMood = selectedMood ? moods[selectedMood] : undefined;
 
   return (
@@ -100,6 +104,13 @@ export function LibraryView({
                       {refineRunning ? 'Refining…' : 'Refine tag'}
                     </Button>
                   )}
+                  <Button
+                    variant="line"
+                    onClick={() => setLinkAppOpen(true)}
+                    title="Show a QR code your phone can scan during onboarding"
+                  >
+                    Link Nocturne app
+                  </Button>
                   <ViewModeToggle value={viewMode} onChange={onViewModeChange} />
                   <Button variant="primary" onClick={onSync} disabled={loading}>
                     {loading ? 'Syncing…' : 'Sync library'}
@@ -139,6 +150,15 @@ export function LibraryView({
           <MovieGrid movies={movies} viewMode={viewMode} onEditMovie={onEditMovie} />
         )}
       </main>
+
+      <Dialog
+        open={linkAppOpen}
+        onClose={() => setLinkAppOpen(false)}
+        title="Link Nocturne app"
+        size="sm"
+      >
+        <LinkAppPanel />
+      </Dialog>
     </>
   );
 }

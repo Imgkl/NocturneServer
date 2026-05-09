@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
+import { useRef, useState } from 'react';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Divider } from '../ui/Divider';
 import { JellyfinConnectForm } from '../components/JellyfinConnectForm';
 import { ApiKeyForm } from '../components/ApiKeyForm';
-import { api } from '../lib/api';
+import { LinkAppPanel } from '../components/LinkAppPanel';
 import type { BackfillStatusApi } from '../lib/types';
 
 interface SettingsViewProps {
@@ -283,29 +282,6 @@ function Row({
 
 function LinkMobileAppRow() {
   const [open, setOpen] = useState(false);
-  const [url, setUrl] = useState<string | null>(null);
-
-  // Resolve once when the panel is first opened. The server's answer wins
-  // when present (it knows its own LAN IP); otherwise fall back to the
-  // current page's origin — which is at least correct when the user
-  // already opened the UI via a LAN IP.
-  useEffect(() => {
-    if (!open || url) return;
-    let cancelled = false;
-    api.link
-      .lanAddress()
-      .then((res) => {
-        if (cancelled) return;
-        setUrl(res.url ?? window.location.origin);
-      })
-      .catch(() => {
-        if (!cancelled) setUrl(window.location.origin);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, url]);
-
   return (
     <Row
       title="Link Nocturne app"
@@ -317,20 +293,8 @@ function LinkMobileAppRow() {
       }
     >
       {open && (
-        <div className="mt-4 flex flex-col items-center gap-3">
-          {url ? (
-            <>
-              <div className="bg-white p-4 border border-border">
-                <QRCodeSVG value={url} size={224} level="M" />
-              </div>
-              <code className="text-[12px] text-text">{url}</code>
-              <p className="text-[11px] text-muted text-center max-w-[280px] leading-snug">
-                Your phone must be on the same network as this server.
-              </p>
-            </>
-          ) : (
-            <p className="text-[12px] text-muted">Resolving address…</p>
-          )}
+        <div className="mt-4">
+          <LinkAppPanel />
         </div>
       )}
     </Row>

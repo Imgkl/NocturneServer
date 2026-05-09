@@ -507,13 +507,50 @@ final class APIRoutes: @unchecked Sendable {
     }
 
     // GET /admin/lan-address — best-effort LAN-routable URL the mobile app
-    // can hit. Used by the "Link mobile app" QR code in the web UI; the
-    // browser's `window.location.origin` is useless to a phone when the
-    // user is browsing via localhost.
+    // can hit. The Host header is canonical: it's the exact address the
+    // browser used to reach the server, so a phone on the same LAN can
+    // also reach it. `getifaddrs` is only a fallback for the localhost
+    // case (and is wrong inside Docker — the container only sees its own
+    // bridge interface, not the host's 192.168.x.x).
     struct LANAddressResponse: Codable { let url: String? }
-    admin.get("lan-address") { _, _ in
-      let host = Self.bestLANHost()
-      let url = host.map { "http://\($0):\(self.config.port)" }
+    let hostFieldName = HTTPField.Name("Host")
+    let xfProtoFieldName = HTTPField.Name("X-Forwarded-Proto")
+    admin.get("lan-address") { request, _ in
+      let scheme: String = {
+        let proto = request.headers.first { $0.name == xfProtoFieldName }?.value
+          .lowercased()
+        return (proto == "https") ? "https" : "http"
+      }()
+      let hostHeader =
+        request.headers.first { $0.name == hostFieldName }?.value
+        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+      // Trust the Host header unless it's loopback (localhost / 127.0.0.1
+      // / [::1]). Strip any port for the loopback check, then echo back
+      // the original `host:port` form on a non-loopback hit.
+      let bareHost: String = {
+        if hostHeader.hasPrefix("[") {
+          // IPv6 literal: `[::1]:8001` → `::1`
+          if let close = hostHeader.firstIndex(of: "]") {
+            return String(hostHeader[hostHeader.index(after: hostHeader.startIndex)..<close])
+          }
+        }
+        return hostHeader.split(separator: ":").first.map(String.init) ?? hostHeader
+      }()
+      let isLoopback =
+        bareHost.isEmpty || bareHost.lowercased() == "localhost"
+        || bareHost == "127.0.0.1" || bareHost == "::1"
+
+      if !isLoopback {
+        return try jsonResponse(LANAddressResponse(url: "\(scheme)://\(hostHeader)"))
+      }
+
+      // Loopback fallback. On bare-metal macOS this finds en0; inside
+      // Docker it returns the bridge IP, which is wrong for LAN access —
+      // accepted limitation, the user should browse the admin UI via the
+      // host's LAN IP rather than localhost when running containerised.
+      let lanHost = Self.bestLANHost()
+      let url = lanHost.map { "\(scheme)://\($0):\(self.config.port)" }
       return try jsonResponse(LANAddressResponse(url: url))
     }
   }
