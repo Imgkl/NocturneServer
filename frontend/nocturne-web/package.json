@@ -11,6 +11,7 @@
   "dependencies": {
     "@fontsource/eb-garamond": "^5.2.7",
     "framer-motion": "^11.0.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

@@ -100,6 +100,12 @@ export const api = {
     cancel: () => post<BackfillStatusApi>('/admin/auto-tag/cancel'),
     status: () => get<BackfillStatusApi>('/admin/auto-tag/backfill/status'),
   },
+  link: {
+    // Best-effort LAN-routable URL the mobile app can hit. Returns
+    // `{ url: null }` when the host has no usable IPv4 LAN interface — the
+    // caller should fall back to `window.location.origin`.
+    lanAddress: () => get<{ url: string | null }>('/admin/lan-address'),
+  },
   tags: {
     refine: (slug: string) =>
       post<TagRefinementStatusApi>(`/tags/${encodeURIComponent(slug)}/refine`),

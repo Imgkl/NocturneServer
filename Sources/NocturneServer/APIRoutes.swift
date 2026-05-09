@@ -6,6 +6,12 @@ import Hummingbird
 import Logging
 import NIOCore
 
+#if canImport(Darwin)
+  import Darwin
+#elseif canImport(Glibc)
+  import Glibc
+#endif
+
 final class APIRoutes: @unchecked Sendable {
   let movieService: MovieService
   let suggestionService: SuggestionService
@@ -499,6 +505,64 @@ final class APIRoutes: @unchecked Sendable {
       return try jsonResponse(
         AdminMoviesResponse(items: items, totalCount: totalCount, offset: offset, limit: limit))
     }
+
+    // GET /admin/lan-address — best-effort LAN-routable URL the mobile app
+    // can hit. Used by the "Link mobile app" QR code in the web UI; the
+    // browser's `window.location.origin` is useless to a phone when the
+    // user is browsing via localhost.
+    struct LANAddressResponse: Codable { let url: String? }
+    admin.get("lan-address") { _, _ in
+      let host = Self.bestLANHost()
+      let url = host.map { "http://\($0):\(self.config.port)" }
+      return try jsonResponse(LANAddressResponse(url: url))
+    }
+  }
+
+  /// Picks a LAN-routable IPv4 address from the host's network
+  /// interfaces. Prefers `en*` (Wi-Fi/ethernet on macOS) over `eth*`/`wlan*`
+  /// (Linux/Docker), rejects loopback (`127/8`) and link-local
+  /// (`169.254/16`). Returns nil if nothing usable is found — the caller
+  /// falls back to `window.location.origin`.
+  private static func bestLANHost() -> String? {
+    var head: UnsafeMutablePointer<ifaddrs>?
+    guard getifaddrs(&head) == 0, let first = head else { return nil }
+    defer { freeifaddrs(head) }
+
+    var candidates: [(name: String, address: String)] = []
+    var ptr: UnsafeMutablePointer<ifaddrs>? = first
+    while let cur = ptr {
+      defer { ptr = cur.pointee.ifa_next }
+      let flags = Int32(cur.pointee.ifa_flags)
+      guard (flags & IFF_UP) != 0, (flags & IFF_LOOPBACK) == 0,
+        let sa = cur.pointee.ifa_addr,
+        sa.pointee.sa_family == sa_family_t(AF_INET)
+      else { continue }
+
+      // sockaddr length: IPv4 is fixed-size; sa_len isn't portable to Linux.
+      let saLen = socklen_t(MemoryLayout<sockaddr_in>.size)
+      var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+      let result = getnameinfo(
+        sa, saLen,
+        &host, socklen_t(host.count),
+        nil, 0, NI_NUMERICHOST
+      )
+      guard result == 0 else { continue }
+      let address = String(cString: host)
+      // Reject link-local AutoIP.
+      if address.hasPrefix("169.254.") { continue }
+
+      let name = String(cString: cur.pointee.ifa_name)
+      candidates.append((name: name, address: address))
+    }
+
+    // en* (macOS Wi-Fi/ethernet) first, then eth*/wlan* (Linux/Docker host),
+    // then anything else. Within a tier, first match wins.
+    func tier(_ name: String) -> Int {
+      if name.hasPrefix("en") { return 0 }
+      if name.hasPrefix("eth") || name.hasPrefix("wlan") { return 1 }
+      return 2
+    }
+    return candidates.min { tier($0.name) < tier($1.name) }?.address
   }
 
   // MARK: - Settings Routes (BYOK)
