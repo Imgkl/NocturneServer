@@ -532,8 +532,10 @@ final class APIRoutes: @unchecked Sendable {
     var ptr: UnsafeMutablePointer<ifaddrs>? = first
     while let cur = ptr {
       defer { ptr = cur.pointee.ifa_next }
+      // IFF_UP / IFF_LOOPBACK come through as Int on Glibc, Int32 on
+      // Darwin — normalise both sides to Int32 for a portable bitmask.
       let flags = Int32(cur.pointee.ifa_flags)
-      guard (flags & IFF_UP) != 0, (flags & IFF_LOOPBACK) == 0,
+      guard (flags & Int32(IFF_UP)) != 0, (flags & Int32(IFF_LOOPBACK)) == 0,
         let sa = cur.pointee.ifa_addr,
         sa.pointee.sa_family == sa_family_t(AF_INET)
       else { continue }
