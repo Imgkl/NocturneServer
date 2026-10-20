@@ -71,6 +71,28 @@ struct NocturneServerApp {
         )
         let anthropic = AnthropicClient(outbound: outbound)
         let llmService = LLMService(httpClient: httpClient, anthropic: anthropic)
+
+        // Enrichment: Wikidata + Wikipedia + awards into the per-film text block.
+        let version = ProcessInfo.processInfo.environment["NOCTURNE_VERSION"] ?? "dev"
+        let userAgent = "NocturneServer/\(version) (+https://github.com/Imgkl/NocturneServer)"
+        let wikimediaLimiter = RateLimiter(perSecond: 2)
+        let settingsStore = SettingsStore(db: fluent.db(), logger: logger)
+        let omdbCache = OmdbCacheStore(db: fluent.db(), logger: logger)
+        try await omdbCache.ensureTable()
+        let awardsResolver = AwardsResolver(
+            outbound: outbound, fluent: fluent, limiter: wikimediaLimiter, userAgent: userAgent,
+            omdb: OmdbClient(outbound: outbound), omdbCache: omdbCache, settings: settingsStore)
+        let enrichmentService = EnrichmentService(
+            fluent: fluent,
+            jellyfin: jellyfinService,
+            resolver: WikidataResolver(outbound: outbound, limiter: wikimediaLimiter, userAgent: userAgent),
+            wikipedia: WikipediaClient(outbound: outbound, limiter: wikimediaLimiter, userAgent: userAgent),
+            awards: awardsResolver)
+        let runService = RunService(fluent: fluent)
+        let staleRuns = try await runService.markStaleOnBoot()
+        if staleRuns > 0 { logger.warning("Marked \(staleRuns) stale run(s) from a previous process as error") }
+        let coverageJob = EnrichCoverageJob(runService: runService, enrichment: enrichmentService, fluent: fluent)
+        let enrichmentRoutes = EnrichmentRoutes(enrichment: enrichmentService, coverage: coverageJob, runService: runService)
         
         let movieService = MovieService(
             config: appConfig,
@@ -115,6 +137,7 @@ struct NocturneServerApp {
             isFirstRun: false,
             httpClient: httpClient,
             outbound: outbound,
+            enrichmentRoutes: enrichmentRoutes,
             eventLoopGroup: eventLoopGroup
         )
 
@@ -195,6 +218,7 @@ func createApplication(
     isFirstRun: Bool,
     httpClient: HTTPClient,
     outbound: OutboundClient,
+    enrichmentRoutes: EnrichmentRoutes,
     eventLoopGroup: EventLoopGroup
 ) async throws -> Application<RouterResponder<BasicRequestContext>> {
 
@@ -210,7 +234,8 @@ func createApplication(
         suggestionService: suggestionService,
         config: config,
         httpClient: httpClient,
-        outbound: outbound
+        outbound: outbound,
+        enrichmentRoutes: enrichmentRoutes
     )
     apiRoutes.addRoutes(to: router)
 

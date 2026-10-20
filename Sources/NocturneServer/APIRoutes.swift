@@ -19,6 +19,7 @@ final class APIRoutes: @unchecked Sendable {
   let logger = Logger(label: "APIRoutes")
   let httpClient: HTTPClient
   let outbound: OutboundClient
+  let enrichmentRoutes: EnrichmentRoutes
   let posterCache: PosterCache?
 
   init(
@@ -26,13 +27,15 @@ final class APIRoutes: @unchecked Sendable {
     suggestionService: SuggestionService,
     config: NocturneConfiguration,
     httpClient: HTTPClient,
-    outbound: OutboundClient
+    outbound: OutboundClient,
+    enrichmentRoutes: EnrichmentRoutes
   ) {
     self.movieService = movieService
     self.suggestionService = suggestionService
     self.config = config
     self.httpClient = httpClient
     self.outbound = outbound
+    self.enrichmentRoutes = enrichmentRoutes
     self.posterCache = (try? PosterCache(
       dir: config.posterCacheDir,
       maxBytes: config.posterCacheMaxBytes
@@ -64,6 +67,8 @@ final class APIRoutes: @unchecked Sendable {
     addAdminRoutes(to: api)
     addJellyfinDiscoveryRoutes(to: api)
     addOnboardingRoutes(to: api)
+    // Tagger rewrite routes live in Routes/*.swift; this file is the composition root.
+    enrichmentRoutes.addRoutes(to: api)
   }
 
   // MARK: - Mood Routes (admin needs the bucket list for display names)
