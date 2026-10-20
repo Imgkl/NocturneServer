@@ -33,6 +33,12 @@ The owner looked at the 725 "manual" tag rows and decided on a clean slate: 720 
 
 Deployed as `v0.1.1` (the `v0.1.0` tag has no image: the Docker context lacked `Tests/` and the blanket markdown ignore dropped `Resources/guide.md`; both fixed in `build(docker)`). Linux build and tests passed on CI first. On the Pi: `docker compose pull && up -d` with sudo in `/opt/stacks/nocturneserver`, healthy on first boot, six migrations applied to the live database in two seconds (953 auto and 725 user label rows, 515 approvals marked auto, 7 approvals and 2 rejections user, 4 pending), `/version` reports v0.1.1, reader `claude-haiku-5-5`, budget $15.
 
+## Live run on the Pi (same day, later)
+
+Clean slate executed on v0.1.1: auto-tag on sync off, Clear local films, Sync (680 films, 209 watched), then the coverage run over all 680 from the web UI: 671 English plots, 1 other-language plot, 3 no plot, 2 unresolved, 3 errors, about 16 minutes at two Wikimedia requests a second. Two of the errors were a race in the awards label cache (three workers inserting the same `wikidata_labels` row), fixed by an upsert and tagged as `v0.1.3` together with the queue fix for pending rows of removed films (`v0.1.2`) and the api key no longer logged by the realtime listener. The Jellyfin realtime socket connected on first try; the three client routes the iOS app uses (`clients/tags/batch`, `clients/home`, `clients/omdb/ratings`, the last one now storing OMDb awards) answered on the Pi.
+
+Stopped before the reader check and the watched backfill: this Mac dropped off the home network onto a phone hotspot (172.20.10.x), so the Pi became unreachable from here. v0.1.3 is built on GHCR but not pulled yet; the Pi still runs v0.1.1. Remaining, in order, once the Mac is back on the LAN: pull v0.1.3, retry the three error rows, tag two watched films and confirm the cache hit in `api_calls`, Start auto-tag with scope watched (209 films, about $0.30), turn auto-tag on sync back on, click through the queue.
+
 ## Not verified yet (owner touchpoints)
 
 1. **Reader live check (plan Task 9).** No Anthropic key on this Mac. On the Pi, with `models.reader = claude-haiku-5-5`: tag two films, then confirm in `api_calls` that the second call has `cache_read_input_tokens > 0` in `units_json` and that the response parsed (a `decisions` row with `reader_json` and outcome other than `error`).
