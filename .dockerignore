@@ -26,3 +26,6 @@ frontend/nocturne-web/dist
 # Docs
 README*.md
 **/*.md
+
+# The prompt guide ships inside the resource bundle; the blanket markdown ignore above would drop it.
+!Sources/NocturneServer/Resources/guide.md

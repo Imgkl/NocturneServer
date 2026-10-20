@@ -71,8 +71,10 @@ RUN --mount=type=cache,id=spm-cache,target=/root/.swiftpm \
     --mount=type=cache,id=spm-ccache,target=/root/.cache \
     swift package resolve
 
-# Copy Swift source code
+# Copy Swift source code. Tests/ too: the manifest declares the test target's path and SwiftPM
+# refuses to load a package whose target directories are missing, even for a release build.
 COPY Sources/ ./Sources/
+COPY Tests/ ./Tests/
 
 # Build natively for the target platform (buildx/QEMU handles emulation)
 ARG TARGETPLATFORM
