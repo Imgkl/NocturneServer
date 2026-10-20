@@ -114,6 +114,7 @@ struct NocturneServerApp {
             logger: logger,
             isFirstRun: false,
             httpClient: httpClient,
+            outbound: outbound,
             eventLoopGroup: eventLoopGroup
         )
 
@@ -193,6 +194,7 @@ func createApplication(
     logger: Logger,
     isFirstRun: Bool,
     httpClient: HTTPClient,
+    outbound: OutboundClient,
     eventLoopGroup: EventLoopGroup
 ) async throws -> Application<RouterResponder<BasicRequestContext>> {
 
@@ -207,7 +209,8 @@ func createApplication(
         movieService: movieService,
         suggestionService: suggestionService,
         config: config,
-        httpClient: httpClient
+        httpClient: httpClient,
+        outbound: outbound
     )
     apiRoutes.addRoutes(to: router)
 

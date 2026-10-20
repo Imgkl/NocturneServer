@@ -18,18 +18,21 @@ final class APIRoutes: @unchecked Sendable {
   let config: NocturneConfiguration
   let logger = Logger(label: "APIRoutes")
   let httpClient: HTTPClient
+  let outbound: OutboundClient
   let posterCache: PosterCache?
 
   init(
     movieService: MovieService,
     suggestionService: SuggestionService,
     config: NocturneConfiguration,
-    httpClient: HTTPClient
+    httpClient: HTTPClient,
+    outbound: OutboundClient
   ) {
     self.movieService = movieService
     self.suggestionService = suggestionService
     self.config = config
     self.httpClient = httpClient
+    self.outbound = outbound
     self.posterCache = (try? PosterCache(
       dir: config.posterCacheDir,
       maxBytes: config.posterCacheMaxBytes
@@ -320,10 +323,6 @@ final class APIRoutes: @unchecked Sendable {
 
     // OMDb ratings proxy — keeps the key off clients and shares a 15-day cache
     struct OmdbRatingsResponse: Codable { let ratings: [OmdbRating] }
-    struct RawOmdbResponse: Codable {
-      let Ratings: [OmdbRating]?
-      let Response: String?
-    }
 
     clients.get("omdb/ratings") { request, context in
       let imdbId =
@@ -347,19 +346,13 @@ final class APIRoutes: @unchecked Sendable {
       }
 
       do {
-        let url = "http://www.omdbapi.com/?apikey=\(savedKey)&i=\(imdbId)"
-        let response = try await self.httpClient.get(url: url).get()
-        guard var body = response.body else {
+        // Through OutboundClient so the call is metered like every other provider; the
+        // awards string is stored alongside the ratings for the enrichment text block.
+        guard let payload = try await OmdbClient(outbound: self.outbound).fetch(imdbId: imdbId, apiKey: savedKey) else {
           return try jsonResponse(OmdbRatingsResponse(ratings: []))
         }
-        let data = body.readData(length: body.readableBytes) ?? Data()
-        let raw = try JSONDecoder().decode(RawOmdbResponse.self, from: data)
-        let ok = (raw.Response?.lowercased() == "true")
-        let ratings = ok ? (raw.Ratings ?? []) : []
-        if ok {
-          try await cache.set(imdbId: imdbId, ratings: ratings)
-        }
-        return try jsonResponse(OmdbRatingsResponse(ratings: ratings))
+        try await cache.set(imdbId: imdbId, ratings: payload.ratings, awards: payload.awards)
+        return try jsonResponse(OmdbRatingsResponse(ratings: payload.ratings))
       } catch {
         self.logger.warning("OMDb fetch failed: \(String(describing: error))")
         return try jsonResponse(OmdbRatingsResponse(ratings: []))
