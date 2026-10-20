@@ -87,19 +87,26 @@ final class JellyfinRealtimeService: @unchecked Sendable {
                 logger.info("Realtime: connecting to \(scheme)://\(host):\(port)\(path)")
                 let urlStr = "\(scheme)://\(host):\(port)\(path)"
                 let closePromise = eventLoopGroup.next().makePromise(of: Void.self)
-                try await WebSocket.connect(to: urlStr, headers: authHeader(), on: eventLoopGroup) { [weak self] (ws: WebSocket) in
-                    guard let self = self else { return }
-                    self.socket = ws
-                    ws.onText { [weak self] (_: WebSocket, text: String) in
-                        Task { await self?.handleText(text) }
-                    }
-                    // Enable built-in automatic pings (keepalive)
-                    ws.pingInterval = .seconds(30)
-                    self.sendSessionsStart(ws: ws)
-                    ws.onClose.whenComplete { _ in
-                        closePromise.succeed(())
-                    }
-                }.get()
+                do {
+                    try await WebSocket.connect(to: urlStr, headers: authHeader(), on: eventLoopGroup) { [weak self] (ws: WebSocket) in
+                        guard let self = self else { return }
+                        self.socket = ws
+                        ws.onText { [weak self] (_: WebSocket, text: String) in
+                            Task { await self?.handleText(text) }
+                        }
+                        // Enable built-in automatic pings (keepalive)
+                        ws.pingInterval = .seconds(30)
+                        self.sendSessionsStart(ws: ws)
+                        ws.onClose.whenComplete { _ in
+                            closePromise.succeed(())
+                        }
+                    }.get()
+                } catch {
+                    // A refused upgrade (proxy, wrong URL, server down) must still complete the
+                    // promise; a leaked NIO promise is a fatal error in debug builds.
+                    closePromise.fail(error)
+                    throw error
+                }
                 // Reset backoff only after successful connect
                 backoff = 1
 
