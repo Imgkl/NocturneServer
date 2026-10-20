@@ -35,6 +35,21 @@ final class ReviewQueue: @unchecked Sendable {
             .all()
     }
 
+    /// Enrichment source per decision id, read from `decisions.models_json`, so responses can
+    /// carry it without a second round trip from the UI.
+    func enrichmentSources(for rows: [TagSuggestion]) async throws -> [UUID: String] {
+        let ids = rows.compactMap(\.decisionId)
+        guard !ids.isEmpty else { return [:] }
+        let decisions = try await Decision.query(on: fluent.db()).filter(\.$id ~~ ids).all()
+        var out: [UUID: String] = [:]
+        for decision in decisions {
+            guard let id = decision.id else { continue }
+            let models = (try? JSONDecoder().decode([String: String].self, from: Data(decision.modelsJson.utf8))) ?? [:]
+            out[id] = models["enrichment_source"]
+        }
+        return out
+    }
+
     func pendingJellyfinIds() async throws -> Set<String> {
         let rows = try await TagSuggestion.query(on: fluent.db())
             .filter(\.$status == "pending")

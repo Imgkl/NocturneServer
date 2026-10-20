@@ -124,6 +124,14 @@ struct NocturneServerApp {
         let reviewQueue = ReviewQueue(fluent: fluent, config: appConfig, movies: movieService, pipeline: pipeline)
         let backfillJob = BackfillJob(runService: runService, pipeline: pipeline, queue: reviewQueue, fluent: fluent, config: appConfig)
         let taggerRoutes = TaggerRoutes(movies: movieService, pipeline: pipeline, queue: reviewQueue, backfill: backfillJob)
+        let modelSettingsRoutes = ModelSettingsRoutes(settings: settingsStore, budget: budget, coverage: coverageJob)
+
+        // One-time seed: the legacy ANTHROPIC_MODEL env var becomes the initial reader model setting.
+        if let envModel = ProcessInfo.processInfo.environment["ANTHROPIC_MODEL"], !envModel.isEmpty,
+           (try await settingsStore.get(ReaderService.modelSetting) ?? "").isEmpty {
+            try await settingsStore.set(ReaderService.modelSetting, envModel)
+            logger.warning("ANTHROPIC_MODEL is deprecated; seeded models.reader = \(envModel). Change it in Settings from now on.")
+        }
 
         // Start realtime listener if configured
         var realtime: JellyfinRealtimeService? = nil
@@ -153,6 +161,7 @@ struct NocturneServerApp {
             outbound: outbound,
             enrichmentRoutes: enrichmentRoutes,
             taggerRoutes: taggerRoutes,
+            modelSettingsRoutes: modelSettingsRoutes,
             eventLoopGroup: eventLoopGroup
         )
 
@@ -235,6 +244,7 @@ func createApplication(
     outbound: OutboundClient,
     enrichmentRoutes: EnrichmentRoutes,
     taggerRoutes: TaggerRoutes,
+    modelSettingsRoutes: ModelSettingsRoutes,
     eventLoopGroup: EventLoopGroup
 ) async throws -> Application<RouterResponder<BasicRequestContext>> {
 
@@ -251,7 +261,8 @@ func createApplication(
         httpClient: httpClient,
         outbound: outbound,
         enrichmentRoutes: enrichmentRoutes,
-        taggerRoutes: taggerRoutes
+        taggerRoutes: taggerRoutes,
+        modelSettingsRoutes: modelSettingsRoutes
     )
     apiRoutes.addRoutes(to: router)
 
@@ -375,7 +386,9 @@ struct JSONErrorMiddleware: MiddlewareProtocol {
         do {
             return try await next(request, context)
         } catch let http as HTTPError {
-            let payload = ErrorResponse(error: "HTTP Error", message: http.localizedDescription, status: Int(http.status.code))
+            // `HTTPError(.badRequest, message:)` carries the route's message in `body`; without this the
+            // client only sees the generic "operation couldn't be completed" text.
+            let payload = ErrorResponse(error: "HTTP Error", message: http.body ?? http.localizedDescription, status: Int(http.status.code))
             return try jsonResponse(payload, status: http.status)
         } catch let outbound as OutboundError {
             let status: HTTPResponse.Status

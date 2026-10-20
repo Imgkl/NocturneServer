@@ -234,8 +234,12 @@ struct TagSuggestionResponse: Codable, Sendable {
     let decisionId: UUID?
     /// Per-mood detail from the decision: applied and proposed moods with probability and evidence.
     let items: [SuggestionItem]?
+    /// Story source behind the decision (`wikipedia`, `wikipedia_other_lang`, `model`, `none`).
+    /// `model` means the text was written by the strong model: the review UI badges it unverified.
+    let source: String?
 
-    init(_ s: TagSuggestion) {
+    init(_ s: TagSuggestion, source: String? = nil) {
+        self.source = source
         self.id = s.id
         self.jellyfinId = s.jellyfinId
         self.suggestedTags = s.suggestedTags

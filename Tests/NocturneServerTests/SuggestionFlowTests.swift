@@ -44,6 +44,32 @@ import Testing
         }
     }
 
+    @Test func enrichmentSourceRidesAlongForTheReviewUI() async throws {
+        try await withTestFluent { fluent in
+            try await Movie(jellyfinId: "jf-model").save(on: fluent.db())
+            try await Movie(jellyfinId: "jf-wiki").save(on: fluent.db())
+            let enricher = ScriptedEnricher()
+            enricher.source = .model
+            let reader = ScriptedReader(answer: answer([candidate("cat-and-mouse", 0.95)]))
+            let (pipeline, movies, _) = try await makePipeline(fluent, config: config, enricher: enricher, reader: reader)
+            let fromModel = try await pipeline.tag(jellyfinId: "jf-model", trigger: .manual)
+            enricher.source = .wikipedia
+            let fromWiki = try await pipeline.tag(jellyfinId: "jf-wiki", trigger: .manual)
+            let orphan = TagSuggestion(jellyfinId: "jf-legacy", suggestedTags: ["cat-and-mouse"], confidence: 0.5, reasoning: nil, status: "pending")
+            try await orphan.save(on: fluent.db())
+
+            let queue = ReviewQueue(fluent: fluent, config: config, movies: movies, pipeline: pipeline)
+            let sources = try await queue.enrichmentSources(for: [fromModel, fromWiki, orphan])
+            #expect(sources[try #require(fromModel.decisionId)] == "model")
+            #expect(sources[try #require(fromWiki.decisionId)] == "wikipedia")
+            #expect(sources.count == 2)
+            #expect(fromModel.status == "pending")  // unverified text never auto-applies
+            let encoded = try TagSuggestionResponse(fromModel, source: "model").toJSONString()
+            #expect(encoded.contains("\"source\" : \"model\""))
+            #expect(try await queue.enrichmentSources(for: [orphan]).isEmpty)
+        }
+    }
+
     @Test func allStrongIsAutoApproved() async throws {
         try await withTestFluent { fluent in
             try await Movie(jellyfinId: "jf-1").save(on: fluent.db())

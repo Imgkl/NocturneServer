@@ -20,6 +20,7 @@ final class APIRoutes: @unchecked Sendable {
   let outbound: OutboundClient
   let enrichmentRoutes: EnrichmentRoutes
   let taggerRoutes: TaggerRoutes
+  let modelSettingsRoutes: ModelSettingsRoutes
   let posterCache: PosterCache?
 
   init(
@@ -28,7 +29,8 @@ final class APIRoutes: @unchecked Sendable {
     httpClient: HTTPClient,
     outbound: OutboundClient,
     enrichmentRoutes: EnrichmentRoutes,
-    taggerRoutes: TaggerRoutes
+    taggerRoutes: TaggerRoutes,
+    modelSettingsRoutes: ModelSettingsRoutes
   ) {
     self.movieService = movieService
     self.config = config
@@ -36,6 +38,7 @@ final class APIRoutes: @unchecked Sendable {
     self.outbound = outbound
     self.enrichmentRoutes = enrichmentRoutes
     self.taggerRoutes = taggerRoutes
+    self.modelSettingsRoutes = modelSettingsRoutes
     self.posterCache = (try? PosterCache(
       dir: config.posterCacheDir,
       maxBytes: config.posterCacheMaxBytes
@@ -69,6 +72,7 @@ final class APIRoutes: @unchecked Sendable {
     // Tagger rewrite routes live in Routes/*.swift; this file is the composition root.
     enrichmentRoutes.addRoutes(to: api)
     taggerRoutes.addRoutes(to: api)
+    modelSettingsRoutes.addRoutes(to: api)
   }
 
   // MARK: - Mood Routes (admin needs the bucket list for display names)
