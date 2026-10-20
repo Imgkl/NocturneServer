@@ -210,6 +210,7 @@ let taggerV2Migrations: [any AsyncMigration] = [
     AddLabelSourceToMovieTags(),
     AddResolvedByToTagSuggestions(),
     AddCurrentDecisionToMovies(),
+    SeedMissingMoodTags(),
 ]
 
 func runMigrations(fluent: Fluent, logger: Logger) async throws {

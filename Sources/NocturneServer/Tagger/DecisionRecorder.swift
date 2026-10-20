@@ -22,14 +22,15 @@ struct SuggestionItem: Codable, Sendable, Equatable {
 /// A row is opened before any model call so `api_calls` can carry its id, then completed with
 /// the layers' raw answers, the policy outcome and the summed cost.
 final class DecisionRecorder: Sendable {
-    static let taxonomyVersion = 1
     static let guideVersion = 0
 
     let fluent: Fluent
+    let taxonomyVersion: Int
     let logger: Logger
 
-    init(fluent: Fluent, logger: Logger = Logger(label: "Decisions")) {
+    init(fluent: Fluent, taxonomyVersion: Int, logger: Logger = Logger(label: "Decisions")) {
         self.fluent = fluent
+        self.taxonomyVersion = taxonomyVersion
         self.logger = logger
     }
 
@@ -37,7 +38,7 @@ final class DecisionRecorder: Sendable {
     func begin(jellyfinId: String, runId: UUID?, policyVersion: String) async throws -> Decision {
         let decision = Decision(jellyfinId: jellyfinId, policyVersion: policyVersion, outcome: PolicyDecision.Outcome.error.rawValue)
         decision.runId = runId
-        decision.taxonomyVersion = Self.taxonomyVersion
+        decision.taxonomyVersion = taxonomyVersion
         decision.guideVersion = Self.guideVersion
         decision.reasonsJson = Self.json(["opened"])
         try await decision.save(on: fluent.db())

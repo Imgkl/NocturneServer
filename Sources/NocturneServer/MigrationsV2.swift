@@ -181,3 +181,22 @@ struct AddCurrentDecisionToMovies: AsyncMigration {
         try? await sql.raw("ALTER TABLE movies DROP COLUMN current_decision_id").run()
     }
 }
+
+/// The legacy `SeedMoodTags` list stopped at 34 slugs; `ha-ha-ha` and `emotional-gut-punch` were
+/// only created on first use. Inserts every taxonomy slug missing from `tags`, so a fresh install
+/// carries all 36 rows before the first film is tagged. Safe to re-run.
+struct SeedMissingMoodTags: AsyncMigration {
+    func prepare(on database: Database) async throws {
+        let taxonomy = try Taxonomy.load()
+        let existing = Set(try await Tag.query(on: database).all().map(\.slug))
+        for slug in taxonomy.buckets.keys.sorted() where !existing.contains(slug) {
+            let bucket = taxonomy.buckets[slug]!
+            let shortDescription = bucket.description
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .components(separatedBy: ". ").first.map { $0.hasSuffix(".") ? $0 : $0 + "." } ?? bucket.title
+            try await Tag(slug: slug, title: bucket.title, description: shortDescription, usageCount: 0).save(on: database)
+        }
+    }
+
+    func revert(on database: Database) async throws {}
+}

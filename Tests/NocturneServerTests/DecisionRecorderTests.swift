@@ -11,7 +11,7 @@ import Testing
     @Test func beginThenCompleteWritesEverythingAndPointsTheMovieAtIt() async throws {
         try await withTestFluent { fluent in
             try await Movie(jellyfinId: "jf-1").save(on: fluent.db())
-            let recorder = DecisionRecorder(fluent: fluent, logger: Logger(label: "test"))
+            let recorder = DecisionRecorder(fluent: fluent, taxonomyVersion: 1, logger: Logger(label: "test"))
 
             let opened = try await recorder.begin(jellyfinId: "jf-1", runId: nil, policyVersion: "p-legacy")
             #expect(opened.outcome == "error")
@@ -43,7 +43,7 @@ import Testing
             #expect(models["reader"] == "claude-haiku-5-5")
             #expect(models["enrichment_source"] == "wikipedia")
             #expect(models["extra"] == "1")
-            #expect(row.taxonomyVersion == DecisionRecorder.taxonomyVersion)
+            #expect(row.taxonomyVersion == 1)
             let movie = try #require(try await Movie.query(on: fluent.db()).filter(\.$jellyfinId == "jf-1").first())
             #expect(movie.currentDecisionId == id)
         }

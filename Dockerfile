@@ -140,6 +140,12 @@ COPY --from=swift-builder --chown=nocturne:nocturne \
     /workspace/.build/release/NocturneServer \
     /app/nocturne-server
 
+# Copy the SwiftPM resource bundle (taxonomy.json, guide.md). Bundle.module looks for it next
+# to the executable, so it must land in /app alongside nocturne-server.
+COPY --from=swift-builder --chown=nocturne:nocturne \
+    /workspace/.build/release/NocturneServer_NocturneServer.resources \
+    /app/NocturneServer_NocturneServer.resources
+
 # Copy frontend build from frontend builder (Vite outDir -> /public)
 COPY --from=frontend-builder --chown=nocturne:nocturne \
     /public/ \

@@ -57,7 +57,7 @@ final class TaggerPipeline: @unchecked Sendable {
         self.movies = movies
         self.budget = budget
         self.settings = settings
-        self.recorder = DecisionRecorder(fluent: fluent, logger: logger)
+        self.recorder = DecisionRecorder(fluent: fluent, taxonomyVersion: config.taxonomyVersion, logger: logger)
         self.titles = titles
         self.logger = logger
     }

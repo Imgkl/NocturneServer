@@ -49,7 +49,8 @@ let package = Package(
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "Crypto", package: "swift-crypto")
             ],
-            path: "Sources/NocturneServer"
+            path: "Sources/NocturneServer",
+            resources: [.copy("Resources")]
         ),
         .testTarget(
             name: "NocturneServerTests",
