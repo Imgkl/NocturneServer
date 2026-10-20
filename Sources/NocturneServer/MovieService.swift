@@ -404,16 +404,16 @@ final class MovieService {
     logger.info("Starting Jellyfin sync (full: \(fullSync))")
 
     do {
-      var jellyfinIdsList: [String]
+      var stubs: [JellyfinService.MovieStub]
       do {
-        jellyfinIdsList = try await jellyfinService.fetchAllMovieIds()
+        stubs = try await jellyfinService.fetchAllMovieStubs()
       } catch let e as JellyfinError {
         switch e {
         case .httpError(let code, _):
           if code == 401 {
             let refreshed = try await attemptAutoLoginAndUpdate()
             if refreshed {
-              jellyfinIdsList = try await jellyfinService.fetchAllMovieIds()
+              stubs = try await jellyfinService.fetchAllMovieStubs()
             } else {
               throw e
             }
@@ -424,25 +424,29 @@ final class MovieService {
           throw e
         }
       }
-      stats.moviesFound = jellyfinIdsList.count
+      stats.moviesFound = stubs.count
       self.lastSyncStats = stats
 
       let now = Date()
-      let jellyfinIds = Set(jellyfinIdsList)
+      let jellyfinIds = Set(stubs.map(\.id))
 
-      // Upsert movies: insert new IDs, bump last_seen_at on existing.
+      // Upsert movies: insert new IDs, bump last_seen_at and the watched flag on existing.
       // New insertions fire-and-forget an auto-tag suggestion into the queue.
-      for jid in jellyfinIdsList {
+      for stub in stubs {
+        let jid = stub.id
         do {
           if let existing = try await Movie.query(on: fluent.db())
             .filter(\.$jellyfinId == jid)
             .first()
           {
             existing.lastSeenAt = now
+            existing.played = stub.played
+            existing.lastPlayedDate = stub.lastPlayedDate
             try await existing.save(on: fluent.db())
             stats.moviesUpdated += 1
           } else {
-            let movie = Movie(jellyfinId: jid, lastSeenAt: now)
+            let movie = Movie(jellyfinId: jid, lastSeenAt: now, played: stub.played)
+            movie.lastPlayedDate = stub.lastPlayedDate
             try await movie.save(on: fluent.db())
             stats.moviesUpdated += 1
             if config.enableAutoTagging {

@@ -156,12 +156,17 @@ actor RunService {
             .sort(\.$startedAt, .descending)
             .first()
         guard let run = latest else {
-            return BackfillStatus(running: false, total: 0, processed: 0, startedAt: nil, cancelled: nil)
+            return BackfillStatus(running: false, total: 0, processed: 0, startedAt: nil, cancelled: nil, scope: nil)
         }
         let running = run.status == RunStatus.running.rawValue
         return BackfillStatus(
             running: running, total: run.total, processed: run.processed, startedAt: run.startedAt,
-            cancelled: running ? run.cancelRequested : (run.status == RunStatus.cancelled.rawValue))
+            cancelled: running ? run.cancelRequested : (run.status == RunStatus.cancelled.rawValue),
+            scope: Self.params(of: run)["scope"])
+    }
+
+    static func params(of run: Run) -> [String: String] {
+        (try? JSONDecoder().decode([String: String].self, from: Data(run.paramsJson.utf8))) ?? [:]
     }
 
     static func stats(of run: Run) -> [String: Int] {

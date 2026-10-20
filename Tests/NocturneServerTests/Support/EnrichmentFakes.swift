@@ -62,7 +62,7 @@ func dto(lastSaved: String = "2026-05-01T10:00:00.0000000Z", imdb: String? = "tt
             BaseItemPerson(name: "Robert De Niro", id: nil, role: "Neil McCauley", type: "Actor", primaryImageTag: nil),
         ],
         imageTags: nil, backdropImageTags: nil,
-        providerIds: imdb.map { ["Imdb": $0, "Tmdb": "949"] }, dateLastSaved: lastSaved)
+        providerIds: imdb.map { ["Imdb": $0, "Tmdb": "949"] }, dateLastSaved: lastSaved, userData: nil)
 }
 
 func heatResolution(sitelinks: [String: String] = ["enwiki": "Heat (1995 film)"]) -> WikidataResolution {

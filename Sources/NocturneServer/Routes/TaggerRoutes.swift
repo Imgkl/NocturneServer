@@ -12,6 +12,7 @@ struct TaggerRoutes: @unchecked Sendable {
     let logger = Logger(label: "TaggerRoutes")
 
     struct ApproveBody: Codable { let tags: [String]? }
+    struct ScopeBody: Codable { let scope: String? }
     struct BusyResponse: Codable {
         let error: String
         let runningId: UUID
@@ -62,9 +63,10 @@ struct TaggerRoutes: @unchecked Sendable {
             return try jsonResponse(try await self.response(try await self.queue.regenerate(jellyfinId: String(jid))))
         }
 
-        admin.post("auto-tag/backfill") { _, _ in
+        admin.post("auto-tag/backfill") { request, context in
+            let scope = try await self.scope(from: request, context: context)
             do {
-                _ = try await self.backfill.start(mode: .backfill, trigger: .manual)
+                _ = try await self.backfill.start(mode: .backfill, trigger: .manual, scope: scope)
                 return try jsonResponse(try await self.backfill.status())
             } catch RunError.busy(let runningId, let kind) {
                 return try jsonResponse(BusyResponse(error: "a \(kind) run is already in progress", runningId: runningId), status: .conflict)
@@ -75,9 +77,10 @@ struct TaggerRoutes: @unchecked Sendable {
             try jsonResponse(try await self.backfill.status())
         }
 
-        admin.post("auto-tag/reprocess-all") { _, _ in
+        admin.post("auto-tag/reprocess-all") { request, context in
+            let scope = try await self.scope(from: request, context: context)
             do {
-                _ = try await self.backfill.start(mode: .reprocessAll, trigger: .manual)
+                _ = try await self.backfill.start(mode: .reprocessAll, trigger: .manual, scope: scope)
                 return try jsonResponse(try await self.backfill.status())
             } catch RunError.busy(let runningId, let kind) {
                 return try jsonResponse(BusyResponse(error: "a \(kind) run is already in progress", runningId: runningId), status: .conflict)
@@ -87,6 +90,13 @@ struct TaggerRoutes: @unchecked Sendable {
         admin.post("auto-tag/cancel") { _, _ in
             try jsonResponse(try await self.backfill.cancel())
         }
+    }
+
+    /// Optional `{ "scope": "watched" }` body; an empty body means every film.
+    private func scope(from request: Request, context: BasicRequestContext) async throws -> BackfillJob.Scope {
+        guard let raw = (try? await request.decode(as: ScopeBody.self, context: context))?.scope else { return .all }
+        guard let scope = BackfillJob.Scope(rawValue: raw) else { throw HTTPError(.badRequest, message: "scope must be all, watched or unwatched") }
+        return scope
     }
 
     private func response(_ sugg: TagSuggestion) async throws -> TagSuggestionResponse {

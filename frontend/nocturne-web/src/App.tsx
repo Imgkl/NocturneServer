@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, fetchVersion as fetchVersionApi } from './lib/api';
 import type {
+  BackfillScope,
   BackfillStatusApi,
   CoverageStatus,
   EnrichmentSummary,
@@ -20,6 +21,7 @@ import { AutoTagQueue } from './components/AutoTagQueue';
 import { BackfillProgress, CoverageProgress } from './components/BackfillProgress';
 import { EvidenceList } from './components/EvidenceList';
 import { Badge } from './ui/Badge';
+import { Chip } from './ui/Chip';
 import { SettingsView } from './views/SettingsView';
 import { OnboardingView } from './views/onboarding/OnboardingView';
 import { Spinner } from './ui/Spinner';
@@ -63,6 +65,8 @@ export default function App() {
   // Per-row edited tag sets for the pending-review list. Undefined = use original suggestion.
   const [editedPendingTags, setEditedPendingTags] = useState<Record<string, string[]>>({})
   const [pendingPickerId, setPendingPickerId] = useState<string | null>(null)
+  const [queueWatchedOnly, setQueueWatchedOnly] = useState(false)
+  const [queueLimit, setQueueLimit] = useState(12)
 
   async function bootstrap() {
     try {
@@ -137,6 +141,7 @@ export default function App() {
         year: it.year,
         posterUrl: it.posterUrl,
         needsReview: it.needsReview,
+        played: it.played,
         tags: it.tags.map(slug => ({ slug, title: moods[slug]?.title || slug })),
       }))
       setMovies(mapped)
@@ -339,9 +344,9 @@ export default function App() {
     }
   }
 
-  async function startBackfill() {
+  async function startBackfill(scope: BackfillScope) {
     try {
-      const status = await api.backfill.start()
+      const status = await api.backfill.start(scope)
       setBackfillStatus(status)
       schedulePollBackfill()
     } catch (error) {
@@ -350,9 +355,9 @@ export default function App() {
     }
   }
 
-  async function startReprocessAll() {
+  async function startReprocessAll(scope: BackfillScope) {
     try {
-      const status = await api.backfill.reprocessAll()
+      const status = await api.backfill.reprocessAll(scope)
       setBackfillStatus(status)
       schedulePollBackfill()
     } catch (error) {
@@ -496,6 +501,16 @@ export default function App() {
     return counts
   }, [movies])
 
+  // Review queue order: films the admin has watched first, since those are the ones they can
+  // judge at a glance. Newest within each group.
+  const isWatched = (s: TagSuggestionApi) => moviesById.get(s.jellyfinId)?.played === true
+  const watchedPendingCount = useMemo(() => pendingSuggestions.filter(isWatched).length, [pendingSuggestions, moviesById])
+  const orderedPending = useMemo(() => {
+    const rows = queueWatchedOnly ? pendingSuggestions.filter(isWatched) : pendingSuggestions
+    return [...rows].sort((a, b) => Number(isWatched(b)) - Number(isWatched(a)))
+  }, [pendingSuggestions, moviesById, queueWatchedOnly])
+  const visiblePending = orderedPending.slice(0, queueLimit)
+
   const pendingSuggestionsPanel = pendingSuggestions.length > 0 ? (
     <section className="px-5 lg:px-10 pt-5">
       <div className="border border-border bg-bg">
@@ -505,18 +520,23 @@ export default function App() {
               Tags needing review ({pendingSuggestions.length})
             </div>
             <div className="text-[12px] text-text-dim mt-1">
-              Auto-tags are live. Approve to confirm, or reject to remove.
+              Auto-tags are live. Approve to confirm, or reject to remove. Watched films come first.
             </div>
           </div>
-          <button
-            onClick={() => fetchPendingSuggestions()}
-            className="text-[10px] uppercase tracking-widest text-muted hover:text-text cursor-pointer"
-          >
-            Refresh
-          </button>
+          <div className="flex items-center gap-3">
+            <Chip active={queueWatchedOnly} onClick={() => setQueueWatchedOnly((v) => !v)}>
+              Watched only · {watchedPendingCount}
+            </Chip>
+            <button
+              onClick={() => fetchPendingSuggestions()}
+              className="text-[10px] uppercase tracking-widest text-muted hover:text-text cursor-pointer"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
         <div>
-          {pendingSuggestions.slice(0, 8).map((s) => {
+          {visiblePending.map((s) => {
             const movie = movies.find((m) => m.jellyfinId === s.jellyfinId);
             // Removal rows are simpler: one focus tag to drop, no add/edit picker, different verbs.
             if (s.kind === 'removal') {
@@ -585,6 +605,7 @@ export default function App() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[13px] text-text truncate">{movie?.title || s.jellyfinId}</span>
+                      {movie?.played && <Badge tone="muted">watched</Badge>}
                       {unverified && <Badge tone="warn">unverified source</Badge>}
                       {noSource && <Badge tone="muted">no story source</Badge>}
                     </div>
@@ -670,6 +691,16 @@ export default function App() {
             );
           })}
         </div>
+        {orderedPending.length > visiblePending.length && (
+          <div className="px-5 py-3 border-t border-border">
+            <button
+              onClick={() => setQueueLimit((n) => n + 12)}
+              className="text-[10px] uppercase tracking-widest text-text-dim hover:text-text underline decoration-dotted underline-offset-2 cursor-pointer"
+            >
+              Show {Math.min(12, orderedPending.length - visiblePending.length)} more of {orderedPending.length}
+            </button>
+          </div>
+        )}
       </div>
     </section>
   ) : null;
@@ -758,6 +789,7 @@ export default function App() {
         onClose={() => setSettingsOpen(false)}
         movieCount={movies.length}
         untaggedCount={movies.filter(m => (m.tags || []).length === 0 && !m.needsReview).length}
+        untaggedWatchedCount={movies.filter(m => (m.tags || []).length === 0 && !m.needsReview && m.played).length}
         reviewCount={pendingSuggestions.length}
         backfillStatus={backfillStatus}
         coverageStatus={coverageStatus}
@@ -797,7 +829,10 @@ export default function App() {
         onImportFile={importTagsFile}
         onExportTags={exportTags}
         onReviewUntaggedManually={() => {
-          const queue = movies.filter(m => (m.tags || []).length === 0).map(m => m.jellyfinId);
+          const queue = movies
+            .filter(m => (m.tags || []).length === 0)
+            .sort((a, b) => Number(!!b.played) - Number(!!a.played))
+            .map(m => m.jellyfinId);
           setAutoQueue(queue);
           setAutoTaggerOpen(true);
           setSettingsOpen(false);

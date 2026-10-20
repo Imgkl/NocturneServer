@@ -29,9 +29,10 @@ export function RunBanner({ title, subtitle, processed, total }: RunBannerProps)
 
 export function BackfillProgress({ status }: { status: BackfillStatusApi | null }) {
   if (!status?.running) return null;
+  const what = status.scope === 'watched' ? 'watched' : status.scope === 'unwatched' ? 'unwatched' : 'untagged';
   return (
     <RunBanner
-      title={`Auto-tagging ${status.processed} / ${status.total} untagged films…`}
+      title={`Auto-tagging ${status.processed} / ${status.total} ${what} films…`}
       subtitle={status.cancelled ? 'Cancelling…' : 'Claude is working in the background.'}
       processed={status.processed}
       total={status.total}

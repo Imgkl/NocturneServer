@@ -13,6 +13,22 @@ final class BackfillJob: @unchecked Sendable {
         var kind: RunKind { self == .backfill ? .backfill : .reprocess }
     }
 
+    /// Which films a run covers. `watched` is the admin's baseline: films they have seen and can
+    /// judge at a glance, so their corrections become the first ground truth.
+    enum Scope: String, Sendable {
+        case all
+        case watched
+        case unwatched
+
+        func includes(_ movie: Movie) -> Bool {
+            switch self {
+            case .all: return true
+            case .watched: return movie.played
+            case .unwatched: return !movie.played
+            }
+        }
+    }
+
     let runService: RunService
     let pipeline: TaggerPipeline
     let queue: ReviewQueue
@@ -30,9 +46,9 @@ final class BackfillJob: @unchecked Sendable {
     }
 
     /// Starts in the background and returns the run. Throws `RunError.busy` when another run is active.
-    func start(mode: Mode, trigger: RunTrigger) async throws -> Run {
-        let ids = try await candidates(for: mode)
-        let run = try await runService.start(kind: mode.kind, trigger: trigger, total: ids.count)
+    func start(mode: Mode, trigger: RunTrigger, scope: Scope = .all) async throws -> Run {
+        let ids = try await candidates(for: mode, scope: scope)
+        let run = try await runService.start(kind: mode.kind, trigger: trigger, total: ids.count, params: ["scope": scope.rawValue])
         let runId = try run.requireID()
         Task.detached { [self] in
             await self.run(runId: runId, ids: ids, replaceExistingPending: true)
@@ -40,27 +56,35 @@ final class BackfillJob: @unchecked Sendable {
         return run
     }
 
-    /// Films to process. Reprocess-all first detaches every tag the tagger wrote (never the
-    /// admin's) and supersedes pending rows, so the library starts clean.
-    func candidates(for mode: Mode) async throws -> [String] {
+    /// Films to process, within the scope. Reprocess-all first detaches every tag the tagger wrote
+    /// (never the admin's) on those films and supersedes their pending rows, so they start clean.
+    func candidates(for mode: Mode, scope: Scope = .all) async throws -> [String] {
         let db = fluent.db()
-        let all = try await Movie.query(on: db).with(\.$tags).all()
+        let all = try await Movie.query(on: db).with(\.$tags).all().filter(scope.includes)
         switch mode {
         case .backfill:
             let pending = try await queue.pendingJellyfinIds()
             return all.filter { $0.tags.isEmpty || pending.contains($0.jellyfinId) }.map(\.jellyfinId)
         case .reprocessAll:
-            try await MovieTag.query(on: db)
-                .filter(\.$labelSource != LabelSource.user.rawValue)
-                .delete()
-            let oldPending = try await TagSuggestion.query(on: db).filter(\.$status == "pending").all()
+            let movieIds = all.compactMap(\.id)
+            let jellyfinIds = all.map(\.jellyfinId)
+            if !movieIds.isEmpty {
+                try await MovieTag.query(on: db)
+                    .filter(\.$movie.$id ~~ movieIds)
+                    .filter(\.$labelSource != LabelSource.user.rawValue)
+                    .delete()
+            }
+            let oldPending = try await TagSuggestion.query(on: db)
+                .filter(\.$status == "pending")
+                .filter(\.$jellyfinId ~~ jellyfinIds)
+                .all()
             let now = Date()
             for old in oldPending {
                 old.status = "superseded"
                 old.resolvedAt = now
                 try await old.save(on: db)
             }
-            return all.map(\.jellyfinId)
+            return jellyfinIds
         }
     }
 

@@ -27,6 +27,32 @@ import Testing
         }
     }
 
+    @Test func scopeLimitsCandidatesAndIsRecordedOnTheRun() async throws {
+        try await withTestFluent { fluent in
+            try await Movie(jellyfinId: "w1", played: true).save(on: fluent.db())
+            try await Movie(jellyfinId: "u1").save(on: fluent.db())
+            try await Movie(jellyfinId: "w2", played: true).save(on: fluent.db())
+            let reader = ScriptedReader(answer: answer([candidate("cat-and-mouse", 0.95)]))
+            let (job, runs, _, movies) = try await job(fluent, reader: reader)
+            _ = try await movies.updateMovieTags(jellyfinId: "w2", tagSlugs: ["cult-chaos"], replaceAll: false, labelSource: .auto)
+
+            #expect(try await job.candidates(for: .backfill, scope: .watched) == ["w1"])
+            #expect(try await job.candidates(for: .backfill, scope: .unwatched) == ["u1"])
+            #expect(try await job.candidates(for: .backfill, scope: .all).sorted() == ["u1", "w1"])
+            // Reprocess within the watched scope detaches w2's auto tag and leaves u1 untouched.
+            _ = try await movies.updateMovieTags(jellyfinId: "u1", tagSlugs: ["cult-chaos"], replaceAll: false, labelSource: .auto)
+            #expect(try await job.candidates(for: .reprocessAll, scope: .watched).sorted() == ["w1", "w2"])
+            #expect(try await tagSlugs(fluent, "w2").isEmpty)
+            #expect(try await tagSlugs(fluent, "u1").map(\.slug) == ["cult-chaos"])
+
+            let run = try await runs.start(kind: .backfill, trigger: .manual, total: 2, params: ["scope": "watched"])
+            await job.run(runId: try run.requireID(), ids: ["w1", "w2"], replaceExistingPending: true)
+            let status = try await job.status()
+            #expect(status.scope == "watched")
+            #expect(status.processed == 2)
+        }
+    }
+
     @Test func reprocessAllKeepsUserTagsAndSupersedesPending() async throws {
         try await withTestFluent { fluent in
             for id in ["a", "b"] { try await Movie(jellyfinId: id).save(on: fluent.db()) }

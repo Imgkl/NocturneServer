@@ -109,6 +109,20 @@ private final class LegacyTagSuggestion: Model, @unchecked Sendable {
         }
     }
 
+    @Test func playedDefaultsToFalseOnLegacyRows() async throws {
+        try await withLegacyFluent { fluent in
+            try await LegacyMovie(jellyfinId: "jf-old").save(on: fluent.db())
+            try await applyTaggerV2(fluent)
+            let row = try #require(try await Movie.query(on: fluent.db()).filter(\.$jellyfinId == "jf-old").first())
+            #expect(row.played == false)
+            #expect(row.lastPlayedDate == nil)
+            row.played = true
+            row.lastPlayedDate = "2026-05-10T06:46:04.7354903Z"
+            try await row.save(on: fluent.db())
+            #expect(try await Movie.query(on: fluent.db()).filter(\.$played == true).count() == 1)
+        }
+    }
+
     @Test func resolvedByIsInferredFromTimingAndStatus() async throws {
         try await withLegacyFluent { fluent in
             let db = fluent.db()

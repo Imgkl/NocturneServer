@@ -35,6 +35,8 @@ struct BaseItemDto: Codable, Sendable {
     /// Jellyfin's last-saved timestamp, kept as the raw string (7-digit fractional seconds).
     /// Compared as a string for change detection; never parsed.
     let dateLastSaved: String?
+    /// Per-user playback state. Present on every user-scoped item query without asking.
+    let userData: UserItemData?
 
     enum CodingKeys: String, CodingKey {
         case id = "Id"
@@ -49,6 +51,18 @@ struct BaseItemDto: Codable, Sendable {
         case backdropImageTags = "BackdropImageTags"
         case providerIds = "ProviderIds"
         case dateLastSaved = "DateLastSaved"
+        case userData = "UserData"
+    }
+}
+
+struct UserItemData: Codable, Sendable {
+    let played: Bool?
+    let playCount: Int?
+    let lastPlayedDate: String?
+    enum CodingKeys: String, CodingKey {
+        case played = "Played"
+        case playCount = "PlayCount"
+        case lastPlayedDate = "LastPlayedDate"
     }
 }
 

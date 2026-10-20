@@ -20,6 +20,14 @@ final class Movie: Model, @unchecked Sendable {
     @OptionalField(key: "current_decision_id")
     var currentDecisionId: UUID?
 
+    /// Jellyfin's per-user watched flag, refreshed on every sync. Drives the watched-first
+    /// review order and the watched-only backfill scope.
+    @Field(key: "played")
+    var played: Bool
+
+    @OptionalField(key: "last_played_date")
+    var lastPlayedDate: String?
+
     @Siblings(through: MovieTag.self, from: \.$movie, to: \.$tag)
     var tags: [Tag]
 
@@ -28,10 +36,11 @@ final class Movie: Model, @unchecked Sendable {
 
     init() {}
 
-    init(id: UUID? = nil, jellyfinId: String, lastSeenAt: Date? = nil) {
+    init(id: UUID? = nil, jellyfinId: String, lastSeenAt: Date? = nil, played: Bool = false) {
         self.id = id
         self.jellyfinId = jellyfinId
         self.lastSeenAt = lastSeenAt
+        self.played = played
     }
 }
 
@@ -267,6 +276,8 @@ struct BackfillStatus: Codable, Sendable {
     let processed: Int
     let startedAt: Date?
     let cancelled: Bool?
+    /// `all`, `watched` or `unwatched`: which films the latest run covered.
+    let scope: String?
 }
 
 // MARK: - OMDb DTOs

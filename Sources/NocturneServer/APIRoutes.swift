@@ -328,6 +328,8 @@ final class APIRoutes: @unchecked Sendable {
       let posterUrl: String?
       let tags: [String]
       let needsReview: Bool
+      let played: Bool
+      let lastPlayedDate: String?
     }
     struct AdminMoviesResponse: Codable {
       let items: [AdminMovie]
@@ -371,7 +373,9 @@ final class APIRoutes: @unchecked Sendable {
           year: item.productionYear,
           posterUrl: self.movieService.jellyfinService.getImageUrl(for: item, imageType: .primary),
           tags: tagsByJellyfinId[jid] ?? [],
-          needsReview: pending.contains(jid)
+          needsReview: pending.contains(jid),
+          played: item.userData?.played ?? false,
+          lastPlayedDate: item.userData?.lastPlayedDate
         )
       }
 

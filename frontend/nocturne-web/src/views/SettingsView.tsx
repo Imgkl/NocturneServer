@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Button } from '../ui/Button';
+import { Chip } from '../ui/Chip';
 import { Dialog } from '../ui/Dialog';
 import { Divider } from '../ui/Divider';
 import { JellyfinConnectForm } from '../components/JellyfinConnectForm';
@@ -9,6 +10,7 @@ import { ModelSettings } from '../components/ModelSettings';
 import { EnrichmentCoverageCard } from '../components/EnrichmentCoverageCard';
 import { Toggle } from '../ui/Toggle';
 import type {
+  BackfillScope,
   BackfillStatusApi,
   CoverageStatus,
   EnrichmentSummary,
@@ -23,6 +25,7 @@ interface SettingsViewProps {
   // Data
   movieCount: number;
   untaggedCount: number;
+  untaggedWatchedCount: number;
   reviewCount: number;
   backfillStatus: BackfillStatusApi | null;
   coverageStatus: CoverageStatus | null;
@@ -35,9 +38,9 @@ interface SettingsViewProps {
   version?: string;
   // Callbacks
   onSync: () => void;
-  onStartBackfill: () => Promise<void>;
+  onStartBackfill: (scope: BackfillScope) => Promise<void>;
   onCancelBackfill: () => Promise<void>;
-  onReprocessAll: () => Promise<void>;
+  onReprocessAll: (scope: BackfillScope) => Promise<void>;
   onStartCoverage: () => Promise<void>;
   onCancelCoverage: () => Promise<void>;
   onSaveModels: (update: ModelSettingsUpdate) => Promise<void>;
@@ -58,6 +61,7 @@ export function SettingsView(props: SettingsViewProps) {
     onClose,
     movieCount,
     untaggedCount,
+    untaggedWatchedCount,
     reviewCount,
     backfillStatus,
     coverageStatus,
@@ -87,13 +91,19 @@ export function SettingsView(props: SettingsViewProps) {
   } = props;
 
   const importRef = useRef<HTMLInputElement | null>(null);
+  // Watched films first: the admin can judge those at a glance, so their corrections become the
+  // baseline before the rest of the library is tagged.
+  const [scope, setScope] = useState<BackfillScope>('watched');
+  const scopedUntagged =
+    scope === 'watched' ? untaggedWatchedCount : scope === 'unwatched' ? untaggedCount - untaggedWatchedCount : untaggedCount;
+  const scopeLabel = scope === 'all' ? 'all' : scope;
   const backfillRunning = backfillStatus?.running === true;
   // One run at a time on the server: the auto-tagger and the coverage job share the slot.
   const anyRunActive = backfillRunning || coverageStatus?.running === true;
   const backfillPct = backfillStatus && backfillStatus.total > 0
     ? Math.min(100, Math.round((backfillStatus.processed / backfillStatus.total) * 100))
     : 0;
-  const queueSize = untaggedCount + reviewCount;
+  const queueSize = scopedUntagged + reviewCount;
 
   return (
     <Dialog open={open} onClose={onClose} title="Settings" size="lg">
@@ -128,19 +138,33 @@ export function SettingsView(props: SettingsViewProps) {
                 ? 'Requires an Anthropic API key.'
                 : backfillRunning
                 ? 'Running in background.'
-                : `${untaggedCount} untagged · ${reviewCount} in review`
+                : `${scopedUntagged} untagged in scope · ${reviewCount} in review`
             }
             action={
               <Button
                 variant="primary"
                 size="sm"
-                onClick={onStartBackfill}
+                onClick={() => onStartBackfill(scope)}
                 disabled={!anthKeySet || anyRunActive || queueSize === 0}
               >
                 {backfillRunning ? 'Running…' : 'Start auto-tag'}
               </Button>
             }
           >
+            {!backfillRunning && (
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] uppercase tracking-widest text-muted mr-1">Films</span>
+                <Chip active={scope === 'watched'} onClick={() => setScope('watched')}>
+                  Watched · {untaggedWatchedCount}
+                </Chip>
+                <Chip active={scope === 'unwatched'} onClick={() => setScope('unwatched')}>
+                  Unwatched · {untaggedCount - untaggedWatchedCount}
+                </Chip>
+                <Chip active={scope === 'all'} onClick={() => setScope('all')}>
+                  All · {untaggedCount}
+                </Chip>
+              </div>
+            )}
             {backfillRunning && (
               <div className="mt-3 space-y-2">
                 <div className="h-[2px] bg-border overflow-hidden">
@@ -182,14 +206,14 @@ export function SettingsView(props: SettingsViewProps) {
           />
           <Row
             title="Reprocess all tagged films"
-            help="Clear every movie's tags and re-run the tagger against the whole library. Uses the Anthropic API per movie."
+            help={`Clear the tagger's own tags on the ${scopeLabel} films (never yours) and re-run it over them. Uses the Anthropic API per film. The scope chips above apply.`}
             action={
               <Button
                 variant="destructive"
                 size="sm"
                 onClick={async () => {
-                  if (!confirm(`Clear tags on all ${movieCount} films and re-tag them with Claude?`)) return;
-                  await onReprocessAll();
+                  if (!confirm(`Clear the tagger's tags on the ${scopeLabel} films and re-tag them? Your own tags stay.`)) return;
+                  await onReprocessAll(scope);
                 }}
                 disabled={!anthKeySet || anyRunActive || movieCount === 0}
               >

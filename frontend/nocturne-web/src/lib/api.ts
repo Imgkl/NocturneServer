@@ -1,5 +1,6 @@
 import type {
   AdminMovieApi,
+  BackfillScope,
   BackfillStatusApi,
   CoverageStatus,
   DiscoveredServer,
@@ -137,8 +138,9 @@ export const api = {
     status: () => get<OnboardingStatus>('/onboarding/status'),
   },
   backfill: {
-    start: () => post<BackfillStatusApi>('/admin/auto-tag/backfill'),
-    reprocessAll: () => post<BackfillStatusApi>('/admin/auto-tag/reprocess-all'),
+    start: (scope: BackfillScope = 'all') => post<BackfillStatusApi>('/admin/auto-tag/backfill', { scope }),
+    reprocessAll: (scope: BackfillScope = 'all') =>
+      post<BackfillStatusApi>('/admin/auto-tag/reprocess-all', { scope }),
     cancel: () => post<BackfillStatusApi>('/admin/auto-tag/cancel'),
     status: () => get<BackfillStatusApi>('/admin/auto-tag/backfill/status'),
   },

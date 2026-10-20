@@ -7,6 +7,8 @@ export type Movie = {
   posterUrl?: string;
   tags?: Tag[];
   needsReview?: boolean;
+  // Jellyfin's per-user watched flag.
+  played?: boolean;
 };
 
 export type AdminMovieApi = {
@@ -16,7 +18,12 @@ export type AdminMovieApi = {
   posterUrl?: string;
   tags: string[];
   needsReview: boolean;
+  played: boolean;
+  lastPlayedDate?: string;
 };
+
+// Which films an auto-tag run covers.
+export type BackfillScope = 'all' | 'watched' | 'unwatched';
 
 // Where a film's story text came from. `model` is written by the strong model and is the only
 // unverified kind; `none` means the tagger only had the Jellyfin blurb.
@@ -56,6 +63,7 @@ export type BackfillStatusApi = {
   processed: number;
   startedAt?: string;
   cancelled?: boolean;
+  scope?: BackfillScope;
 };
 
 export type EnrichmentBucket =

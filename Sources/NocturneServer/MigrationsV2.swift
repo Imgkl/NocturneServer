@@ -182,6 +182,21 @@ struct AddCurrentDecisionToMovies: AsyncMigration {
     }
 }
 
+/// `movies.played` + `movies.last_played_date`: Jellyfin's per-user watched state, filled on sync.
+struct AddPlayedToMovies: AsyncMigration {
+    func prepare(on database: Database) async throws {
+        guard let sql = database as? SQLDatabase else { return }
+        try await sqliteAddColumnIfMissing(sql, table: "movies", column: "played", definition: "INTEGER NOT NULL DEFAULT 0")
+        try await sqliteAddColumnIfMissing(sql, table: "movies", column: "last_played_date", definition: "TEXT")
+    }
+
+    func revert(on database: Database) async throws {
+        guard let sql = database as? SQLDatabase else { return }
+        try? await sql.raw("ALTER TABLE movies DROP COLUMN played").run()
+        try? await sql.raw("ALTER TABLE movies DROP COLUMN last_played_date").run()
+    }
+}
+
 /// The legacy `SeedMoodTags` list stopped at 34 slugs; `ha-ha-ha` and `emotional-gut-punch` were
 /// only created on first use. Inserts every taxonomy slug missing from `tags`, so a fresh install
 /// carries all 36 rows before the first film is tagged. Safe to re-run.

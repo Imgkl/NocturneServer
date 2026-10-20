@@ -56,7 +56,20 @@ final class JellyfinService: Sendable {
     /// Fetch the full movie catalog as a list of Jellyfin IDs only.
     /// Nocturne doesn't mirror Jellyfin metadata anymore — it only needs IDs to
     /// maintain tag associations.
+    /// Jellyfin id plus the per-user watched state, for sync.
+    struct MovieStub: Sendable {
+        let id: String
+        let played: Bool
+        let lastPlayedDate: String?
+    }
+
     func fetchAllMovieIds() async throws -> [String] {
+        try await fetchAllMovieStubs().map(\.id)
+    }
+
+    /// The catalog as id + watched state. `UserData` comes back on every user-scoped item query
+    /// without being listed in `Fields`.
+    func fetchAllMovieStubs() async throws -> [MovieStub] {
         logger.info("Fetching movie IDs from Jellyfin")
 
         let queryItems = [
@@ -84,7 +97,10 @@ final class JellyfinService: Sendable {
         let items = itemsResponse.items ?? []
 
         logger.info("Fetched \(items.count) movies from Jellyfin")
-        return items.compactMap { $0.id }
+        return items.compactMap { item in
+            guard let id = item.id else { return nil }
+            return MovieStub(id: id, played: item.userData?.played ?? false, lastPlayedDate: item.userData?.lastPlayedDate)
+        }
     }
 
     /// Fetch the full BaseItemDto payload for one movie (used for admin proxy + LLM context building).
