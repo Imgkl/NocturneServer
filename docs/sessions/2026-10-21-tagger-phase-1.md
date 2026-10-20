@@ -31,10 +31,10 @@
 
 1. **Reader live check (plan Task 9).** No Anthropic key on this Mac. On the Pi, with `models.reader = claude-haiku-5-5`: tag two films, then confirm in `api_calls` that the second call has `cache_read_input_tokens > 0` in `units_json` and that the response parsed (a `decisions` row with `reader_json` and outcome other than `error`).
 2. **Live run (plan Task 17, steps 1 to 4).** Deploy the branch to the Pi, run coverage from Settings and record the five counts and the wall-clock time, open five films from the `no_plot` and `unresolved` worklists and try a page override, run a backfill on about 50 films, then set the budget below the month-to-date spend and confirm a `skipped` decision on a realtime or scheduled tag.
-3. **Mockup pick.** The two A/B choices in the Task 14 mockup were implemented as A (counts are filter pills) and B (collapsed spoiler block). Both alternatives are a small swap in `EnrichmentCoverageCard.tsx` and `StorySource.tsx`.
 
 ## Decisions and assumptions made during execution
 
+- Mockup: the owner picked A for both Task 14 choices, so the coverage counts are the filter pills and the spoiler text sits behind a switch in the film panel.
 - The settings payload is a new `GET /settings/models` next to the legacy `GET /settings/info`, not an extension of it, so the old payload stays byte-stable for the wizard. The plan said "extend"; the shape of the data is the same.
 - Suggestion responses carry `source` (read from the decision's `models_json`) so the review UI can badge unverified films without a second request per row. Not in the plan.
 - In the review queue, moods the policy held back render as dashed "+ Mood · 61%" proposals; one tap adds them to the edited set. For unverified films nothing is applied, so all moods are proposals and Approve stays disabled until the admin picks.

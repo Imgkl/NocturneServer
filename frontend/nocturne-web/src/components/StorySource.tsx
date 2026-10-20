@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { WIKI_LANGUAGES, awardsSummary, isVerified, siteCode, sourceLine, timeAgo, wordCount } from '../lib/enrichment';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
+import { Toggle } from '../ui/Toggle';
 import type { EnrichmentRow } from '../lib/types';
 
 interface StorySourceProps {
@@ -126,9 +127,10 @@ export function StorySource({ jellyfinId, title, year }: StorySourceProps) {
             </button>
             <span className="flex-1" />
             {plotWords > 0 && (
-              <button type="button" className={linkCls} onClick={() => setSpoilersOpen((v) => !v)}>
-                {spoilersOpen ? 'Hide spoilers' : `Show spoilers (${plotWords.toLocaleString()} words)`}
-              </button>
+              <div className="flex items-center gap-2.5">
+                <span className="text-[10px] uppercase tracking-widest text-muted">Show spoilers</span>
+                <Toggle active={spoilersOpen} onChange={setSpoilersOpen} label="Show spoilers" />
+              </div>
             )}
           </div>
 
