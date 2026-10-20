@@ -128,7 +128,7 @@ final class MovieService {
         let movieTag = MovieTag(
           movieId: try movie.requireID(),
           tagId: try tag.requireID(),
-          addedByAutoTag: addedByAutoTag
+          labelSource: addedByAutoTag ? .auto : .user
         )
         try await movieTag.save(on: fluent.db())
       }
@@ -145,7 +145,7 @@ final class MovieService {
           let movieTag = MovieTag(
             movieId: try movie.requireID(),
             tagId: tagId,
-            addedByAutoTag: addedByAutoTag
+            labelSource: addedByAutoTag ? .auto : .user
           )
           try await movieTag.save(on: fluent.db())
         }

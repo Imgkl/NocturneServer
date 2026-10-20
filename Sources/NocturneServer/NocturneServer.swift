@@ -148,14 +148,29 @@ func setupDatabase(path: String, logger: Logger) throws -> Fluent {
     return fluent
 }
 
+/// Migrations that shipped before the tagger rewrite, in order.
+let legacyMigrations: [any AsyncMigration] = [
+    CreateMovies(),
+    CreateTags(),
+    CreateMovieTags(),
+    SeedMoodTags(),
+    CreateTagSuggestions(),
+    UpdateRegionalGemsDescription(),
+    AddKindToTagSuggestions(),
+]
+
+/// Tagger rewrite, phase 1 (see docs/superpowers/specs/2026-10-21-tagger-rewrite-design.md).
+let taggerV2Migrations: [any AsyncMigration] = [
+    CreateTaggerV2Tables(),
+    AddLabelSourceToMovieTags(),
+    AddResolvedByToTagSuggestions(),
+    AddCurrentDecisionToMovies(),
+]
+
 func runMigrations(fluent: Fluent, logger: Logger) async throws {
-    await fluent.migrations.add(CreateMovies())
-    await fluent.migrations.add(CreateTags())
-    await fluent.migrations.add(CreateMovieTags())
-    await fluent.migrations.add(SeedMoodTags())
-    await fluent.migrations.add(CreateTagSuggestions())
-    await fluent.migrations.add(UpdateRegionalGemsDescription())
-    await fluent.migrations.add(AddKindToTagSuggestions())
+    for migration in legacyMigrations + taggerV2Migrations {
+        await fluent.migrations.add(migration)
+    }
 
     logger.info("🔄 Running database migrations...")
     try await fluent.migrate()

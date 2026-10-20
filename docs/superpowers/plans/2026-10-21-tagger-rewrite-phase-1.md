@@ -990,6 +990,8 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 `Taxonomy` is a `struct` loaded once in `NocturneServer.main` from `Bundle.module` and passed where `config.moodBuckets` was passed. `SeedMoodTags` keeps seeding the `tags` table from it. The spec's `taxonomy_version` on decisions reads `Taxonomy.version`.
 
+Found during Task 2: the legacy `SeedMoodTags` list has 34 slugs; `ha-ha-ha` and `emotional-gut-punch` are missing and only get created on first use by `getOrCreateTag`. Add a small `SeedMissingMoodTags` migration here that inserts any taxonomy slug absent from `tags`, so a fresh install has all 36 rows before the first tag is applied.
+
 - [ ] **Step 3: Run, commit**
 
 ```bash

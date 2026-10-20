@@ -16,6 +16,10 @@ final class Movie: Model, @unchecked Sendable {
     @OptionalField(key: "last_seen_at")
     var lastSeenAt: Date?
 
+    /// Latest `decisions` row for this film, set by the tagger.
+    @OptionalField(key: "current_decision_id")
+    var currentDecisionId: UUID?
+
     @Siblings(through: MovieTag.self, from: \.$movie, to: \.$tag)
     var tags: [Tag]
 
@@ -86,8 +90,14 @@ final class MovieTag: Model, @unchecked Sendable {
     @Parent(key: "tag_id")
     var tag: Tag
 
+    /// Legacy flag, kept for one release; `labelSource` is the source of truth.
     @Field(key: "added_by_auto_tag")
     var addedByAutoTag: Bool
+
+    /// `seed`, `auto` or `user`. Human-sourced rows are never auto-removed and are the only
+    /// ones the eval and calibration treat as ground truth.
+    @Field(key: "label_source")
+    var labelSource: String
 
     @Timestamp(key: "created_at", on: .create)
     var createdAt: Date?
@@ -98,13 +108,16 @@ final class MovieTag: Model, @unchecked Sendable {
         id: UUID? = nil,
         movieId: Movie.IDValue,
         tagId: Tag.IDValue,
-        addedByAutoTag: Bool = false
+        labelSource: LabelSource
     ) {
         self.id = id
         self.$movie.id = movieId
         self.$tag.id = tagId
-        self.addedByAutoTag = addedByAutoTag
+        self.labelSource = labelSource.rawValue
+        self.addedByAutoTag = (labelSource == .auto)
     }
+
+    var source: LabelSource { LabelSource(rawValue: labelSource) ?? .auto }
 }
 
 // MARK: - Tag Suggestion Model (auto-tag queue + per-tag refinement proposals)
@@ -142,6 +155,18 @@ final class TagSuggestion: Model, @unchecked Sendable {
 
     @OptionalField(key: "resolved_at")
     var resolvedAt: Date?
+
+    /// `auto` when the tagger auto-approved the row at creation, `user` when a human resolved it.
+    @OptionalField(key: "resolved_by")
+    var resolvedBy: String?
+
+    /// The `decisions` row this suggestion came from.
+    @OptionalField(key: "decision_id")
+    var decisionId: UUID?
+
+    /// `[{ slug, probability, evidence, kind: add|remove }]` for the review UI.
+    @OptionalField(key: "items_json")
+    var itemsJson: String?
 
     init() {}
 
@@ -251,6 +276,8 @@ struct TagRefinementStatus: Codable, Sendable {
 struct OmdbCacheEntry: Codable, Sendable {
     let imdbId: String
     let ratings: [OmdbRating]
+    /// OMDb's `Awards` summary string, for example "Won 4 Oscars. 309 wins & 271 nominations total".
+    let awards: String?
     let fetchedAt: Date
 }
 
