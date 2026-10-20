@@ -4,11 +4,13 @@ import Logging
 
 final class LLMService: Sendable {
     private let httpClient: HTTPClient
+    private let anthropic: AnthropicClient
     private let logger = Logger(label: "LLMService")
     private let anthropicModel: String
 
-    init(httpClient: HTTPClient) {
+    init(httpClient: HTTPClient, anthropic: AnthropicClient) {
         self.httpClient = httpClient
+        self.anthropic = anthropic
         self.anthropicModel = ProcessInfo.processInfo.environment["ANTHROPIC_MODEL"] ?? "claude-opus-4-7"
         self.logger.info("LLMService initialized with Anthropic model: \(self.anthropicModel)")
     }
@@ -106,11 +108,10 @@ final class LLMService: Sendable {
         return try parseTagResponse(content)
     }
 
-    /// Shared Anthropic HTTP call: builds the request, retries on 429/529, and returns the raw
-    /// assistant text. Callers parse the content into whichever response shape they need.
+    /// Shared Anthropic call through `AnthropicClient` (retries, metering and auth handling live
+    /// in `OutboundClient`). Returns the raw assistant text. This whole file is replaced by
+    /// `ReaderService` in the tagger rewrite; the shim keeps the old path metered until then.
     private func callAnthropicText(prompt: String, apiKey: String, maxTokens: Int) async throws -> String {
-        let url = "https://api.anthropic.com/v1/messages"
-
         let requestBody = AnthropicRequest(
             model: anthropicModel,
             maxTokens: maxTokens,
@@ -122,64 +123,24 @@ final class LLMService: Sendable {
             ],
             system: "You are a film expert helping categorize movies by mood. Return only valid JSON."
         )
-
-        var request = HTTPClientRequest(url: url)
-        request.method = .POST
-        request.headers.add(name: "x-api-key", value: apiKey)
-        request.headers.add(name: "anthropic-version", value: "2023-06-01")
-        request.headers.add(name: "content-type", value: "application/json")
-
         let jsonData = try JSONEncoder().encode(requestBody)
-        request.body = .bytes(jsonData)
 
-        // Retry on 429 (rate limit) and 529 (overloaded). Respect the Retry-After
-        // header when present; otherwise exponential backoff capped at 32s.
-        let maxRetries = 5
-        var attempt = 0
-        let response: HTTPClientResponse
-        while true {
-            let attemptResponse: HTTPClientResponse
-            do {
-                attemptResponse = try await httpClient.execute(request, timeout: .seconds(45))
-            } catch {
-                throw LLMError.httpError(502, "Network error contacting Anthropic: \(error.localizedDescription)")
+        let response: AnthropicMessageResponse
+        do {
+            response = try await anthropic.messages(apiKey: apiKey, model: anthropicModel, body: jsonData)
+        } catch let error as OutboundError {
+            switch error {
+            case .authFailure(_, let status): throw LLMError.httpError(UInt(status), error.description)
+            case .exhausted(_, let status): throw LLMError.httpError(UInt(status), error.description)
+            case .http(_, let status, _): throw LLMError.httpError(UInt(status), error.description)
+            case .transport: throw LLMError.httpError(502, error.description)
             }
-            let code = attemptResponse.status.code
-            if code == 429 || code == 529 {
-                if attempt >= maxRetries {
-                    throw LLMError.httpError(code, "Anthropic rate limited after \(maxRetries) retries")
-                }
-                let retryAfter = attemptResponse.headers.first(name: "retry-after").flatMap { UInt64($0) }
-                let backoffSec = retryAfter ?? min(32, UInt64(pow(2.0, Double(attempt + 1))))
-                logger.warning("Anthropic \(code); retry \(attempt + 1)/\(maxRetries) in \(backoffSec)s")
-                try await Task.sleep(nanoseconds: backoffSec * 1_000_000_000)
-                attempt += 1
-                continue
-            }
-            response = attemptResponse
-            break
         }
 
-        guard response.status == .ok else {
-            let code = response.status.code
-            let reqSize = jsonData.count
-            let bodyText: String
-            if let buf = try? await response.body.collect(upTo: 64 * 1024) {
-                bodyText = String(buffer: buf)
-            } else {
-                bodyText = "(body unreadable)"
-            }
-            self.logger.error("Anthropic \(code) (req=\(reqSize) bytes, model=\(self.anthropicModel)): \(bodyText)")
-            throw LLMError.httpError(code, "Anthropic \(code) (req=\(reqSize) bytes): \(bodyText)")
-        }
-
-        let data = try await response.body.collect(upTo: 1024 * 1024)
-        let anthropicResponse = try JSONDecoder().decode(AnthropicResponse.self, from: data)
-
-        guard let content = anthropicResponse.content.first?.text else {
+        let content = response.text
+        guard !content.isEmpty else {
             throw LLMError.invalidResponse("No content in Anthropic response")
         }
-
         return content
     }
 

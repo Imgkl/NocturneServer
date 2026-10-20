@@ -64,7 +64,13 @@ struct NocturneServerApp {
             httpClient: httpClient
         )
         
-        let llmService = LLMService(httpClient: httpClient)
+        let outbound = OutboundClient(
+            transport: AsyncHTTPClientTransport(client: httpClient),
+            fluent: fluent,
+            logger: Logger(label: "Outbound")
+        )
+        let anthropic = AnthropicClient(outbound: outbound)
+        let llmService = LLMService(httpClient: httpClient, anthropic: anthropic)
         
         let movieService = MovieService(
             config: appConfig,
