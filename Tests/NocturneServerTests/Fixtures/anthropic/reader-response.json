@@ -1,0 +1,20 @@
+{
+  "id": "msg_01TestReader",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-5-5",
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"residue\":\"A duel between two professionals who respect each other, ending in a quiet handhold.\",\"candidates\":[{\"slug\":\"cat-and-mouse\",\"evidence\":\"Hanna chases McCauley onto the tarmac\",\"confidence\":0.91},{\"slug\":\"crime-grit-style\",\"evidence\":\"rob $1.6 million in bearer bonds\",\"confidence\":0.86},{\"slug\":\"Cat-And-Mouse\",\"evidence\":\"duplicate\",\"confidence\":0.5},{\"slug\":\"not-a-real-mood\",\"evidence\":\"made up\",\"confidence\":0.99},{\"slug\":\"bittersweet-aftermath\",\"evidence\":\"takes McCauley's hand as he dies\",\"confidence\":1.4}],\"alternates\":[\"slow-burn-sharp-blade\",\"nope\",\"cat-and-mouse\"]}"
+    }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 1860,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 9412,
+    "output_tokens": 214
+  }
+}

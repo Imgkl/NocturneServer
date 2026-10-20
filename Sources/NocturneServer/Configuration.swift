@@ -99,15 +99,10 @@ final class NocturneConfiguration: @unchecked Sendable {
     Tags MUST be slugs from the provided list. Do not invent new tags. Jellyfin genres (Comedy, Drama, …)
     are hints, not mood tags — don't map them 1:1.
 
-    Rule 7 — Honor each tag's Min confidence
-    Each tag has a minimum confidence floor listed next to it. If you can't confidently clear that
-    floor, DROP THE TAG. Loose tags (bittersweet-aftermath, regional-gems, film-school-shelf, etc.)
-    need 0.82+; precise tags (time-twists, experimental-cinema) need 0.65+.
-
-    Rule 8 — Honor user calibration
-    If a tag listing shows "Recent user decisions" — ✓ approved / ✗ rejected — treat those as strong
-    signals. Do NOT apply a tag to a film that closely resembles rejections; DO prefer a tag whose
-    approved anchors resemble the current film.
+    Rule 7 — Honor user calibration
+    The "Your recent decisions" section lists, per tag, films the admin confirmed and films where
+    the admin rejected the tag. Treat those as strong signals. Do NOT apply a tag to a film that
+    closely resembles rejections; DO prefer a tag whose confirmed films resemble the current film.
 
     Few-shot calibration examples (use as a model; do not output these):
 
@@ -146,7 +141,7 @@ final class NocturneConfiguration: @unchecked Sendable {
     Workflow
     1. State the residue in ONE sentence (goes in the `residue` JSON field).
     2. For each candidate tag, cite the exact phrase from overview/summary justifying it (goes in `evidence`).
-    3. Apply Rules 1–8. Drop any tag that fails its guard or its min confidence.
+    3. Apply Rules 1 to 7. Drop any tag that fails its guard.
     4. Return up to 5 survivors, each with per-tag confidence.
     """
 
