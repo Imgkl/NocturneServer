@@ -45,6 +45,22 @@ final class MovieService {
     return movie
   }
 
+  /// A film that leaves the library takes its open review rows with it; a pending suggestion
+  /// for a film nobody can open is only noise in the queue.
+  func supersedePendingSuggestions(for jellyfinIds: [String]) async throws {
+    guard !jellyfinIds.isEmpty else { return }
+    let rows = try await TagSuggestion.query(on: fluent.db())
+      .filter(\.$status == "pending")
+      .filter(\.$jellyfinId ~~ jellyfinIds)
+      .all()
+    let now = Date()
+    for row in rows {
+      row.status = "superseded"
+      row.resolvedAt = now
+      try await row.save(on: fluent.db())
+    }
+  }
+
   /// Delete a movie (and its tag relations) by Jellyfin item id. Returns true if deleted.
   func deleteMovieByJellyfinId(_ jellyfinId: String) async throws -> Bool {
     if let movie = try await Movie.query(on: fluent.db())
@@ -57,6 +73,7 @@ final class MovieService {
         .filter(\.$movie.$id == movie.requireID())
         .delete()
       try await movie.delete(on: fluent.db())
+      try await supersedePendingSuggestions(for: [jellyfinId])
       try await updateTagUsageCounts(for: tagSlugs)
       logger.info("Deleted movie with Jellyfin id \(jellyfinId)")
       return true
@@ -348,6 +365,7 @@ final class MovieService {
 
   // MARK: - Maintenance
   func clearAllMovies() async throws {
+    try await supersedePendingSuggestions(for: try await pendingReviewJellyfinIds().sorted())
     try await MovieTag.query(on: fluent.db()).delete()
     try await Movie.query(on: fluent.db()).delete()
     let allTags = try await Tag.query(on: fluent.db()).all()
@@ -468,6 +486,7 @@ final class MovieService {
         if !orphaned.isEmpty {
           logger.info("Deleting \(orphaned.count) movies no longer present in Jellyfin")
         }
+        try await supersedePendingSuggestions(for: orphaned.map(\.jellyfinId))
         for movie in orphaned {
           do {
             let jid = movie.jellyfinId

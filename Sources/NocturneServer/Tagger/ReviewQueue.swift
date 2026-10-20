@@ -21,11 +21,15 @@ final class ReviewQueue: @unchecked Sendable {
         self.logger = logger
     }
 
+    /// Pending rows for films that are still in the library. A row whose film is gone (legacy
+    /// data from before deletes superseded them) stays in the table but out of the queue.
     func listPending() async throws -> [TagSuggestion] {
-        try await TagSuggestion.query(on: fluent.db())
+        let rows = try await TagSuggestion.query(on: fluent.db())
             .filter(\.$status == "pending")
             .sort(\.$createdAt, .descending)
             .all()
+        let known = Set(try await Movie.query(on: fluent.db()).all().map(\.jellyfinId))
+        return rows.filter { known.contains($0.jellyfinId) }
     }
 
     func list(status: String) async throws -> [TagSuggestion] {

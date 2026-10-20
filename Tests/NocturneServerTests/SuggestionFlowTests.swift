@@ -89,6 +89,34 @@ import Testing
         }
     }
 
+    @Test func pendingRowsFollowTheirFilmOutOfTheLibrary() async throws {
+        try await withTestFluent { fluent in
+            try await Movie(jellyfinId: "jf-stay").save(on: fluent.db())
+            try await Movie(jellyfinId: "jf-go").save(on: fluent.db())
+            for id in ["jf-stay", "jf-go", "jf-ghost"] {
+                try await TagSuggestion(jellyfinId: id, suggestedTags: ["cult-chaos"], confidence: 0.5, reasoning: nil, status: "pending").save(on: fluent.db())
+            }
+            let reader = ScriptedReader(answer: answer([]))
+            let (pipeline, movies, _) = try await makePipeline(fluent, config: config, enricher: ScriptedEnricher(), reader: reader)
+            let queue = ReviewQueue(fluent: fluent, config: config, movies: movies, pipeline: pipeline)
+
+            // A row for a film that was never in the library is hidden, not shown as a bare id.
+            #expect(try await queue.listPending().map(\.jellyfinId).sorted() == ["jf-go", "jf-stay"])
+
+            #expect(try await movies.deleteMovieByJellyfinId("jf-go"))
+            #expect(try await queue.listPending().map(\.jellyfinId) == ["jf-stay"])
+            let gone = try #require(try await TagSuggestion.query(on: fluent.db()).filter(\.$jellyfinId == "jf-go").first())
+            #expect(gone.status == "superseded")
+            #expect(gone.resolvedAt != nil)
+
+            // Clearing the library supersedes every open row, the ghost included.
+            try await movies.clearAllMovies()
+            #expect(try await queue.listPending().isEmpty)
+            #expect(try await TagSuggestion.query(on: fluent.db()).filter(\.$status == "pending").count() == 0)
+            #expect(try await TagSuggestion.query(on: fluent.db()).filter(\.$status == "superseded").count() == 3)
+        }
+    }
+
     @Test func allStrongIsAutoApproved() async throws {
         try await withTestFluent { fluent in
             try await Movie(jellyfinId: "jf-1").save(on: fluent.db())
