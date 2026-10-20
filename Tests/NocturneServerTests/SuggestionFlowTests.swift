@@ -70,6 +70,25 @@ import Testing
         }
     }
 
+    @Test func capCountsTheAdminsOwnTags() async throws {
+        try await withTestFluent { fluent in
+            try await Movie(jellyfinId: "jf-cap").save(on: fluent.db())
+            let reader = ScriptedReader(answer: answer([
+                candidate("cat-and-mouse", 0.95), candidate("heist-energy", 0.95), candidate("time-twists", 0.95), candidate("obsidian-noir", 0.95),
+            ]))
+            let (pipeline, movies, _) = try await makePipeline(fluent, config: config, enricher: ScriptedEnricher(), reader: reader)
+            _ = try await movies.updateMovieTags(jellyfinId: "jf-cap", tagSlugs: ["ha-ha-ha", "coming-of-age", "quiet-epics"], replaceAll: true, labelSource: .user)
+
+            let sugg = try await pipeline.tag(jellyfinId: "jf-cap", trigger: .manual)
+            #expect(sugg.suggestedTags == ["cat-and-mouse", "heist-energy"])
+            let items = try JSONDecoder().decode([SuggestionItem].self, from: Data(try #require(sugg.itemsJson).utf8))
+            #expect(items.filter { !$0.applied }.map(\.reason) == ["cap of 2 reached", "cap of 2 reached"])
+            let tags = try await tagSlugs(fluent, "jf-cap")
+            #expect(tags.count == 5)
+            #expect(tags.filter { $0.source == "user" }.count == 3)
+        }
+    }
+
     @Test func allStrongIsAutoApproved() async throws {
         try await withTestFluent { fluent in
             try await Movie(jellyfinId: "jf-1").save(on: fluent.db())

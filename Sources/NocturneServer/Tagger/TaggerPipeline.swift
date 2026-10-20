@@ -141,14 +141,15 @@ final class TaggerPipeline: @unchecked Sendable {
             throw error
         }
 
-        // 3. Policy.
+        // 3. Policy. The admin's own tags count against the cap.
         var floors: [String: Double] = [:]
         for (slug, bucket) in config.moodBuckets {
             if let floor = bucket.minConfidence { floors[slug] = floor }
         }
+        let cap = max(0, config.maxAutoTags - (try await movies.userTagCount(jellyfinId: jellyfinId)))
         let policy = PolicyEngine.decide(
             version: PolicyEngine.legacyVersion,
-            input: PolicyInput(candidates: readerResult.answer.candidates, floors: floors, maxTags: config.maxAutoTags, unverified: unverified))
+            input: PolicyInput(candidates: readerResult.answer.candidates, floors: floors, maxTags: cap, unverified: unverified))
 
         // 4. Apply, then record.
         if !policy.applied.isEmpty {

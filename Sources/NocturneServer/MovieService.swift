@@ -99,6 +99,16 @@ final class MovieService {
 
   // MARK: - Tag Management
 
+  /// Tags on the film that a human placed (`label_source = user`). They count against the
+  /// auto-tag cap so a reprocess never stacks five more on top of them.
+  func userTagCount(jellyfinId: String) async throws -> Int {
+    guard let movie = try await Movie.query(on: fluent.db()).filter(\.$jellyfinId == jellyfinId).first() else { return 0 }
+    return try await MovieTag.query(on: fluent.db())
+      .filter(\.$movie.$id == movie.requireID())
+      .filter(\.$labelSource == LabelSource.user.rawValue)
+      .count()
+  }
+
   func updateMovieTags(
     jellyfinId: String,
     tagSlugs: [String],
