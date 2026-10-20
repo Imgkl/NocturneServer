@@ -51,5 +51,11 @@ let package = Package(
             ],
             path: "Sources/NocturneServer"
         ),
+        .testTarget(
+            name: "NocturneServerTests",
+            dependencies: ["NocturneServer"],
+            path: "Tests/NocturneServerTests",
+            resources: [.copy("Fixtures")]
+        ),
     ]
 )
