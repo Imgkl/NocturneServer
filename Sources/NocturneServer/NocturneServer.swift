@@ -70,7 +70,6 @@ struct NocturneServerApp {
             logger: Logger(label: "Outbound")
         )
         let anthropic = AnthropicClient(outbound: outbound)
-        let llmService = LLMService(httpClient: httpClient, anthropic: anthropic)
 
         // Enrichment: Wikidata + Wikipedia + awards into the per-film text block.
         let version = ProcessInfo.processInfo.environment["NOCTURNE_VERSION"] ?? "dev"
@@ -97,18 +96,28 @@ struct NocturneServerApp {
         let movieService = MovieService(
             config: appConfig,
             fluent: fluent,
-            jellyfinService: jellyfinService,
-            llmService: llmService
+            jellyfinService: jellyfinService
         )
-        let suggestionService = SuggestionService(
-            fluent: fluent,
-            jellyfinService: jellyfinService,
-            llmService: llmService,
-            config: appConfig
-        )
-        // Break the cycle: both services hold weak refs to each other.
-        movieService.suggestionService = suggestionService
-        suggestionService.movieServiceRef = movieService
+
+        // Tagger: reader + policy + decision records; review queue; backfill on runs.
+        let readerService = ReaderService(
+            anthropic: anthropic, settings: settingsStore, buckets: appConfig.moodBuckets,
+            rules: appConfig.autoTaggingPrompt, maxTags: appConfig.maxAutoTags)
+        let budget = BudgetGuard(fluent: fluent, settings: settingsStore)
+        let pipeline = TaggerPipeline(
+            fluent: fluent, config: appConfig, enrichment: enrichmentService, reader: readerService,
+            movies: movieService, budget: budget, settings: settingsStore,
+            titles: { [jellyfinService] in
+                var titles: [String: String] = [:]
+                if let items = try? await jellyfinService.fetchAllMovies() {
+                    for item in items { if let id = item.id, let name = item.name { titles[id] = name } }
+                }
+                return titles
+            })
+        movieService.tagger = pipeline
+        let reviewQueue = ReviewQueue(fluent: fluent, config: appConfig, movies: movieService, pipeline: pipeline)
+        let backfillJob = BackfillJob(runService: runService, pipeline: pipeline, queue: reviewQueue, fluent: fluent, config: appConfig)
+        let taggerRoutes = TaggerRoutes(movies: movieService, pipeline: pipeline, queue: reviewQueue, backfill: backfillJob)
 
         // Start realtime listener if configured
         var realtime: JellyfinRealtimeService? = nil
@@ -116,7 +125,7 @@ struct NocturneServerApp {
             let rt = JellyfinRealtimeService(
                 config: appConfig,
                 movieService: movieService,
-                suggestionService: suggestionService,
+                pipeline: pipeline,
                 eventLoopGroup: eventLoopGroup,
                 logger: logger
             )
@@ -131,13 +140,13 @@ struct NocturneServerApp {
         let app = try await createApplication(
             config: appConfig,
             movieService: movieService,
-            suggestionService: suggestionService,
             fluent: fluent,
             logger: logger,
             isFirstRun: false,
             httpClient: httpClient,
             outbound: outbound,
             enrichmentRoutes: enrichmentRoutes,
+            taggerRoutes: taggerRoutes,
             eventLoopGroup: eventLoopGroup
         )
 
@@ -212,13 +221,13 @@ func runMigrations(fluent: Fluent, logger: Logger) async throws {
 func createApplication(
     config: NocturneConfiguration,
     movieService: MovieService,
-    suggestionService: SuggestionService,
     fluent: Fluent,
     logger: Logger,
     isFirstRun: Bool,
     httpClient: HTTPClient,
     outbound: OutboundClient,
     enrichmentRoutes: EnrichmentRoutes,
+    taggerRoutes: TaggerRoutes,
     eventLoopGroup: EventLoopGroup
 ) async throws -> Application<RouterResponder<BasicRequestContext>> {
 
@@ -231,11 +240,11 @@ func createApplication(
 
     let apiRoutes = APIRoutes(
         movieService: movieService,
-        suggestionService: suggestionService,
         config: config,
         httpClient: httpClient,
         outbound: outbound,
-        enrichmentRoutes: enrichmentRoutes
+        enrichmentRoutes: enrichmentRoutes,
+        taggerRoutes: taggerRoutes
     )
     apiRoutes.addRoutes(to: router)
 
@@ -361,21 +370,31 @@ struct JSONErrorMiddleware: MiddlewareProtocol {
         } catch let http as HTTPError {
             let payload = ErrorResponse(error: "HTTP Error", message: http.localizedDescription, status: Int(http.status.code))
             return try jsonResponse(payload, status: http.status)
-        } catch let llm as LLMError {
-            // Map LLM errors to appropriate HTTP status for the client
-            if case .httpError(let code, _) = llm {
-                let status: HTTPResponse.Status
-                switch code {
-                case 401: status = .unauthorized
-                case 403: status = .forbidden
-                case 429: status = .tooManyRequests
-                default: status = .badGateway
-                }
-                let payload = ErrorResponse(error: "LLM Error", message: llm.description, status: Int(status.code))
-                return try jsonResponse(payload, status: status)
+        } catch let outbound as OutboundError {
+            let status: HTTPResponse.Status
+            switch outbound {
+            case .authFailure(_, let code): status = code == 403 ? .forbidden : .unauthorized
+            case .exhausted: status = .tooManyRequests
+            case .transport, .http: status = .badGateway
             }
-            let payload = ErrorResponse(error: "LLM Error", message: llm.description, status: 502)
+            let payload = ErrorResponse(error: "Provider Error", message: outbound.description, status: Int(status.code))
+            return try jsonResponse(payload, status: status)
+        } catch let reader as ReaderError {
+            let payload = ErrorResponse(error: "Reader Error", message: reader.description, status: 502)
             return try jsonResponse(payload, status: .badGateway)
+        } catch let tagger as TaggerError {
+            let status: HTTPResponse.Status
+            switch tagger {
+            case .missingAnthropicKey: status = .badRequest
+            case .notFound, .movieNotFound: status = .notFound
+            case .alreadyResolved: status = .conflict
+            }
+            let payload = ErrorResponse(error: "Tagger Error", message: tagger.description, status: Int(status.code))
+            return try jsonResponse(payload, status: status)
+        } catch let run as RunError {
+            let status: HTTPResponse.Status = { if case .busy = run { return .conflict } else { return .notFound } }()
+            let payload = ErrorResponse(error: "Run Error", message: run.description, status: Int(status.code))
+            return try jsonResponse(payload, status: status)
         } catch let svc as MovieServiceError {
             // Treat missing/unsupported provider/api key as 400 Bad Request
             let payload = ErrorResponse(error: "Bad Request", message: svc.description, status: 400)

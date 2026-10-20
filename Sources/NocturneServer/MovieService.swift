@@ -8,11 +8,10 @@ final class MovieService {
   let config: NocturneConfiguration
   let fluent: Fluent
   var jellyfinService: JellyfinService
-  let llmService: LLMService
   private let logger = Logger(label: "MovieService")
 
-  /// Wired post-construction by NocturneServerApp to break the cycle with SuggestionService.
-  weak var suggestionService: SuggestionService?
+  /// Wired post-construction by NocturneServerApp: new films found by a sync get tagged.
+  weak var tagger: TaggerPipeline?
 
   // Sync status tracking
   private var isSyncing = false
@@ -23,13 +22,11 @@ final class MovieService {
   init(
     config: NocturneConfiguration,
     fluent: Fluent,
-    jellyfinService: JellyfinService,
-    llmService: LLMService
+    jellyfinService: JellyfinService
   ) {
     self.config = config
     self.fluent = fluent
     self.jellyfinService = jellyfinService
-    self.llmService = llmService
   }
 
   /// Insert or touch a Movie row for the given Jellyfin ID; bumps last_seen_at.
@@ -106,7 +103,7 @@ final class MovieService {
     jellyfinId: String,
     tagSlugs: [String],
     replaceAll: Bool,
-    addedByAutoTag: Bool = false
+    labelSource: LabelSource
   ) async throws -> ClientTagEntry {
     let movie = try await getMovieEntity(jellyfinId: jellyfinId)
     let validSlugs = try validateTagSlugs(tagSlugs)
@@ -128,7 +125,7 @@ final class MovieService {
         let movieTag = MovieTag(
           movieId: try movie.requireID(),
           tagId: try tag.requireID(),
-          labelSource: addedByAutoTag ? .auto : .user
+          labelSource: labelSource
         )
         try await movieTag.save(on: fluent.db())
       }
@@ -145,7 +142,7 @@ final class MovieService {
           let movieTag = MovieTag(
             movieId: try movie.requireID(),
             tagId: tagId,
-            labelSource: addedByAutoTag ? .auto : .user
+            labelSource: labelSource
           )
           try await movieTag.save(on: fluent.db())
         }
@@ -159,8 +156,8 @@ final class MovieService {
       .with(\.$tags)
       .first()!
 
-    // A human just touched the tag set — any outstanding weak-review row is stale.
-    if !addedByAutoTag {
+    // A human just touched the tag set: any outstanding review row is resolved by them.
+    if labelSource == .user {
       let pendingRows = try await TagSuggestion.query(on: fluent.db())
         .filter(\.$jellyfinId == updatedMovie.jellyfinId)
         .filter(\.$status == "pending")
@@ -168,6 +165,7 @@ final class MovieService {
       for row in pendingRows {
         row.status = "approved"
         row.resolvedAt = Date()
+        row.resolvedBy = ResolvedBy.user
         try await row.save(on: fluent.db())
       }
     }
@@ -179,8 +177,25 @@ final class MovieService {
     )
   }
 
-  /// Remove the specific tags that an auto-tag run added to a movie. Admin-added rows
-  /// (addedByAutoTag=false) are left untouched by the filter.
+  /// Flip every tagger-written tag on the film to `user`: the admin confirmed the set.
+  func promoteAutoTagsToUser(jellyfinId: String) async throws {
+    let movie = try await Movie.query(on: fluent.db())
+      .filter(\.$jellyfinId == jellyfinId)
+      .first()
+      .unwrap(orError: MovieServiceError.movieNotFound(jellyfinId))
+    let rows = try await MovieTag.query(on: fluent.db())
+      .filter(\.$movie.$id == movie.requireID())
+      .filter(\.$labelSource == LabelSource.auto.rawValue)
+      .all()
+    for row in rows {
+      row.labelSource = LabelSource.user.rawValue
+      row.addedByAutoTag = false
+      try await row.save(on: fluent.db())
+    }
+  }
+
+  /// Remove the specific tags the tagger added to a movie. Rows the admin wrote
+  /// (`label_source = user`) are never touched.
   func removeAutoTags(jellyfinId: String, tagSlugs: [String]) async throws {
     guard !tagSlugs.isEmpty else { return }
     let movie = try await Movie.query(on: fluent.db())
@@ -196,7 +211,7 @@ final class MovieService {
       try await MovieTag.query(on: fluent.db())
         .filter(\.$movie.$id == movieId)
         .filter(\.$tag.$id == tag.requireID())
-        .filter(\.$addedByAutoTag == true)
+        .filter(\.$labelSource == LabelSource.auto.rawValue)
         .delete()
     }
 
@@ -280,7 +295,7 @@ final class MovieService {
     )
   }
 
-  private func pendingReviewJellyfinIds() async throws -> Set<String> {
+  func pendingReviewJellyfinIds() async throws -> Set<String> {
     let rows = try await TagSuggestion.query(on: fluent.db())
       .filter(\.$status == "pending")
       .field(\.$jellyfinId)
@@ -349,7 +364,7 @@ final class MovieService {
     for (jellyfinId, payload) in map {
       do {
         _ = try await updateMovieTags(
-          jellyfinId: jellyfinId, tagSlugs: payload.tags, replaceAll: replaceAll)
+          jellyfinId: jellyfinId, tagSlugs: payload.tags, replaceAll: replaceAll, labelSource: .seed)
       } catch {
         logger.error("Failed to import tags for jellyfinId=\(jellyfinId): \(error)")
       }
@@ -421,7 +436,7 @@ final class MovieService {
             try await movie.save(on: fluent.db())
             stats.moviesUpdated += 1
             if config.enableAutoTagging {
-              suggestionService?.enqueueInBackground(jellyfinId: jid)
+              tagger?.tagInBackground(jellyfinId: jid, trigger: .scheduled)
             }
           }
           self.lastSyncStats = stats
@@ -576,32 +591,5 @@ enum MovieServiceError: Error, CustomStringConvertible {
     case .syncAlreadyRunning:
       return "Sync is already running"
     }
-  }
-}
-
-// MARK: - LLM context
-
-/// Plain-struct movie context for LLM prompts; decouples LLMService from the slim DB Movie model.
-struct MovieContext {
-  let title: String
-  let originalTitle: String?
-  let year: Int?
-  let overview: String?
-  let runtimeMinutes: Int?
-  let director: String?
-  let genres: [String]
-  let cast: [String]
-
-  init(from item: BaseItemDto) {
-    self.title = item.name ?? ""
-    self.originalTitle = item.originalTitle
-    self.year = item.productionYear
-    self.overview = item.overview
-    self.runtimeMinutes = item.runTimeTicks.map { Int($0 / 600_000_000) }
-    self.director = item.people?.first { ($0.type ?? "").lowercased() == "director" }?.name
-    self.genres = item.genres ?? []
-    self.cast = (item.people ?? [])
-      .filter { ($0.type ?? "").lowercased() == "actor" }
-      .compactMap { $0.name }
   }
 }

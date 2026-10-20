@@ -9,7 +9,7 @@ import NIOHTTP1
 final class JellyfinRealtimeService: @unchecked Sendable {
     private let config: NocturneConfiguration
     private let movieService: MovieService
-    private let suggestionService: SuggestionService
+    private let pipeline: TaggerPipeline
     private let eventLoopGroup: EventLoopGroup
     private let logger: Logger
 
@@ -21,13 +21,13 @@ final class JellyfinRealtimeService: @unchecked Sendable {
     init(
         config: NocturneConfiguration,
         movieService: MovieService,
-        suggestionService: SuggestionService,
+        pipeline: TaggerPipeline,
         eventLoopGroup: EventLoopGroup,
         logger: Logger
     ) {
         self.config = config
         self.movieService = movieService
-        self.suggestionService = suggestionService
+        self.pipeline = pipeline
         self.eventLoopGroup = eventLoopGroup
         self.logger = Logger(label: "JellyfinRealtime")
     }
@@ -176,7 +176,7 @@ final class JellyfinRealtimeService: @unchecked Sendable {
             do {
                 _ = try await movieService.upsertJellyfinId(id)
                 if config.enableAutoTagging {
-                    suggestionService.enqueueInBackground(jellyfinId: id)
+                    pipeline.tagInBackground(jellyfinId: id, trigger: .realtime)
                 }
             } catch {
                 logger.error("Realtime: upsert failed for \(id): \(error)")

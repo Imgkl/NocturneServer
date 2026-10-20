@@ -14,28 +14,28 @@ import NIOCore
 
 final class APIRoutes: @unchecked Sendable {
   let movieService: MovieService
-  let suggestionService: SuggestionService
   let config: NocturneConfiguration
   let logger = Logger(label: "APIRoutes")
   let httpClient: HTTPClient
   let outbound: OutboundClient
   let enrichmentRoutes: EnrichmentRoutes
+  let taggerRoutes: TaggerRoutes
   let posterCache: PosterCache?
 
   init(
     movieService: MovieService,
-    suggestionService: SuggestionService,
     config: NocturneConfiguration,
     httpClient: HTTPClient,
     outbound: OutboundClient,
-    enrichmentRoutes: EnrichmentRoutes
+    enrichmentRoutes: EnrichmentRoutes,
+    taggerRoutes: TaggerRoutes
   ) {
     self.movieService = movieService
-    self.suggestionService = suggestionService
     self.config = config
     self.httpClient = httpClient
     self.outbound = outbound
     self.enrichmentRoutes = enrichmentRoutes
+    self.taggerRoutes = taggerRoutes
     self.posterCache = (try? PosterCache(
       dir: config.posterCacheDir,
       maxBytes: config.posterCacheMaxBytes
@@ -59,7 +59,6 @@ final class APIRoutes: @unchecked Sendable {
 
     addMoodRoutes(to: api)
     addMovieRoutes(to: api)
-    addTagRoutes(to: api)
     addSyncRoutes(to: api)
     addSettingsRoutes(to: api)
     addImportExportRoutes(to: api)
@@ -69,6 +68,7 @@ final class APIRoutes: @unchecked Sendable {
     addOnboardingRoutes(to: api)
     // Tagger rewrite routes live in Routes/*.swift; this file is the composition root.
     enrichmentRoutes.addRoutes(to: api)
+    taggerRoutes.addRoutes(to: api)
   }
 
   // MARK: - Mood Routes (admin needs the bucket list for display names)
@@ -88,28 +88,6 @@ final class APIRoutes: @unchecked Sendable {
 
   private func addMovieRoutes(to router: RouterGroup<BasicRequestContext>) {
     let movies = router.group("movies")
-
-    movies.put(":id/tags") { request, context in
-      let movieId = try context.parameters.require("id")
-      let updateRequest = try await request.decode(
-        as: UpdateMovieTagsRequest.self, context: context)
-      try updateRequest.validate()
-
-      return try jsonResponse(
-        try await self.movieService.updateMovieTags(
-          jellyfinId: String(movieId),
-          tagSlugs: updateRequest.tagSlugs,
-          replaceAll: updateRequest.replaceAll
-        ))
-    }
-
-    // Always routes through the suggestion queue; never auto-applies.
-    // Body is ignored — prompt/provider come from server config.
-    movies.post(":id/auto-tag") { request, context in
-      let jellyfinId = try context.parameters.require("id")
-      let sugg = try await self.suggestionService.enqueue(jellyfinId: String(jellyfinId))
-      return try jsonResponse(TagSuggestionResponse(sugg))
-    }
 
     // Poster proxy: fetches from Jellyfin on cache miss, serves from disk on hit.
     // Sizes: thumb=200w, medium=400w, full=original.
@@ -145,37 +123,6 @@ final class APIRoutes: @unchecked Sendable {
 
       self.posterCache?.set(key: cacheKey, data: data, contentType: contentType)
       return Self.imageResponse(data: data, contentType: contentType, cacheHit: false)
-    }
-  }
-
-  // MARK: - Tag Routes (per-tag AI refinement)
-  private func addTagRoutes(to router: RouterGroup<BasicRequestContext>) {
-    let tags = router.group("tags")
-
-    // POST /api/v1/tags/:slug/refine — start a per-tag refinement pass against every movie
-    // currently carrying this tag via auto-apply. Shares the long-running-worker mutex with
-    // the backfill flow.
-    tags.post(":slug/refine") { request, context in
-      let slug = String(try context.parameters.require("slug"))
-      do {
-        let status = try await self.suggestionService.startTagRefinement(tagSlug: slug)
-        return try jsonResponse(status)
-      } catch SuggestionError.tagNotFound {
-        throw HTTPError(.badRequest)
-      } catch SuggestionError.backfillInProgress {
-        throw HTTPError(.conflict)
-      }
-    }
-
-    tags.get(":slug/refine/status") { request, context in
-      let status = await self.suggestionService.getTagRefinementStatus()
-      return try jsonResponse(status)
-    }
-
-    tags.post(":slug/refine/cancel") { request, context in
-      await self.suggestionService.cancelTagRefinement()
-      let status = await self.suggestionService.getTagRefinementStatus()
-      return try jsonResponse(status)
     }
   }
 
@@ -369,82 +316,6 @@ final class APIRoutes: @unchecked Sendable {
   private func addAdminRoutes(to router: RouterGroup<BasicRequestContext>) {
     let admin = router.group("admin")
 
-    // GET /admin/suggestions?status=pending
-    admin.get("suggestions") { request, context in
-      let statusParam = request.uri.queryParameters["status"].map { String($0) } ?? "pending"
-      let rows: [TagSuggestion]
-      if statusParam == "pending" {
-        rows = try await self.suggestionService.listPending()
-      } else {
-        rows = try await TagSuggestion.query(on: self.movieService.fluent.db())
-          .filter(\.$status == statusParam)
-          .sort(\.$createdAt, DatabaseQuery.Sort.Direction.descending)
-          .all()
-      }
-      return try jsonResponse(
-        SuggestionListResponse(items: rows.map(TagSuggestionResponse.init)))
-    }
-
-    // POST /admin/suggestions/:id/approve
-    // Optional body: { "tags": ["slug1", "slug2"] } — when present, overrides the suggested
-    // tags with the reviewer's edited set before approving.
-    struct ApproveBody: Codable { let tags: [String]? }
-    admin.post("suggestions/:id/approve") { request, context in
-      let idStr = try context.parameters.require("id")
-      guard let uuid = UUID(uuidString: String(idStr)) else {
-        throw HTTPError(.badRequest)
-      }
-      let overrideTags = try? await request.decode(as: ApproveBody.self, context: context).tags
-      let sugg = try await self.suggestionService.approve(uuid, overrideTags: overrideTags)
-      return try jsonResponse(TagSuggestionResponse(sugg))
-    }
-
-    // POST /admin/suggestions/:id/reject
-    admin.post("suggestions/:id/reject") { request, context in
-      let idStr = try context.parameters.require("id")
-      guard let uuid = UUID(uuidString: String(idStr)) else {
-        throw HTTPError(.badRequest)
-      }
-      let sugg = try await self.suggestionService.reject(uuid)
-      return try jsonResponse(TagSuggestionResponse(sugg))
-    }
-
-    // POST /admin/suggestions/regenerate/:jellyfinId
-    admin.post("suggestions/regenerate/:jellyfinId") { request, context in
-      let jid = try context.parameters.require("jellyfinId")
-      let sugg = try await self.suggestionService.regenerate(jellyfinId: String(jid))
-      return try jsonResponse(TagSuggestionResponse(sugg))
-    }
-
-    // POST /admin/auto-tag/backfill — kick off a background worker that auto-tags every movie
-    // with no tags and no pending suggestion. Idempotent.
-    admin.post("auto-tag/backfill") { request, context in
-      let status = try await self.suggestionService.startBackfill()
-      return try jsonResponse(status)
-    }
-
-    // GET /admin/auto-tag/backfill/status — current progress snapshot.
-    admin.get("auto-tag/backfill/status") { request, context in
-      let status = await self.suggestionService.getBackfillStatus()
-      return try jsonResponse(status)
-    }
-
-    // POST /admin/auto-tag/reprocess-all — clear every movie's tags, supersede pending
-    // suggestions, then re-run the auto-tagger against the whole library. Destructive.
-    admin.post("auto-tag/reprocess-all") { request, context in
-      let status = try await self.suggestionService.startReprocessAll()
-      return try jsonResponse(status)
-    }
-
-    // POST /admin/auto-tag/cancel — request cancellation of the in-flight worker. The worker
-    // checks this flag before each enqueue and bails cleanly. Returns the current status so
-    // the frontend can immediately reflect the cancelled state.
-    admin.post("auto-tag/cancel") { request, context in
-      await self.suggestionService.cancelBackfill()
-      let status = await self.suggestionService.getBackfillStatus()
-      return try jsonResponse(status)
-    }
-
     // GET /admin/movies?q&limit&offset — live Jellyfin fetch + local tag join + needs-review flag
     struct AdminMovie: Codable {
       let jellyfinId: String
@@ -475,7 +346,7 @@ final class APIRoutes: @unchecked Sendable {
       for m in localMovies {
         tagsByJellyfinId[m.jellyfinId] = m.tags.map { $0.slug }
       }
-      let pending = try await self.suggestionService.pendingJellyfinIds()
+      let pending = try await self.movieService.pendingReviewJellyfinIds()
 
       let filtered = live.filter { item in
         guard q.isEmpty else {

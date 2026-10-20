@@ -230,6 +230,10 @@ struct TagSuggestionResponse: Codable, Sendable {
     let removalTagSlug: String?
     let createdAt: Date?
     let resolvedAt: Date?
+    let resolvedBy: String?
+    let decisionId: UUID?
+    /// Per-mood detail from the decision: applied and proposed moods with probability and evidence.
+    let items: [SuggestionItem]?
 
     init(_ s: TagSuggestion) {
         self.id = s.id
@@ -242,6 +246,9 @@ struct TagSuggestionResponse: Codable, Sendable {
         self.removalTagSlug = s.removalTagSlug
         self.createdAt = s.createdAt
         self.resolvedAt = s.resolvedAt
+        self.resolvedBy = s.resolvedBy
+        self.decisionId = s.decisionId
+        self.items = s.itemsJson.flatMap { try? JSONDecoder().decode([SuggestionItem].self, from: Data($0.utf8)) }
     }
 }
 
@@ -254,20 +261,6 @@ struct BackfillStatus: Codable, Sendable {
     let running: Bool
     let total: Int
     let processed: Int
-    let startedAt: Date?
-    let cancelled: Bool?
-}
-
-/// Per-tag refinement progress. Shares the mutex with backfill — only one long-running job
-/// runs at a time, so `running` being true for refinement implies backfill is idle.
-struct TagRefinementStatus: Codable, Sendable {
-    let running: Bool
-    let tagSlug: String?
-    let total: Int
-    let processed: Int
-    let removed: Int
-    let addSuggestions: Int
-    let removeSuggestions: Int
     let startedAt: Date?
     let cancelled: Bool?
 }
@@ -298,97 +291,6 @@ struct UpdateMovieTagsRequest: Codable, Sendable {
         guard uniqueTags.count == tagSlugs.count else {
             throw ValidationError("Duplicate tags are not allowed")
         }
-    }
-}
-
-struct AutoTagResponse: Codable, Sendable {
-    struct TagWithConfidence: Codable, Sendable {
-        let slug: String
-        let confidence: Double
-        let evidence: String?
-    }
-    let residue: String?
-    let tags: [TagWithConfidence]
-    let reasoning: String?
-
-    var suggestions: [String] { tags.map(\.slug) }
-    var confidence: Double { tags.map(\.confidence).min() ?? 0 }
-    var overallConfidence: Double { confidence }
-
-    enum CodingKeys: String, CodingKey {
-        case residue, tags, reasoning, suggestions, confidence
-    }
-
-    init(residue: String?, tags: [TagWithConfidence], reasoning: String? = nil) {
-        self.residue = residue
-        self.tags = tags
-        self.reasoning = reasoning
-    }
-
-    /// Lenient decoder: accepts the new `{residue, tags: [{slug, confidence, evidence}]}` shape
-    /// or the legacy `{suggestions: [slug], confidence: 0.85}` shape so old cached responses /
-    /// LLM schema drift don't silently drop entire movies.
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.residue = try c.decodeIfPresent(String.self, forKey: .residue)
-        self.reasoning = try c.decodeIfPresent(String.self, forKey: .reasoning)
-        if let newTags = try? c.decode([TagWithConfidence].self, forKey: .tags) {
-            self.tags = newTags
-        } else if let oldSlugs = try? c.decode([String].self, forKey: .suggestions) {
-            let oldConf = (try? c.decode(Double.self, forKey: .confidence)) ?? 0.70
-            self.tags = oldSlugs.map {
-                TagWithConfidence(slug: $0, confidence: oldConf, evidence: nil)
-            }
-        } else {
-            self.tags = []
-        }
-    }
-
-    /// Encode writes the canonical new-schema shape so refine prompts round-trip cleanly.
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encodeIfPresent(residue, forKey: .residue)
-        try c.encode(tags, forKey: .tags)
-        try c.encodeIfPresent(reasoning, forKey: .reasoning)
-    }
-}
-
-/// Per-tag refinement verdict from Claude. `keep=false` means the focus tag doesn't describe
-/// the movie's residue; caller decides auto-remove vs queue-for-review based on `confidence`
-/// against the tag's `minConfidence` floor. `suggestedTags` proposes alternate tags that fit
-/// the movie better — handled separately via the existing additive suggestion flow.
-struct TagRefinementResponse: Codable, Sendable {
-    let keep: Bool
-    let confidence: Double
-    let evidence: String?
-    let residue: String?
-    let suggestedTags: [AutoTagResponse.TagWithConfidence]
-
-    enum CodingKeys: String, CodingKey {
-        case keep, confidence, evidence, residue, suggestedTags
-    }
-
-    init(
-        keep: Bool,
-        confidence: Double,
-        evidence: String?,
-        residue: String?,
-        suggestedTags: [AutoTagResponse.TagWithConfidence]
-    ) {
-        self.keep = keep
-        self.confidence = confidence
-        self.evidence = evidence
-        self.residue = residue
-        self.suggestedTags = suggestedTags
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.keep = (try? c.decode(Bool.self, forKey: .keep)) ?? true
-        self.confidence = (try? c.decode(Double.self, forKey: .confidence)) ?? 0
-        self.evidence = try? c.decodeIfPresent(String.self, forKey: .evidence)
-        self.residue = try? c.decodeIfPresent(String.self, forKey: .residue)
-        self.suggestedTags = (try? c.decode([AutoTagResponse.TagWithConfidence].self, forKey: .suggestedTags)) ?? []
     }
 }
 
