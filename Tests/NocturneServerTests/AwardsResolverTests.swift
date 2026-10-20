@@ -49,6 +49,27 @@ import Testing
         }
     }
 
+    @Test func concurrentMissesOnTheSameLabelDoNotFail() async throws {
+        try await withTestFluent { fluent in
+            // Three workers miss the cache for Q1 at the same time; each fetches and stores it.
+            let transport = FakeTransport([
+                .response(status: 200, body: labelsBody(["Q1"])),
+                .response(status: 200, body: labelsBody(["Q1"])),
+                .response(status: 200, body: labelsBody(["Q1"])),
+            ])
+            let resolver = try await make(fluent, transport)
+            async let a = resolver.labels(for: ["Q1"])
+            async let b = resolver.labels(for: ["Q1"])
+            async let c = resolver.labels(for: ["Q1"])
+            let results = try await [a, b, c]
+            #expect(results.allSatisfy { $0["Q1"] == "Label Q1" })
+            #expect(try await WikidataLabel.query(on: fluent.db()).count() == 1)
+            // A later call hits the cache.
+            _ = try await resolver.labels(for: ["Q1"])
+            #expect(transport.requestCount <= 3)
+        }
+    }
+
     @Test func parasiteAwardsAreNamedAndOrdered() async throws {
         try await withTestFluent { fluent in
             let entity = try JSONDecoder().decode(WikidataResolver.EntitiesResponse.self, from: try fixtureData("wikidata/entity-Q61448040.json"))

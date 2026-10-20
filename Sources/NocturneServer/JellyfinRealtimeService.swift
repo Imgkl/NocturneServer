@@ -84,7 +84,7 @@ final class JellyfinRealtimeService: @unchecked Sendable {
                     try await Task.sleep(nanoseconds: 3_000_000_000)
                     continue
                 }
-                logger.info("Realtime: connecting to \(scheme)://\(host):\(port)\(path)")
+                logger.info("Realtime: connecting to \(scheme)://\(host):\(port)/socket")  // query carries the api key; keep it out of the log
                 let urlStr = "\(scheme)://\(host):\(port)\(path)"
                 let closePromise = eventLoopGroup.next().makePromise(of: Void.self)
                 do {

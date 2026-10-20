@@ -1,5 +1,6 @@
 import AsyncHTTPClient
 import FluentKit
+import FluentSQL
 import Foundation
 import HummingbirdFluent
 import Logging
@@ -72,10 +73,22 @@ final class AwardsResolver: Sendable {
             let fetched = try await fetchLabels(batch, context: context)
             for (qid, label) in fetched {
                 result[qid] = label
-                try await WikidataLabel(qid: qid, label: label).save(on: fluent.db())
+                try await store(qid: qid, label: label)
             }
         }
         return result
+    }
+
+    /// Upsert. The coverage job runs three films at once, so two workers can miss the same label
+    /// and both try to insert it; the loser must not fail its film.
+    private func store(qid: String, label: String) async throws {
+        guard let sql = fluent.db() as? SQLDatabase else {
+            try await WikidataLabel(qid: qid, label: label).save(on: fluent.db())
+            return
+        }
+        try await sql.raw(
+            "INSERT INTO wikidata_labels (qid, label, fetched_at) VALUES (\(bind: qid), \(bind: label), \(bind: Date().timeIntervalSince1970)) ON CONFLICT(qid) DO UPDATE SET label = excluded.label, fetched_at = excluded.fetched_at"
+        ).run()
     }
 
     private func fetchLabels(_ qids: [String], context: CallContext) async throws -> [String: String] {
