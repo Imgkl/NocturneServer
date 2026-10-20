@@ -30,6 +30,11 @@ struct BaseItemDto: Codable, Sendable {
     let people: [BaseItemPerson]?
     let imageTags: [String: String]?
     let backdropImageTags: [String]?
+    /// External ids keyed by provider name ("Imdb", "Tmdb"). Drives Wikidata resolution.
+    let providerIds: [String: String]?
+    /// Jellyfin's last-saved timestamp, kept as the raw string (7-digit fractional seconds).
+    /// Compared as a string for change detection; never parsed.
+    let dateLastSaved: String?
 
     enum CodingKeys: String, CodingKey {
         case id = "Id"
@@ -42,6 +47,8 @@ struct BaseItemDto: Codable, Sendable {
         case people = "People"
         case imageTags = "ImageTags"
         case backdropImageTags = "BackdropImageTags"
+        case providerIds = "ProviderIds"
+        case dateLastSaved = "DateLastSaved"
     }
 }
 

@@ -89,7 +89,7 @@ final class JellyfinService: Sendable {
 
     /// Fetch the full BaseItemDto payload for one movie (used for admin proxy + LLM context building).
     func fetchMovie(id: String) async throws -> BaseItemDto {
-        var request = HTTPClientRequest(url: "\(baseURL)/Users/\(userId)/Items/\(id)?Fields=Overview,Genres,People")
+        var request = HTTPClientRequest(url: "\(baseURL)/Users/\(userId)/Items/\(id)?Fields=Overview,Genres,People,ProviderIds,DateLastSaved")
         request.method = .GET
         request.headers.add(name: "Authorization", value: "MediaBrowser Token=\"\(apiKey)\"")
 
@@ -110,7 +110,7 @@ final class JellyfinService: Sendable {
         let queryItems = [
             "Recursive": "true",
             "SortOrder": "Ascending",
-            "Fields": "Overview,Genres,ProviderIds",
+            "Fields": "Overview,Genres,ProviderIds,DateLastSaved",
             "IncludeItemTypes": "Movie",
             "SortBy": "SortName"
         ]
