@@ -27,7 +27,7 @@ export function EvidenceList({ items, moods, onToggle, isSelected }: EvidenceLis
             <span className="text-[12px] text-text whitespace-nowrap">{title}</span>
             <span className="text-[11px] text-muted tabular-nums">{pct}</span>
             <span className="min-w-0 font-serif italic text-[13.5px] text-text-dim leading-snug">
-              {item.evidence || '—'}
+              {item.evidence || 'no evidence phrase'}
               {!item.applied && item.reason && (
                 <span className="not-italic font-sans text-[10.5px] text-muted"> · held back: {item.reason}</span>
               )}

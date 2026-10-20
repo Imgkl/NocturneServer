@@ -63,7 +63,7 @@ flowchart TB
 ```
 
 > [!Important]
-> Jellyfin is the source of truth. Nocturne is a pure vibe-index layer — it stores
+> Jellyfin is the source of truth. Nocturne is a pure vibe-index layer: it stores
 > `jellyfinId → mood tags`, the story text the tagger read, and the decision it made,
 > and never mirrors Jellyfin metadata. Clients talk to Jellyfin directly for
 > catalog/playback and to Nocturne for mood curation.
@@ -82,8 +82,8 @@ flowchart TB
 ### Core
 - ✅ **Mood-based organization** — 36 curated moods (see full list below)
 - ✅ **Real-time sync** — Jellyfin WebSocket listener keeps the ID set fresh
-- ✅ **Story sources** — Wikipedia plot, reception and awards per film via Wikidata, no key required
-- ✅ **Hybrid auto-tagging** — a cached reader proposes moods with evidence, admin approves; every decision stored with its cost, monthly budget cap
+- ✅ **Story sources** - Wikipedia plot, reception and awards per film via Wikidata, no key required
+- ✅ **Hybrid auto-tagging** - a cached reader proposes moods with evidence, admin approves; every decision stored with its cost, monthly budget cap
 - ✅ **Manual tagging** — Web UI for fine-tuning
 - ✅ **Import/Export** — Backup your mood mappings
 - ✅ **External ratings** — OMDb proxy for IMDb/RT/Metacritic (BYOK, shared 15-day cache)
