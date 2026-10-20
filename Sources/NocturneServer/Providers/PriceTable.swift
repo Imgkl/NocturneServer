@@ -70,8 +70,10 @@ struct PriceTable: Sendable {
             + Double(units.outputTokens ?? 0) * p.outputPerM
             + Double(units.cacheReadTokens ?? 0) * p.cacheReadPerM
             + Double(units.cacheWriteTokens ?? 0) * p.cacheWritePerM
+        // Web search is a separate line item on top of the model's tokens.
+        let perSearch = entries["\(provider)/web_search"]?.perSearch ?? p.perSearch
         return tokens / 1_000_000
-            + Double(units.searches ?? 0) * p.perSearch
+            + Double(units.searches ?? 0) * perSearch
             + Double(units.calls ?? 0) * p.perCall
     }
 }

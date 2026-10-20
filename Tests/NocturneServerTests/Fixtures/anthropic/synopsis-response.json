@@ -1,0 +1,21 @@
+{
+  "id": "msg_01TestSynopsis",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-opus-5-5",
+  "content": [
+    { "type": "text", "text": "Let me look this film up." },
+    { "type": "server_tool_use", "id": "srvtoolu_01", "name": "web_search", "input": { "query": "Kadaisi Vivasayi 2022 film plot" } },
+    { "type": "web_search_tool_result", "tool_use_id": "srvtoolu_01", "content": [ { "type": "web_search_result", "url": "https://example.test/review", "title": "Review", "encrypted_content": "x", "page_age": null } ] },
+    { "type": "text", "text": "{\"plot\":\"Mayandi, an old farmer, is jailed over a dead peacock while his village waits for him to sow the ritual paddy. The case drags on; the village sows without him; he walks home to find the field alive.\",\"reception\":\"Acclaimed at festivals; won a National Film Award.\",\"sources\":[\"https://example.test/review\",\"https://example.test/awards\"]}" }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 3100,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "output_tokens": 410,
+    "server_tool_use": { "web_search_requests": 2 }
+  }
+}

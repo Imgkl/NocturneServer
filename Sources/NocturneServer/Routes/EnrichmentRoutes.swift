@@ -128,6 +128,12 @@ struct EnrichmentRoutes: Sendable {
             return try jsonResponse(EnrichmentRow(row, includeText: true))
         }
 
+        group.post(":jellyfinId/synopsis") { _, context in
+            let id = String(try context.parameters.require("jellyfinId"))
+            let row = try await self.enrichment.generateSynopsis(jellyfinId: id)
+            return try jsonResponse(EnrichmentRow(row, includeText: true))
+        }
+
         group.post(":jellyfinId/refresh") { _, context in
             let id = String(try context.parameters.require("jellyfinId"))
             let row = try await self.enrichment.enrich(jellyfinId: id, force: true)

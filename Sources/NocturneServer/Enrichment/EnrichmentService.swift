@@ -27,6 +27,14 @@ extension WikidataResolver: WikidataResolving {}
 extension WikipediaClient: WikipediaFetching {}
 extension AwardsResolver: AwardsProviding {}
 
+/// Strong-model synopsis writer for films with no story source anywhere.
+protocol SynopsisWriting: Sendable {
+    func isEnabled() async throws -> Bool
+    func write(for identity: EnrichmentService.Identity, apiKey: String, context: CallContext) async throws -> SynopsisResult
+}
+
+typealias APIKeyProvider = @Sendable () async throws -> String?
+
 // MARK: - Service
 
 /// Builds and stores a film's story source: resolves the page, fetches plot and reception,
@@ -41,12 +49,15 @@ final class EnrichmentService: Sendable {
     let resolver: WikidataResolving
     let wikipedia: WikipediaFetching
     let awards: AwardsProviding
+    let synopsis: SynopsisWriting?
+    let apiKey: APIKeyProvider
     let logger: Logger
     let now: @Sendable () -> Date
 
     init(
         fluent: Fluent, jellyfin: JellyfinItemProviding, resolver: WikidataResolving,
         wikipedia: WikipediaFetching, awards: AwardsProviding,
+        synopsis: SynopsisWriting? = nil, apiKey: @escaping APIKeyProvider = { nil },
         logger: Logger = Logger(label: "Enrichment"), now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.fluent = fluent
@@ -54,8 +65,32 @@ final class EnrichmentService: Sendable {
         self.resolver = resolver
         self.wikipedia = wikipedia
         self.awards = awards
+        self.synopsis = synopsis
+        self.apiKey = apiKey
         self.logger = logger
         self.now = now
+    }
+
+    /// Writes a model synopsis for the film regardless of the fallback setting (admin action),
+    /// stores it as the story source flagged `unverified`, and rebuilds the block.
+    func generateSynopsis(jellyfinId: String, context: CallContext = .none) async throws -> MovieEnrichment {
+        guard let synopsis else { throw EnrichmentError.synopsisUnavailable }
+        guard let key = try await apiKey(), !key.isEmpty else { throw TaggerError.missingAnthropicKey }
+        let row = try await current(jellyfinId: jellyfinId) ?? MovieEnrichment(jellyfinId: jellyfinId)
+        let identity: Identity
+        if let json = row.identityJson, let decoded = try? JSONDecoder().decode(Identity.self, from: Data(json.utf8)) {
+            identity = decoded
+        } else {
+            let dto = try await jellyfin.fetchMovie(id: jellyfinId)
+            identity = Self.identity(from: dto)
+            row.identityJson = Self.json(identity)
+            row.overviewText = identity.overview
+            row.imdbId = identity.imdbId
+            row.tmdbId = identity.tmdbId
+        }
+        let result = try await synopsis.write(for: identity, apiKey: key, context: context)
+        try await store(modelSynopsis: result, identity: identity, on: row)
+        return row
     }
 
     func current(jellyfinId: String) async throws -> MovieEnrichment? {
@@ -109,14 +144,14 @@ final class EnrichmentService: Sendable {
             row.awardsJson = Self.json(built.awards)
             row.omdbAwards = built.omdbAwards
             row.source = built.source.rawValue
-            row.unverified = false
+            row.unverified = built.unverified
             row.plotFound = built.plot != nil
             let input = TextBlockInput(
                 title: identity.title, originalTitle: identity.originalTitle, year: identity.year,
                 director: identity.director, runtimeMinutes: identity.runtimeMinutes, genres: identity.genres,
                 cast: identity.cast, overview: identity.overview, plot: built.plot, reception: built.reception,
                 awards: built.awards, omdbAwards: built.omdbAwards, pageTitle: built.pageTitle, pageSite: built.site,
-                fetchedOn: Self.dayString(now()), source: built.source, unverified: false)
+                fetchedOn: Self.dayString(now()), source: built.source, unverified: built.unverified)
             let (block, hash) = TextBlockBuilder.build(input)
             row.textBlock = block
             row.inputHash = hash
@@ -153,6 +188,32 @@ final class EnrichmentService: Sendable {
         var awards: [Award] = []
         var omdbAwards: String?
         var source: EnrichmentSource = .none
+        var unverified = false
+    }
+
+    /// Stores a model-written synopsis on the row and rebuilds the block (source `model`, unverified).
+    private func store(modelSynopsis result: SynopsisResult, identity: Identity, on row: MovieEnrichment) async throws {
+        row.plotText = result.plot
+        if !result.reception.isEmpty { row.receptionText = result.reception }
+        row.source = EnrichmentSource.model.rawValue
+        row.unverified = true
+        row.plotFound = true
+        row.wikiTitle = nil
+        let awards = (row.awardsJson.flatMap { try? JSONDecoder().decode([Award].self, from: Data($0.utf8)) }) ?? []
+        let input = TextBlockInput(
+            title: identity.title, originalTitle: identity.originalTitle, year: identity.year,
+            director: identity.director, runtimeMinutes: identity.runtimeMinutes, genres: identity.genres,
+            cast: identity.cast, overview: identity.overview, plot: row.plotText, reception: row.receptionText,
+            awards: awards, omdbAwards: row.omdbAwards, pageTitle: nil, pageSite: nil,
+            fetchedOn: Self.dayString(now()), source: .model, unverified: true)
+        let (block, hash) = TextBlockBuilder.build(input)
+        row.textBlock = block
+        row.inputHash = hash
+        row.enrichVersion = TextBlockBuilder.version
+        row.fetchedAt = now()
+        row.error = nil
+        try await row.save(on: fluent.db())
+        logger.info("[\(row.jellyfinId)] model synopsis stored (unverified), \(result.sources.count) sources")
     }
 
     private func fetchStory(for identity: Identity, row: MovieEnrichment, context: CallContext) async throws -> Built {
@@ -201,6 +262,15 @@ final class EnrichmentService: Sendable {
             built.reception = SectionParser.reception(from: first.parsed, language: language)
             // A page without a story section is not a story source; the block says `(none)`.
             built.source = .none
+        }
+
+        // Last resort, only when switched on: a strong model writes the story, flagged unverified.
+        if built.plot == nil, let synopsis, try await synopsis.isEnabled(), let key = try await apiKey(), !key.isEmpty {
+            let written = try await synopsis.write(for: identity, apiKey: key, context: context)
+            built.plot = written.plot
+            built.reception = written.reception.isEmpty ? built.reception : written.reception
+            built.source = .model
+            built.unverified = true
         }
 
         if let resolution {
@@ -253,5 +323,14 @@ final class EnrichmentService: Sendable {
         f.timeZone = TimeZone(identifier: "UTC")
         f.dateFormat = "yyyy-MM-dd"
         return f.string(from: date)
+    }
+}
+
+enum EnrichmentError: Error, CustomStringConvertible {
+    case synopsisUnavailable
+    var description: String {
+        switch self {
+        case .synopsisUnavailable: return "model synopsis is not configured on this server"
+        }
     }
 }

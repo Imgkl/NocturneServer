@@ -5,22 +5,30 @@ import NIOCore
 // MARK: - Response types (the subset the server reads)
 
 struct AnthropicUsage: Decodable, Sendable {
+    struct ServerToolUse: Decodable, Sendable {
+        let webSearchRequests: Int?
+        enum CodingKeys: String, CodingKey { case webSearchRequests = "web_search_requests" }
+    }
+
     let inputTokens: Int?
     let outputTokens: Int?
     let cacheReadInputTokens: Int?
     let cacheCreationInputTokens: Int?
+    let serverToolUse: ServerToolUse?
 
     enum CodingKeys: String, CodingKey {
         case inputTokens = "input_tokens"
         case outputTokens = "output_tokens"
         case cacheReadInputTokens = "cache_read_input_tokens"
         case cacheCreationInputTokens = "cache_creation_input_tokens"
+        case serverToolUse = "server_tool_use"
     }
 
     var units: CallUnits {
         CallUnits(
             inputTokens: inputTokens, outputTokens: outputTokens,
-            cacheReadTokens: cacheReadInputTokens, cacheWriteTokens: cacheCreationInputTokens)
+            cacheReadTokens: cacheReadInputTokens, cacheWriteTokens: cacheCreationInputTokens,
+            searches: serverToolUse?.webSearchRequests)
     }
 }
 

@@ -81,12 +81,18 @@ struct NocturneServerApp {
         let awardsResolver = AwardsResolver(
             outbound: outbound, fluent: fluent, limiter: wikimediaLimiter, userAgent: userAgent,
             omdb: OmdbClient(outbound: outbound), omdbCache: omdbCache, settings: settingsStore)
+        let synopsisService = FallbackSynopsisService(anthropic: anthropic, settings: settingsStore)
         let enrichmentService = EnrichmentService(
             fluent: fluent,
             jellyfin: jellyfinService,
             resolver: WikidataResolver(outbound: outbound, limiter: wikimediaLimiter, userAgent: userAgent),
             wikipedia: WikipediaClient(outbound: outbound, limiter: wikimediaLimiter, userAgent: userAgent),
-            awards: awardsResolver)
+            awards: awardsResolver,
+            synopsis: synopsisService,
+            apiKey: { [settingsStore, appConfig] in
+                if let stored = try await settingsStore.get(TaggerPipeline.apiKeySetting), !stored.isEmpty { return stored }
+                return appConfig.anthropicApiKey
+            })
         let runService = RunService(fluent: fluent)
         let staleRuns = try await runService.markStaleOnBoot()
         if staleRuns > 0 { logger.warning("Marked \(staleRuns) stale run(s) from a previous process as error") }
