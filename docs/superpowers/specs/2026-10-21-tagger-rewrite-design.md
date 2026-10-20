@@ -1,6 +1,6 @@
 # Spec: Mood tagger rewrite (text block, decision classifier, reader, policy, learning loop)
 
-> Status: **draft 2026-10-21**, approved direction, not yet implemented. Replaces the single-model auto-tagger (`LLMService` + `SuggestionService`) with a measurable, teachable pipeline modelled on the X-Cache Live classifier. Server-only. The iOS client contract stays additive. Companion design in the mobile repo: `docs/superpowers/specs/2026-04-24-nocturne-north-star-design.md` (design principle #3: Jellyfin is the source of truth, Nocturne is the editorial layer).
+> Status: **phase 1 implemented 2026-10-21** on branch `gkl_tagger_rewrite` (enrichment, reader v2, policy `p-legacy`, decisions store, label provenance, persisted runs, settings and web UI; see `docs/sessions/2026-10-21-tagger-phase-1.md`). The live run on the owner's library (plan Task 17) is pending. Phases 2 to 4 (classifier providers, policies `p0`/`p1`, eval, Teach) are not started. Replaces the single-model auto-tagger (`LLMService` + `SuggestionService`) with a measurable, teachable pipeline modelled on the X-Cache Live classifier. Server-only. The iOS client contract stays additive. Companion design in the mobile repo: `docs/superpowers/specs/2026-04-24-nocturne-north-star-design.md` (design principle #3: Jellyfin is the source of truth, Nocturne is the editorial layer).
 
 ## Context
 

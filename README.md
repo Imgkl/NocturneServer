@@ -35,7 +35,8 @@ flowchart TB
         direction LR
         API["Hummingbird API<br/>:3242"]
         WS["Jellyfin Realtime<br/>WebSocket listener"]
-        SuggQ["Claude suggestion<br/>queue"]
+        Enrich["Story sources<br/>Wikidata · Wikipedia · awards"]
+        Tagger["Mood tagger<br/>reader · policy · decisions"]
         OMDbProxy["OMDb proxy<br/>(15-day cache)"]
         WebUI["Web UI<br/>setup · tagging · approvals"]
         DB[("SQLite<br/>jellyfinId ↔ mood tags")]
@@ -43,7 +44,8 @@ flowchart TB
         WebUI --- API
         API --- DB
         WS --- DB
-        SuggQ --- DB
+        Enrich --- DB
+        Tagger --- DB
         OMDbProxy --- DB
     end
 
@@ -55,20 +57,23 @@ flowchart TB
     Client -- "streams · catalog · watched" --> Jellyfin
     Client -- "mood queries · tag reads" --> API
 
-    SuggQ -- "mood suggestions" --> Claude
+    Enrich -- "plot · reception · awards" --> Wikimedia["Wikidata + Wikipedia<br/>(free, no key)"]
+    Tagger -- "reads the story block" --> Claude
     OMDbProxy -- "ratings lookup" --> OMDb
 ```
 
 > [!Important]
-> Jellyfin is the source of truth. Nocturne is a pure vibe-index layer — it stores only
-> `jellyfinId → mood tags` and never mirrors Jellyfin metadata. Clients talk to
-> Jellyfin directly for catalog/playback and to Nocturne for mood curation.
+> Jellyfin is the source of truth. Nocturne is a pure vibe-index layer — it stores
+> `jellyfinId → mood tags`, the story text the tagger read, and the decision it made,
+> and never mirrors Jellyfin metadata. Clients talk to Jellyfin directly for
+> catalog/playback and to Nocturne for mood curation.
 
 **How it works:**
 1. Nocturne syncs your Jellyfin library by ID only (one-time setup via Web UI, then real-time WebSocket reconciliation)
-2. New movies auto-queue a Claude mood-tag suggestion (hybrid approval flow)
-3. Admin reviews suggestions in the Web UI and approves/rejects before tags are written
-4. Clients join their Jellyfin data with Nocturne's mood tags on the fly
+2. For every film, the story source layer resolves the IMDb id through Wikidata and stores the full Wikipedia plot (spoilers included), reception and awards as one hashed text block. No API key needed. A coverage run in Settings fills the whole library and lists the films it could not place.
+3. The tagger reads that block with a cheap, cached model (`claude-haiku-5-5` by default, BYOK) and proposes moods with an evidence phrase each. Strong proposals are applied; the rest go to review. Every classification is a stored, replayable decision with its cost.
+4. Admin reviews in the Web UI: evidence per mood, one-tap proposals, approve or reject. Human labels are kept apart from auto labels, so later teaching and evaluation measure against people, not the model.
+5. Clients join their Jellyfin data with Nocturne's mood tags on the fly
 
 ---
 
@@ -77,7 +82,8 @@ flowchart TB
 ### Core
 - ✅ **Mood-based organization** — 36 curated moods (see full list below)
 - ✅ **Real-time sync** — Jellyfin WebSocket listener keeps the ID set fresh
-- ✅ **Hybrid auto-tagging** — Claude queues mood suggestions, admin approves
+- ✅ **Story sources** — Wikipedia plot, reception and awards per film via Wikidata, no key required
+- ✅ **Hybrid auto-tagging** — a cached reader proposes moods with evidence, admin approves; every decision stored with its cost, monthly budget cap
 - ✅ **Manual tagging** — Web UI for fine-tuning
 - ✅ **Import/Export** — Backup your mood mappings
 - ✅ **External ratings** — OMDb proxy for IMDb/RT/Metacritic (BYOK, shared 15-day cache)
@@ -187,9 +193,10 @@ Access at `http://your-server:3242`
 - **Sync Management** - Manual sync, view sync status and history
 - **Movie Browser** - View all movies with their current mood tags
 - **Tag Editor** - Add/remove mood tags from individual movies
-- **AI Auto-Tag** - Bulk suggestions for untagged movies (requires Claude API key)
+- **Story Sources** - Coverage run, counts per bucket, worklist of films with no plot or no page, page override and spoiler view per film
+- **AI Auto-Tag** - Bulk suggestions for untagged movies with per-mood evidence (requires Claude API key)
 - **Import/Export** - Backup and restore your mood mappings
-- **Settings** - Configure integrations (OMDB, Claude API)
+- **Settings** - Configure integrations (OMDB, Claude API), reader and strong model, monthly budget
 
 ---
 ## Roadmap
@@ -198,7 +205,7 @@ Access at `http://your-server:3242`
 - [x] Mood tagging system
 - [x] Real-time webhook sync
 - [x] Web UI for admin tasks
-- [x] AI auto-tagging (BYOK: Claude)
+- [x] AI auto-tagging (BYOK: Claude) on full Wikipedia story sources, with stored decisions
 - [x] Import/Export mood mappings
 - [x] OMDB ratings integration (BYOK)
 - [ ] User-defined custom moods
