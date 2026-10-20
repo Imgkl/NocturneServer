@@ -18,6 +18,21 @@ export type AdminMovieApi = {
   needsReview: boolean;
 };
 
+// Where a film's story text came from. `model` is written by the strong model and is the only
+// unverified kind; `none` means the tagger only had the Jellyfin blurb.
+export type EnrichmentSource = 'wikipedia' | 'wikipedia_other_lang' | 'model' | 'none';
+
+// One mood from a decision: what the review surfaces render per mood.
+export type SuggestionItem = {
+  slug: string;
+  probability: number;
+  evidence?: string;
+  kind: 'add' | 'remove';
+  // True when the tag is on the film right now; false when the policy held it back.
+  applied: boolean;
+  reason?: string;
+};
+
 export type TagSuggestionApi = {
   id: string;
   jellyfinId: string;
@@ -29,6 +44,10 @@ export type TagSuggestionApi = {
   removalTagSlug?: string;
   createdAt?: string;
   resolvedAt?: string;
+  resolvedBy?: 'auto' | 'user';
+  decisionId?: string;
+  items?: SuggestionItem[];
+  source?: EnrichmentSource;
 };
 
 export type BackfillStatusApi = {
@@ -39,17 +58,72 @@ export type BackfillStatusApi = {
   cancelled?: boolean;
 };
 
-export type TagRefinementStatusApi = {
+export type EnrichmentBucket =
+  | 'english_plot'
+  | 'other_lang_plot'
+  | 'model_synopsis'
+  | 'no_plot'
+  | 'unresolved'
+  | 'error';
+
+export type EnrichmentRow = {
+  jellyfinId: string;
+  imdbId?: string;
+  tmdbId?: string;
+  wikidataQid?: string;
+  // Wikimedia site id: enwiki, tawiki, …
+  wikiSite?: string;
+  wikiTitle?: string;
+  wikiTitleOverride?: string;
+  source: EnrichmentSource;
+  unverified: boolean;
+  plotFound: boolean;
+  // Only the per-film route returns the texts.
+  plotText?: string;
+  receptionText?: string;
+  awardsJson?: string;
+  omdbAwards?: string;
+  inputHash?: string;
+  enrichVersion: number;
+  fetchedAt?: string;
+  error?: string;
+  bucket: EnrichmentBucket;
+};
+
+export type EnrichmentSummary = Partial<Record<EnrichmentBucket | 'total' | 'unverified', number>>;
+
+export type WorklistFilter = 'no_plot' | 'unresolved' | 'other_lang' | 'unverified' | 'error';
+
+export type CoverageStatus = {
   running: boolean;
-  tagSlug?: string;
+  runId?: string;
+  status?: string;
   total: number;
   processed: number;
-  removed: number;
-  addSuggestions: number;
-  removeSuggestions: number;
+  stats: Partial<Record<EnrichmentBucket, number>>;
   startedAt?: string;
-  cancelled?: boolean;
+  finishedAt?: string;
+  cancelRequested: boolean;
+  error?: string;
 };
+
+export type ModelSettings = {
+  reader_model: string;
+  strong_model: string;
+  reader_models: string[];
+  strong_models: string[];
+  monthly_budget_usd?: number | null;
+  budget_spent_usd: number;
+  model_fallback: boolean;
+  enrichment: EnrichmentSummary;
+};
+
+export type ModelSettingsUpdate = Partial<{
+  reader_model: string;
+  strong_model: string;
+  monthly_budget_usd: number;
+  model_fallback: boolean;
+}>;
 
 export type MoodBuckets = Record<string, { title: string; description: string }>;
 

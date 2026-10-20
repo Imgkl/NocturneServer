@@ -5,7 +5,17 @@ import { Divider } from '../ui/Divider';
 import { JellyfinConnectForm } from '../components/JellyfinConnectForm';
 import { ApiKeyForm } from '../components/ApiKeyForm';
 import { LinkAppPanel } from '../components/LinkAppPanel';
-import type { BackfillStatusApi } from '../lib/types';
+import { ModelSettings } from '../components/ModelSettings';
+import { EnrichmentCoverageCard } from '../components/EnrichmentCoverageCard';
+import { Toggle } from '../ui/Toggle';
+import type {
+  BackfillStatusApi,
+  CoverageStatus,
+  EnrichmentSummary,
+  ModelSettings as ModelSettingsApi,
+  ModelSettingsUpdate,
+  Movie,
+} from '../lib/types';
 
 interface SettingsViewProps {
   open: boolean;
@@ -15,6 +25,9 @@ interface SettingsViewProps {
   untaggedCount: number;
   reviewCount: number;
   backfillStatus: BackfillStatusApi | null;
+  coverageStatus: CoverageStatus | null;
+  enrichmentSummary: EnrichmentSummary | null;
+  modelSettings: ModelSettingsApi | null;
   anthKeySet: boolean;
   omdbKeySet: boolean;
   autoTagEnabled: boolean;
@@ -25,6 +38,11 @@ interface SettingsViewProps {
   onStartBackfill: () => Promise<void>;
   onCancelBackfill: () => Promise<void>;
   onReprocessAll: () => Promise<void>;
+  onStartCoverage: () => Promise<void>;
+  onCancelCoverage: () => Promise<void>;
+  onSaveModels: (update: ModelSettingsUpdate) => Promise<void>;
+  onOpenMovie: (jellyfinId: string) => void;
+  movieLookup: (jellyfinId: string) => Movie | undefined;
   onSaveAnthKey: (key: string) => Promise<void>;
   onSaveOmdbKey: (key: string) => Promise<void>;
   onToggleAutoTag: (next: boolean) => Promise<void>;
@@ -42,6 +60,9 @@ export function SettingsView(props: SettingsViewProps) {
     untaggedCount,
     reviewCount,
     backfillStatus,
+    coverageStatus,
+    enrichmentSummary,
+    modelSettings,
     anthKeySet,
     omdbKeySet,
     autoTagEnabled,
@@ -51,6 +72,11 @@ export function SettingsView(props: SettingsViewProps) {
     onStartBackfill,
     onCancelBackfill,
     onReprocessAll,
+    onStartCoverage,
+    onCancelCoverage,
+    onSaveModels,
+    onOpenMovie,
+    movieLookup,
     onSaveAnthKey,
     onSaveOmdbKey,
     onToggleAutoTag,
@@ -62,6 +88,8 @@ export function SettingsView(props: SettingsViewProps) {
 
   const importRef = useRef<HTMLInputElement | null>(null);
   const backfillRunning = backfillStatus?.running === true;
+  // One run at a time on the server: the auto-tagger and the coverage job share the slot.
+  const anyRunActive = backfillRunning || coverageStatus?.running === true;
   const backfillPct = backfillStatus && backfillStatus.total > 0
     ? Math.min(100, Math.round((backfillStatus.processed / backfillStatus.total) * 100))
     : 0;
@@ -107,7 +135,7 @@ export function SettingsView(props: SettingsViewProps) {
                 variant="primary"
                 size="sm"
                 onClick={onStartBackfill}
-                disabled={!anthKeySet || backfillRunning || queueSize === 0}
+                disabled={!anthKeySet || anyRunActive || queueSize === 0}
               >
                 {backfillRunning ? 'Running…' : 'Start auto-tag'}
               </Button>
@@ -143,6 +171,15 @@ export function SettingsView(props: SettingsViewProps) {
               </button>
             </div>
           </Row>
+          <EnrichmentCoverageCard
+            summary={enrichmentSummary}
+            status={coverageStatus}
+            otherRunActive={backfillRunning}
+            onStart={onStartCoverage}
+            onCancel={onCancelCoverage}
+            onOpenMovie={onOpenMovie}
+            movieLookup={movieLookup}
+          />
           <Row
             title="Reprocess all tagged films"
             help="Clear every movie's tags and re-run the tagger against the whole library. Uses the Anthropic API per movie."
@@ -154,7 +191,7 @@ export function SettingsView(props: SettingsViewProps) {
                   if (!confirm(`Clear tags on all ${movieCount} films and re-tag them with Claude?`)) return;
                   await onReprocessAll();
                 }}
-                disabled={!anthKeySet || backfillRunning || movieCount === 0}
+                disabled={!anthKeySet || anyRunActive || movieCount === 0}
               >
                 Reprocess all
               </Button>
@@ -187,6 +224,8 @@ export function SettingsView(props: SettingsViewProps) {
               onSave={onSaveOmdbKey}
             />
           </div>
+
+          <ModelSettings settings={modelSettings} onSave={onSaveModels} />
 
           <Row
             title="Auto-tag on sync"
@@ -298,25 +337,5 @@ function LinkMobileAppRow() {
         </div>
       )}
     </Row>
-  );
-}
-
-function Toggle({ active, disabled, onChange }: { active: boolean; disabled?: boolean; onChange: (next: boolean) => void }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={active}
-      disabled={disabled}
-      onClick={() => onChange(!active)}
-      className={`inline-flex h-5 w-9 items-center border transition-colors cursor-pointer ${
-        active ? 'bg-text border-text' : 'bg-bg border-border'
-      } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
-    >
-      <span
-        className={`inline-block h-3 w-3 bg-bg transition-transform ${
-          active ? 'translate-x-[18px]' : 'translate-x-[3px]'
-        } ${active ? 'bg-bg' : 'bg-muted'}`}
-      />
-    </button>
   );
 }

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Input } from '../ui/Input';
+import { StorySource } from './StorySource';
 import type { MoodBuckets, Movie } from '../lib/types';
 
 interface MovieDetailPanelProps {
@@ -76,6 +77,10 @@ function EditForm({
           {movie.year} · up to {MAX_TAGS} mood tags
         </p>
       )}
+
+      <div className="mb-5">
+        <StorySource jellyfinId={movie.jellyfinId} title={movie.title} year={movie.year} />
+      </div>
 
       <Input
         placeholder="Filter moods…"

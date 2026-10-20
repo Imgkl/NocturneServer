@@ -23,10 +23,8 @@ interface LibraryViewProps {
   selectedMood: string;
   onMoodChange: (slug: string) => void;
   loading: boolean;
-  refineRunning?: boolean;
   onSync: () => void;
   onEditMovie: (movie: Movie) => void;
-  onRefineTag?: (slug: string) => void;
   // Render slots (stay in App.tsx for now; extracted later)
   backfillBanner?: ReactNode;
   pendingSuggestionsPanel?: ReactNode;
@@ -44,10 +42,8 @@ export function LibraryView({
   selectedMood,
   onMoodChange,
   loading,
-  refineRunning,
   onSync,
   onEditMovie,
-  onRefineTag,
   backfillBanner,
   pendingSuggestionsPanel,
 }: LibraryViewProps) {
@@ -94,16 +90,6 @@ export function LibraryView({
                   )}
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  {focusedMood && onRefineTag && (
-                    <Button
-                      variant="line"
-                      onClick={() => onRefineTag(selectedMood)}
-                      disabled={!!refineRunning}
-                      title="Ask Claude to verify every movie in this bucket still fits the tag"
-                    >
-                      {refineRunning ? 'Refining…' : 'Refine tag'}
-                    </Button>
-                  )}
                   <Button
                     variant="line"
                     onClick={() => setLinkAppOpen(true)}

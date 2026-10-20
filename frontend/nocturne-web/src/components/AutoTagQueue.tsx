@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { api, posterUrl } from '../lib/api';
+import { isVerified, pageLabel } from '../lib/enrichment';
+import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Spinner } from '../ui/Spinner';
-import type { MoodBuckets, Movie } from '../lib/types';
+import { EvidenceList } from './EvidenceList';
+import type { EnrichmentRow, EnrichmentSource, MoodBuckets, Movie, SuggestionItem, TagSuggestionApi } from '../lib/types';
 
 interface AutoTagQueueProps {
   open: boolean;
@@ -21,6 +24,19 @@ interface Suggestion {
   tags: string[];
   confidence: number;
   reasoning?: string;
+  items: SuggestionItem[];
+  source?: EnrichmentSource;
+}
+
+function fromApi(resp: TagSuggestionApi): Suggestion {
+  return {
+    suggestionId: resp.id,
+    tags: resp.suggestedTags,
+    confidence: resp.confidence,
+    reasoning: resp.reasoning,
+    items: resp.items ?? [],
+    source: resp.source,
+  };
 }
 
 export function AutoTagQueue({
@@ -35,6 +51,7 @@ export function AutoTagQueue({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
+  const [enrichment, setEnrichment] = useState<EnrichmentRow | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
 
   const currentId = queue[index];
@@ -46,21 +63,20 @@ export function AutoTagQueue({
     if (!open || !currentId) return;
     let cancelled = false;
     setSuggestion(null);
+    setEnrichment(null);
     setSelected([]);
     setError(null);
     setPosterFailed(false);
     setLoading(true);
     api.movies
       .autoTag(currentId)
-      .then((resp) => {
+      .then(async (resp) => {
         if (cancelled) return;
-        setSuggestion({
-          suggestionId: resp.id,
-          tags: resp.suggestedTags,
-          confidence: resp.confidence,
-          reasoning: resp.reasoning,
-        });
+        setSuggestion(fromApi(resp));
         setSelected(resp.suggestedTags);
+        // Best effort: the page behind the story text, for the header line.
+        const row = await api.enrichment.get(currentId).catch(() => null);
+        if (!cancelled) setEnrichment(row);
       })
       .catch((e: unknown) => {
         if (cancelled) return;
@@ -117,12 +133,7 @@ export function AutoTagQueue({
     api.movies
       .autoTag(currentId)
       .then((resp) => {
-        setSuggestion({
-          suggestionId: resp.id,
-          tags: resp.suggestedTags,
-          confidence: resp.confidence,
-          reasoning: resp.reasoning,
-        });
+        setSuggestion(fromApi(resp));
         setSelected(resp.suggestedTags);
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to regenerate'))
@@ -136,6 +147,10 @@ export function AutoTagQueue({
       </Dialog>
     );
   }
+
+  const page = enrichment ? pageLabel(enrichment) : null;
+  const unverified = suggestion?.source === 'model';
+  const noSource = suggestion?.source === 'none';
 
   return (
     <Dialog open={open} onClose={onComplete} title={currentMovie.title} size="lg">
@@ -164,7 +179,7 @@ export function AutoTagQueue({
           {loading && (
             <div className="flex items-center gap-3 text-muted text-[13px]">
               <Spinner size={14} />
-              Generating suggestions…
+              Reading the story and proposing moods…
             </div>
           )}
 
@@ -176,13 +191,44 @@ export function AutoTagQueue({
 
           {!loading && suggestion && (
             <>
-              <div className="text-[10px] uppercase tracking-widest text-muted mb-2">
-                Suggestion · confidence {(suggestion.confidence * 100).toFixed(0)}%
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-2">
+                <div className="text-[10px] uppercase tracking-widest text-muted">
+                  {suggestion.tags.length > 0
+                    ? `Suggestion · confidence ${(suggestion.confidence * 100).toFixed(0)}%`
+                    : 'Suggestion · nothing applied yet'}
+                </div>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  {page && <span className="text-[11px] text-muted truncate">{page}</span>}
+                  {unverified ? (
+                    <Badge tone="warn">unverified source</Badge>
+                  ) : noSource ? (
+                    <Badge tone="muted">no story source</Badge>
+                  ) : isVerified(suggestion.source) ? (
+                    <Badge>verified</Badge>
+                  ) : null}
+                </div>
               </div>
               {suggestion.reasoning && (
                 <p className="text-[13px] text-text-dim italic mb-4 leading-snug">
                   {suggestion.reasoning}
                 </p>
+              )}
+              {unverified && (
+                <p className="text-[12px] text-text-dim mb-4 leading-snug">
+                  The story text was written by the strong model, so nothing was applied. Pick the moods that fit.
+                </p>
+              )}
+
+              {suggestion.items.length > 0 && (
+                <div className="mb-4">
+                  <div className="text-[10px] uppercase tracking-widest text-muted mb-2">Proposed</div>
+                  <EvidenceList
+                    items={suggestion.items}
+                    moods={moods}
+                    onToggle={toggle}
+                    isSelected={(slug) => selected.includes(slug)}
+                  />
+                </div>
               )}
 
               <div className="text-[10px] uppercase tracking-widest text-muted mb-2">

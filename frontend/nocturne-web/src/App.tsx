@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { api, fetchVersion as fetchVersionApi } from './lib/api';
+import { api, ApiError, fetchVersion as fetchVersionApi } from './lib/api';
 import type {
   BackfillStatusApi,
+  CoverageStatus,
+  EnrichmentSummary,
   ImportProgress,
+  ModelSettings as ModelSettingsApi,
+  ModelSettingsUpdate,
   MoodBuckets,
   Movie,
   OnboardingStatus,
-  TagRefinementStatusApi,
   TagSuggestionApi,
 } from './lib/types';
 import { Sidebar } from './components/Sidebar';
@@ -14,8 +17,9 @@ import { MobileHeader } from './components/MobileHeader';
 import { LibraryView } from './views/LibraryView';
 import { MovieDetailPanel } from './components/MovieDetailPanel';
 import { AutoTagQueue } from './components/AutoTagQueue';
-import { BackfillProgress } from './components/BackfillProgress';
-import { TagRefineProgress } from './components/TagRefineProgress';
+import { BackfillProgress, CoverageProgress } from './components/BackfillProgress';
+import { EvidenceList } from './components/EvidenceList';
+import { Badge } from './ui/Badge';
 import { SettingsView } from './views/SettingsView';
 import { OnboardingView } from './views/onboarding/OnboardingView';
 import { Spinner } from './ui/Spinner';
@@ -51,9 +55,10 @@ export default function App() {
   }, [viewMode])
   const [backfillStatus, setBackfillStatus] = useState<BackfillStatusApi | null>(null)
   const backfillPollRef = useRef<number | null>(null)
-  const [refineStatus, setRefineStatus] = useState<TagRefinementStatusApi | null>(null)
-  const refinePollRef = useRef<number | null>(null)
-  const refineClearRef = useRef<number | null>(null)
+  const [coverageStatus, setCoverageStatus] = useState<CoverageStatus | null>(null)
+  const coveragePollRef = useRef<number | null>(null)
+  const [enrichmentSummary, setEnrichmentSummary] = useState<EnrichmentSummary | null>(null)
+  const [modelSettings, setModelSettings] = useState<ModelSettingsApi | null>(null)
 
   // Per-row edited tag sets for the pending-review list. Undefined = use original suggestion.
   const [editedPendingTags, setEditedPendingTags] = useState<Record<string, string[]>>({})
@@ -87,7 +92,34 @@ export default function App() {
     } catch {}
   }
 
-  useEffect(() => { if (settingsOpen) fetchSettingsInfo() }, [settingsOpen])
+  async function fetchModelSettings() {
+    try {
+      const settings = await api.settings.models()
+      setModelSettings(settings)
+      setEnrichmentSummary(settings.enrichment)
+    } catch (e) {
+      console.error('Failed to fetch model settings:', e)
+    }
+  }
+
+  async function fetchEnrichmentSummary() {
+    try {
+      setEnrichmentSummary(await api.enrichment.summary())
+    } catch {}
+  }
+
+  async function saveModels(update: ModelSettingsUpdate) {
+    const settings = await api.settings.saveModels(update)
+    setModelSettings(settings)
+    setEnrichmentSummary(settings.enrichment)
+  }
+
+  useEffect(() => {
+    if (settingsOpen) {
+      fetchSettingsInfo()
+      fetchModelSettings()
+    }
+  }, [settingsOpen])
 
   async function fetchMoods() {
     const data = await api.moods.list()
@@ -365,7 +397,7 @@ export default function App() {
     }
   }
 
-  // On mount, pick up a backfill that's still running from a previous session.
+  // On mount, pick up a backfill or coverage run that's still running from a previous session.
   useEffect(() => {
     (async () => {
       try {
@@ -375,74 +407,60 @@ export default function App() {
           schedulePollBackfill()
         }
       } catch {}
+      try {
+        const coverage = await api.enrichment.coverageStatus()
+        if (coverage.running) {
+          setCoverageStatus(coverage)
+          schedulePollCoverage()
+        }
+      } catch {}
     })()
     return () => {
       if (backfillPollRef.current) window.clearTimeout(backfillPollRef.current)
+      if (coveragePollRef.current) window.clearTimeout(coveragePollRef.current)
     }
   }, [])
 
-  async function refineTag(slug: string) {
+  async function startCoverage() {
     try {
-      if (refineClearRef.current) {
-        window.clearTimeout(refineClearRef.current)
-        refineClearRef.current = null
-      }
-      const status = await api.tags.refine(slug)
-      setRefineStatus(status)
-      schedulePollRefine(slug)
-    } catch (e: any) {
-      const msg = String(e?.message || '')
-      if (msg.includes('409')) {
-        alert('A backfill is running. Cancel it first, then refine the tag.')
-      } else {
-        console.error('Failed to start refinement:', e)
-        alert('Failed to start tag refinement. Check that the Anthropic API key is set.')
-      }
-    }
-  }
-
-  async function cancelRefine() {
-    if (!refineStatus?.tagSlug) return
-    if (!confirm('Stop refining this tag? The current movie will finish, but no more will be processed.')) return
-    try {
-      const status = await api.tags.refineCancel(refineStatus.tagSlug)
-      setRefineStatus(status)
+      const status = await api.enrichment.coverageStart()
+      setCoverageStatus(status)
+      schedulePollCoverage()
     } catch (e) {
-      console.error('Failed to cancel refinement:', e)
+      if (e instanceof ApiError && e.status === 409) {
+        throw new Error('Another run is in progress. Wait for it to finish or cancel it first.')
+      }
+      throw e
     }
   }
 
-  function schedulePollRefine(slug: string) {
-    if (refinePollRef.current) window.clearTimeout(refinePollRef.current)
-    refinePollRef.current = window.setTimeout(() => pollRefineOnce(slug), 3000)
+  async function cancelCoverage() {
+    if (!confirm('Stop the coverage run? The current film will finish, but no more will be fetched.')) return
+    try {
+      setCoverageStatus(await api.enrichment.coverageCancel())
+    } catch (e) {
+      console.error('Failed to cancel coverage:', e)
+    }
   }
 
-  async function pollRefineOnce(slug: string) {
+  function schedulePollCoverage() {
+    if (coveragePollRef.current) window.clearTimeout(coveragePollRef.current)
+    coveragePollRef.current = window.setTimeout(pollCoverageOnce, 2000)
+  }
+
+  async function pollCoverageOnce() {
     try {
-      const status = await api.tags.refineStatus(slug)
-      setRefineStatus(status)
+      const status = await api.enrichment.coverageStatus()
+      setCoverageStatus(status)
       if (status.running) {
-        await fetchAllMovies()
-        await fetchPendingSuggestions()
-        schedulePollRefine(slug)
+        schedulePollCoverage()
       } else {
-        await fetchAllMovies()
-        await fetchPendingSuggestions()
-        // Leave the summary up for ~8s so the user can read "N removed · M for review", then drop.
-        if (refineClearRef.current) window.clearTimeout(refineClearRef.current)
-        refineClearRef.current = window.setTimeout(() => setRefineStatus(null), 8000)
+        await fetchEnrichmentSummary()
       }
     } catch {
-      schedulePollRefine(slug)
+      schedulePollCoverage()
     }
   }
-
-  useEffect(() => {
-    return () => {
-      if (refinePollRef.current) window.clearTimeout(refinePollRef.current)
-      if (refineClearRef.current) window.clearTimeout(refineClearRef.current)
-    }
-  }, [])
 
   const filtered = useMemo(() => {
     return movies.filter(m => (
@@ -550,6 +568,11 @@ export default function App() {
 
             const currentTags = editedPendingTags[s.id] ?? s.suggestedTags;
             const isEdited = editedPendingTags[s.id] !== undefined;
+            const items = (s.items ?? []).filter((i) => i.kind === 'add');
+            // Moods the policy held back (or that the admin removed) are one tap away.
+            const proposals = items.filter((i) => !i.applied && !currentTags.includes(i.slug));
+            const unverified = s.source === 'model';
+            const noSource = s.source === 'none';
             const addableTags = Object.keys(moods)
               .filter((slug) => !currentTags.includes(slug))
               .sort((a, b) => (moods[a]?.title || a).localeCompare(moods[b]?.title || b));
@@ -560,7 +583,11 @@ export default function App() {
                     <img src={movie.posterUrl} alt="" className="w-8 h-12 object-cover flex-shrink-0" />
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-[13px] text-text truncate">{movie?.title || s.jellyfinId}</div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[13px] text-text truncate">{movie?.title || s.jellyfinId}</span>
+                      {unverified && <Badge tone="warn">unverified source</Badge>}
+                      {noSource && <Badge tone="muted">no story source</Badge>}
+                    </div>
                     <div className="mt-1 flex flex-wrap items-center gap-1">
                       {currentTags.map((slug) => (
                         <span key={slug} className="inline-flex items-center gap-1 border border-border text-[10px] uppercase tracking-wider text-text-dim px-2 py-0.5">
@@ -573,6 +600,17 @@ export default function App() {
                             ×
                           </button>
                         </span>
+                      ))}
+                      {proposals.map((p) => (
+                        <button
+                          key={p.slug}
+                          type="button"
+                          className="inline-flex items-center gap-1 border border-dashed border-border text-[10px] uppercase tracking-wider text-muted hover:text-text hover:border-border-hover px-2 py-0.5 cursor-pointer"
+                          onClick={() => setEditedPendingTags((prev) => ({ ...prev, [s.id]: [...currentTags, p.slug] }))}
+                          title={p.evidence || undefined}
+                        >
+                          + {moods[p.slug]?.title || p.slug} · {Math.round(p.probability * 100)}%
+                        </button>
                       ))}
                       <div className="relative inline-block">
                         <button
@@ -599,8 +637,15 @@ export default function App() {
                         )}
                       </div>
                     </div>
+                    {items.length > 0 && (
+                      <div className="mt-2">
+                        <EvidenceList items={items} moods={moods} />
+                      </div>
+                    )}
                     <div className="text-[10px] uppercase tracking-widest text-muted mt-1">
-                      confidence {(s.confidence * 100).toFixed(0)}%
+                      {s.suggestedTags.length === 0 && unverified
+                        ? 'nothing applied yet · model-written synopsis, you pick'
+                        : `confidence ${(s.confidence * 100).toFixed(0)}%`}
                       {isEdited && <span className="ml-2 text-text-dim">· edited</span>}
                     </div>
                   </div>
@@ -659,14 +704,12 @@ export default function App() {
             selectedMood={mood}
             onMoodChange={setMood}
             loading={loading}
-            refineRunning={!!refineStatus?.running}
             onSync={syncAll}
             onEditMovie={setEditingMovie}
-            onRefineTag={refineTag}
             backfillBanner={
               <>
                 <BackfillProgress status={backfillStatus} />
-                <TagRefineProgress status={refineStatus} moods={moods} onCancel={cancelRefine} />
+                <CoverageProgress status={coverageStatus} />
               </>
             }
             pendingSuggestionsPanel={pendingSuggestionsPanel}
@@ -717,6 +760,9 @@ export default function App() {
         untaggedCount={movies.filter(m => (m.tags || []).length === 0 && !m.needsReview).length}
         reviewCount={pendingSuggestions.length}
         backfillStatus={backfillStatus}
+        coverageStatus={coverageStatus}
+        enrichmentSummary={enrichmentSummary}
+        modelSettings={modelSettings}
         anthKeySet={anthKeySet}
         omdbKeySet={omdbKeySet}
         autoTagEnabled={autoTagEnabled}
@@ -726,6 +772,16 @@ export default function App() {
         onStartBackfill={startBackfill}
         onCancelBackfill={cancelBackfill}
         onReprocessAll={startReprocessAll}
+        onStartCoverage={startCoverage}
+        onCancelCoverage={cancelCoverage}
+        onSaveModels={saveModels}
+        onOpenMovie={(id) => {
+          const m = moviesById.get(id);
+          if (!m) return;
+          setSettingsOpen(false);
+          setEditingMovie(m);
+        }}
+        movieLookup={(id) => moviesById.get(id)}
         onSaveAnthKey={saveOpenAIKey}
         onSaveOmdbKey={saveOmdbKey}
         onToggleAutoTag={toggleAutoTagging}
