@@ -39,19 +39,40 @@ final class ReviewQueue: @unchecked Sendable {
             .all()
     }
 
-    /// Enrichment source per decision id, read from `decisions.models_json`, so responses can
-    /// carry it without a second round trip from the UI.
-    func enrichmentSources(for rows: [TagSuggestion]) async throws -> [UUID: String] {
+    /// What a suggestion response carries from its decision row: the enrichment source and the
+    /// reader's alternates, so the review UI needs no second round trip.
+    struct DecisionExtras: Sendable, Equatable {
+        let source: String?
+        let alternates: [String]
+    }
+
+    func decisionExtras(for rows: [TagSuggestion]) async throws -> [UUID: DecisionExtras] {
         let ids = rows.compactMap(\.decisionId)
         guard !ids.isEmpty else { return [:] }
         let decisions = try await Decision.query(on: fluent.db()).filter(\.$id ~~ ids).all()
-        var out: [UUID: String] = [:]
+        let known = Set(config.moodBuckets.keys)
+        var out: [UUID: DecisionExtras] = [:]
         for decision in decisions {
             guard let id = decision.id else { continue }
             let models = (try? JSONDecoder().decode([String: String].self, from: Data(decision.modelsJson.utf8))) ?? [:]
-            out[id] = models["enrichment_source"]
+            out[id] = DecisionExtras(source: models["enrichment_source"], alternates: Self.alternates(in: decision.readerJson, known: known))
         }
         return out
+    }
+
+    /// Enrichment source per decision id.
+    func enrichmentSources(for rows: [TagSuggestion]) async throws -> [UUID: String] {
+        try await decisionExtras(for: rows).compactMapValues(\.source)
+    }
+
+    /// The reader's alternates from the stored raw answer: known slugs only, in order, no repeats.
+    static func alternates(in readerJson: String?, known: Set<String>) -> [String] {
+        struct Raw: Decodable { let alternates: [String]? }
+        guard let json = readerJson, let raw = try? JSONDecoder().decode(Raw.self, from: Data(json.utf8)) else { return [] }
+        var seen = Set<String>()
+        return (raw.alternates ?? [])
+            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+            .filter { known.contains($0) && seen.insert($0).inserted }
     }
 
     func pendingJellyfinIds() async throws -> Set<String> {

@@ -8,6 +8,9 @@ struct SuggestionItem: Codable, Sendable, Equatable {
     enum Kind: String, Codable, Sendable {
         case add
         case remove
+        /// The reader's alternate: a mood it considered but would not defend. Rendered as a
+        /// "maybe" pill; never applied by the policy.
+        case maybe
     }
     let slug: String
     let probability: Double

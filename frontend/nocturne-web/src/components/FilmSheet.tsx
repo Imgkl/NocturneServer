@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, Sparkles, X } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, Plus, Sparkles, X } from 'lucide-react';
 import { posterUrl } from '../lib/api';
 import { cn } from '../lib/cn';
 import { Button } from '../ui/Button';
@@ -71,6 +71,7 @@ function Body({ movie, moods, covers, position, suggestion, jellyfinUrl, onClose
   const dirty = !sameSet(selected, original);
   const title = (slug: string) => moods[slug]?.title || slug;
   const items = (suggestion?.items ?? []).filter((i) => i.kind === 'add');
+  const maybes = (suggestion?.items ?? []).filter((i) => i.kind === 'maybe' && !items.some((a) => a.slug === i.slug));
   const openUrl = jellyfinUrl ? `${jellyfinUrl.replace(/\/$/, '')}/web/index.html#!/details?id=${movie.jellyfinId}` : null;
   const meta = [movie.year ? String(movie.year) : null, movie.played ? 'Watched' : 'Unwatched', movie.needsReview ? 'in review' : null].filter(Boolean).join(' · ');
 
@@ -177,7 +178,7 @@ function Body({ movie, moods, covers, position, suggestion, jellyfinUrl, onClose
           </div>
         </div>
 
-        {items.length > 0 && (
+        {(items.length > 0 || maybes.length > 0) && (
           <div className="mt-6 border-t border-[#efefef] pt-5">
             <div className="mb-1.5 flex items-center justify-between gap-3">
               <span className="text-[12px] font-semibold text-mute">Why these moods</span>
@@ -185,6 +186,31 @@ function Body({ movie, moods, covers, position, suggestion, jellyfinUrl, onClose
             </div>
             {suggestion?.reasoning && <p className="mb-1 text-[13px] leading-[1.45] text-[#4a4a4a]">{suggestion.reasoning}</p>}
             <EvidenceList items={items} moods={moods} onToggle={(slug) => setSelected((s) => (s.includes(slug) ? s.filter((x) => x !== slug) : s.length < MAX_TAGS ? [...s, slug] : s))} isSelected={(slug) => selected.includes(slug)} />
+            {maybes.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 text-[12px] text-faint">Maybe</span>
+                {maybes.map((i) => {
+                  const on = selected.includes(i.slug);
+                  return (
+                    <button
+                      key={i.slug}
+                      type="button"
+                      onClick={() => setSelected((s) => (s.includes(i.slug) ? s.filter((x) => x !== i.slug) : s.length < MAX_TAGS ? [...s, i.slug] : s))}
+                      aria-pressed={on}
+                      disabled={!on && selected.length >= MAX_TAGS}
+                      title="AI considered this mood but would not defend it"
+                      className={cn(
+                        'inline-flex h-8 items-center gap-1 rounded-full px-3 text-[13px] font-medium transition cursor-pointer disabled:opacity-40',
+                        on ? 'bg-ink text-white hover:bg-black' : 'text-ink ring-1 ring-inset ring-[#e6e6e6] hover:bg-[#f7f7f7]',
+                      )}
+                    >
+                      {!on && <Plus size={13} strokeWidth={2.4} className="-ml-0.5 text-faint" />}
+                      {title(i.slug)}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 

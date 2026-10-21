@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, RotateCw, X } from 'lucide-react';
+import { Check, ChevronDown, Plus, RotateCw, X } from 'lucide-react';
 import { posterUrl } from '../lib/api';
 import { cn } from '../lib/cn';
 import { Button } from '../ui/Button';
@@ -226,8 +226,10 @@ interface TrayRowProps {
 function TrayRow({ suggestion: s, movie, moods, covers, selected, onChange, onApprove, onReject, onOpen, focused, leaving }: TrayRowProps) {
   const [pick, setPick] = useState(false);
   const items: SuggestionItem[] = (s.items ?? []).filter((i) => i.kind === 'add');
-  // Moods the reader did not name but the admin added through the picker still show as pills.
-  const extra = selected.filter((slug) => !items.some((i) => i.slug === slug));
+  // AI's maybes: considered, not defended. Outline pills, one tap adds them.
+  const maybes: SuggestionItem[] = (s.items ?? []).filter((i) => i.kind === 'maybe' && !items.some((a) => a.slug === i.slug));
+  // Moods AI did not name but the admin added through the picker still show as pills.
+  const extra = selected.filter((slug) => !items.some((i) => i.slug === slug) && !maybes.some((i) => i.slug === slug));
   const title = (slug: string) => moods[slug]?.title || slug;
   const toggle = (slug: string) => {
     if (selected.includes(slug)) onChange(selected.filter((x) => x !== slug));
@@ -275,6 +277,26 @@ function TrayRow({ suggestion: s, movie, moods, covers, selected, onChange, onAp
             >
               {title(i.slug)}
               <span className={cn('tabular-nums', on ? 'text-white/55' : 'text-faint')}>{Math.round(i.probability * 100)}%</span>
+            </button>
+          );
+        })}
+        {maybes.map((i) => {
+          const on = selected.includes(i.slug);
+          return (
+            <button
+              key={i.slug}
+              type="button"
+              onClick={() => toggle(i.slug)}
+              aria-pressed={on}
+              disabled={!on && selected.length >= MAX_TAGS}
+              title="AI considered this mood but would not defend it"
+              className={cn(
+                'inline-flex h-8 items-center gap-1 rounded-full px-3 text-[13px] font-medium transition cursor-pointer disabled:opacity-40',
+                on ? 'bg-ink text-white hover:bg-black' : 'text-ink ring-1 ring-inset ring-[#e6e6e6] hover:bg-[#f7f7f7]',
+              )}
+            >
+              {!on && <Plus size={13} strokeWidth={2.4} className="-ml-0.5 text-faint" />}
+              {title(i.slug)}
             </button>
           );
         })}

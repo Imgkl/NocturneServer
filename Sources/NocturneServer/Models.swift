@@ -247,7 +247,7 @@ struct TagSuggestionResponse: Codable, Sendable {
     /// `model` means the text was written by the strong model: the review UI badges it unverified.
     let source: String?
 
-    init(_ s: TagSuggestion, source: String? = nil) {
+    init(_ s: TagSuggestion, source: String? = nil, alternates: [String] = []) {
         self.source = source
         self.id = s.id
         self.jellyfinId = s.jellyfinId
@@ -261,7 +261,17 @@ struct TagSuggestionResponse: Codable, Sendable {
         self.resolvedAt = s.resolvedAt
         self.resolvedBy = s.resolvedBy
         self.decisionId = s.decisionId
-        self.items = s.itemsJson.flatMap { try? JSONDecoder().decode([SuggestionItem].self, from: Data($0.utf8)) }
+        let stored = s.itemsJson.flatMap { try? JSONDecoder().decode([SuggestionItem].self, from: Data($0.utf8)) }
+        if stored == nil && alternates.isEmpty {
+            self.items = nil
+        } else {
+            // The reader's alternates ride along as "maybe" items, after the moods it defended.
+            var items = stored ?? []
+            let present = Set(items.map(\.slug)).union(s.suggestedTags)
+            items += alternates.filter { !present.contains($0) }
+                .map { SuggestionItem(slug: $0, probability: 0, evidence: nil, kind: .maybe, applied: false, reason: "alternate") }
+            self.items = items
+        }
     }
 }
 

@@ -43,8 +43,11 @@ struct TaggerRoutes: @unchecked Sendable {
         admin.get("suggestions") { request, _ in
             let status = request.uri.queryParameters["status"].map(String.init) ?? "pending"
             let rows = status == "pending" ? try await self.queue.listPending() : try await self.queue.list(status: status)
-            let sources = try await self.queue.enrichmentSources(for: rows)
-            return try jsonResponse(SuggestionListResponse(items: rows.map { TagSuggestionResponse($0, source: $0.decisionId.flatMap { sources[$0] }) }))
+            let extras = try await self.queue.decisionExtras(for: rows)
+            return try jsonResponse(SuggestionListResponse(items: rows.map { row in
+                let extra = row.decisionId.flatMap { extras[$0] }
+                return TagSuggestionResponse(row, source: extra?.source, alternates: extra?.alternates ?? [])
+            }))
         }
 
         admin.post("suggestions/:id/approve") { request, context in
@@ -100,7 +103,8 @@ struct TaggerRoutes: @unchecked Sendable {
     }
 
     private func response(_ sugg: TagSuggestion) async throws -> TagSuggestionResponse {
-        let sources = try await queue.enrichmentSources(for: [sugg])
-        return TagSuggestionResponse(sugg, source: sugg.decisionId.flatMap { sources[$0] })
+        let extras = try await queue.decisionExtras(for: [sugg])
+        let extra = sugg.decisionId.flatMap { extras[$0] }
+        return TagSuggestionResponse(sugg, source: extra?.source, alternates: extra?.alternates ?? [])
     }
 }

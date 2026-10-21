@@ -34,7 +34,8 @@ export type SuggestionItem = {
   slug: string;
   probability: number;
   evidence?: string;
-  kind: 'add' | 'remove';
+  // `maybe` is a mood AI considered but would not defend; it is never applied by the policy.
+  kind: 'add' | 'remove' | 'maybe';
   // True when the tag is on the film right now; false when the policy held it back.
   applied: boolean;
   reason?: string;
