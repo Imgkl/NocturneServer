@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
+import { Check } from 'lucide-react';
 import { api } from '../lib/api';
 import { WIKI_LANGUAGES, awardsSummary, isVerified, siteCode, sourceLine, timeAgo, wordCount } from '../lib/enrichment';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
+import { Field, inputCls } from '../ui/Input';
+import { Select } from '../ui/Select';
 import { Toggle } from '../ui/Toggle';
 import type { EnrichmentRow } from '../lib/types';
 
@@ -13,9 +16,6 @@ interface StorySourceProps {
 }
 
 type Busy = 'refresh' | 'override' | 'synopsis' | null;
-
-const linkCls =
-  'text-[11px] text-text-dim hover:text-text underline decoration-dotted underline-offset-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed';
 
 // The film's story source: which page the plot came from, whether a human can trust it, and the
 // levers to fix it (link a page, refresh, or ask the strong model to write a synopsis).
@@ -69,12 +69,7 @@ export function StorySource({ jellyfinId, title, year }: StorySourceProps) {
   }
 
   const generateSynopsis = () => {
-    if (
-      !confirm(
-        'Ask the strong model to write a spoiler synopsis with web search? About $0.05 to $0.10. The text is marked unverified and its moods always go to review.',
-      )
-    )
-      return;
+    if (!confirm('Ask the strong model to write a spoiler synopsis with web search? About $0.05 to $0.10. The text is marked unverified and its moods always go to review.')) return;
     void run('synopsis', () => api.enrichment.synopsis(jellyfinId));
   };
 
@@ -85,58 +80,56 @@ export function StorySource({ jellyfinId, title, year }: StorySourceProps) {
   const canGenerate = !!row && !row.plotFound;
 
   return (
-    <div className="border border-border bg-bg p-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <span className="text-[11px] uppercase tracking-widest text-muted">Story source</span>
-        <div className="flex flex-wrap gap-1">
+    <section className="rounded-[20px] bg-white p-4 shadow-card sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="text-[14.5px] font-semibold tracking-[-0.015em] text-ink">Story source</h3>
+        <div className="flex flex-wrap gap-1.5">
           {loading && <Badge tone="muted">loading</Badge>}
           {row === null && !loading && <Badge tone="muted">not fetched</Badge>}
-          {row && row.unverified && <Badge tone="warn">unverified source</Badge>}
-          {row && !row.unverified && isVerified(row.source) && <Badge>verified</Badge>}
-          {row && (row.plotFound ? <Badge tone="muted">plot found</Badge> : <Badge tone="muted">no plot</Badge>)}
+          {row?.unverified && <Badge tone="warn">unverified source</Badge>}
+          {row && !row.unverified && isVerified(row.source) && (
+            <Badge tone="good">
+              <Check size={11} strokeWidth={3} /> verified
+            </Badge>
+          )}
+          {row && (row.plotFound ? <Badge>plot found</Badge> : <Badge tone="muted">no plot</Badge>)}
           {row?.error && <Badge tone="muted">error</Badge>}
         </div>
       </div>
 
       {!loading && (
         <>
-          <div className="text-[13px] text-text mt-2">{sourceLine(row, title, year)}</div>
-          <div className="text-[11px] text-muted mt-0.5">
+          <p className="mt-2 text-[13.5px] text-ink">{sourceLine(row, title, year)}</p>
+          <p className="mt-0.5 text-[12.5px] text-mute">
             {[fetched ? `Fetched ${fetched}` : null, awards ? `Awards: ${awards}` : null].filter(Boolean).join(' · ')}
-            {row?.unverified && (
-              <span>
-                {fetched || awards ? ' · ' : ''}Moods from this text always go to review. Link a Wikipedia page to
-                replace it.
-              </span>
-            )}
-          </div>
-          {row?.error && <p className="text-[11px] text-danger mt-1 break-words">{row.error}</p>}
-          {error && <p className="text-[11px] text-danger mt-1 break-words">{error}</p>}
+            {row?.unverified && <span>{fetched || awards ? ' · ' : ''}Moods from this text always go to review. Link a Wikipedia page to replace it.</span>}
+          </p>
+          {row?.error && <p className="mt-1 break-words text-[12.5px] text-bad">{row.error}</p>}
+          {error && <p className="mt-1 break-words text-[12.5px] text-bad">{error}</p>}
 
-          <div className="mt-2.5 flex items-center gap-3.5 flex-wrap">
-            <button type="button" className={linkCls} onClick={() => setOverrideOpen((v) => !v)} disabled={busy !== null}>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setOverrideOpen((v) => !v)} disabled={busy !== null}>
               {overrideOpen ? 'Cancel' : 'Change page'}
-            </button>
-            <button
-              type="button"
-              className={linkCls}
-              onClick={() => void run('refresh', () => api.enrichment.refresh(jellyfinId))}
-              disabled={busy !== null}
-            >
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => void run('refresh', () => api.enrichment.refresh(jellyfinId))} disabled={busy !== null}>
               {busy === 'refresh' ? 'Refreshing…' : 'Refresh'}
-            </button>
-            <span className="flex-1" />
+            </Button>
+            {canGenerate && (
+              <Button variant="outline" size="sm" onClick={generateSynopsis} disabled={busy !== null} title="Strong model with web search, about $0.05 to $0.10. Marked unverified.">
+                {busy === 'synopsis' ? 'Writing…' : 'Generate synopsis'}
+              </Button>
+            )}
             {plotWords > 0 && (
-              <div className="flex items-center gap-2.5">
-                <span className="text-[10px] uppercase tracking-widest text-muted">Show spoilers</span>
+              <label className="ml-auto inline-flex cursor-pointer items-center gap-2 text-[12.5px] font-medium text-mute">
+                Show spoilers
                 <Toggle active={spoilersOpen} onChange={setSpoilersOpen} label="Show spoilers" />
-              </div>
+              </label>
             )}
           </div>
 
           {overrideOpen && (
             <form
-              className="mt-3 grid grid-cols-1 sm:grid-cols-[88px_1fr_auto] gap-3 sm:items-end"
+              className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[96px_1fr_auto] sm:items-end"
               onSubmit={(e) => {
                 e.preventDefault();
                 const t = pageTitle.trim();
@@ -144,67 +137,31 @@ export function StorySource({ jellyfinId, title, year }: StorySourceProps) {
                 void run('override', () => api.enrichment.overridePage(jellyfinId, `${site}wiki`, t));
               }}
             >
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor={`site-${jellyfinId}`} className="text-[10px] uppercase tracking-widest text-muted">
-                  Site
-                </label>
-                <select
-                  id={`site-${jellyfinId}`}
-                  value={site}
-                  onChange={(e) => setSite(e.target.value)}
-                  className="bg-transparent border-0 border-b border-border focus:border-text outline-none text-text text-[14px] py-2 cursor-pointer"
-                >
-                  {(WIKI_LANGUAGES.includes(site) ? WIKI_LANGUAGES : [site, ...WIKI_LANGUAGES]).map((code) => (
-                    <option key={code} value={code}>
-                      {code}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor={`page-${jellyfinId}`} className="text-[10px] uppercase tracking-widest text-muted">
-                  Page title
-                </label>
-                <input
-                  id={`page-${jellyfinId}`}
-                  value={pageTitle}
-                  onChange={(e) => setPageTitle(e.target.value)}
-                  placeholder="Heat (1995 film)"
-                  className="bg-transparent border-0 border-b border-border focus:border-text outline-none text-text placeholder:text-muted text-[14px] py-2 transition-colors"
-                />
-              </div>
-              <Button type="submit" variant="line" size="sm" disabled={busy !== null || !pageTitle.trim()}>
+              <Field label="Site">
+                <Select value={site} onChange={setSite} label="Wikipedia language" block options={(WIKI_LANGUAGES.includes(site) ? WIKI_LANGUAGES : [site, ...WIKI_LANGUAGES]).map((c) => [c, c])} />
+              </Field>
+              <Field label="Page title">
+                <input value={pageTitle} onChange={(e) => setPageTitle(e.target.value)} placeholder="Heat (1995 film)" className={inputCls} />
+              </Field>
+              <Button type="submit" variant="primary" size="sm" disabled={busy !== null || !pageTitle.trim()} className="sm:mb-0">
                 {busy === 'override' ? 'Applying…' : 'Apply'}
               </Button>
             </form>
           )}
 
-          {canGenerate && (
-            <div className="mt-3 flex items-center gap-3 flex-wrap">
-              <Button variant="line" size="sm" onClick={generateSynopsis} disabled={busy !== null}>
-                {busy === 'synopsis' ? 'Writing…' : 'Generate synopsis'}
-              </Button>
-              <span className="text-[11px] text-text-dim">
-                Strong model with web search, about $0.05 to $0.10. Marked unverified.
-              </span>
-            </div>
-          )}
-
           {spoilersOpen && row?.plotText && (
-            <div className="mt-3 border border-border bg-surface px-3 py-2.5 max-h-48 overflow-y-auto overscroll-contain">
-              <pre className="whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed text-text-dim">{row.plotText}</pre>
+            <div className="mt-3 max-h-56 overflow-y-auto overscroll-contain rounded-2xl bg-canvas px-4 py-3">
+              <pre className="whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed text-ink-2">{row.plotText}</pre>
               {row.receptionText && (
                 <>
-                  <div className="text-[10px] uppercase tracking-widest text-muted mt-3 mb-1">Reception</div>
-                  <pre className="whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed text-text-dim">
-                    {row.receptionText}
-                  </pre>
+                  <div className="mb-1 mt-4 text-[12px] font-semibold text-mute">Reception</div>
+                  <pre className="whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed text-ink-2">{row.receptionText}</pre>
                 </>
               )}
             </div>
           )}
         </>
       )}
-    </div>
+    </section>
   );
 }

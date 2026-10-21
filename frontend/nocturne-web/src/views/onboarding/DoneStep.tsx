@@ -15,7 +15,6 @@ export function DoneStep({ onOpenLibrary }: DoneStepProps) {
 
   useEffect(() => {
     let cancelled = false;
-
     const poll = async () => {
       try {
         const s = await api.sync.status();
@@ -27,12 +26,11 @@ export function DoneStep({ onOpenLibrary }: DoneStepProps) {
           return;
         }
       } catch {
-        // Transient; retry
+        // transient; retry
       }
       pollRef.current = window.setTimeout(poll, 1000);
     };
-    poll();
-
+    void poll();
     return () => {
       cancelled = true;
       if (pollRef.current) window.clearTimeout(pollRef.current);
@@ -42,34 +40,25 @@ export function DoneStep({ onOpenLibrary }: DoneStepProps) {
   const syncing = status?.isRunning !== false;
 
   return (
-    <div className="flex flex-col items-center text-center max-w-xl">
-      <p className="text-[10px] uppercase tracking-widest text-muted mb-6">Step 3 of 3</p>
-      <h2 className="font-serif italic text-5xl text-text mb-3">
-        {syncing ? 'Syncing your library…' : "You're in."}
-      </h2>
+    <div className="flex max-w-[440px] flex-col items-center text-center">
+      <p className="text-[12px] font-semibold text-faint">Step 3 of 3</p>
+      <h2 className="mt-3 text-[32px] font-semibold leading-[1.05] tracking-[-0.035em] text-ink">{syncing ? 'Syncing your library' : 'You are in.'}</h2>
       {syncing ? (
         <>
-          <div className="flex items-center gap-3 text-[14px] text-text-dim mb-10">
+          <div className="mt-4 flex items-center gap-2.5 text-[14px] text-mute">
             <Spinner size={14} />
-            {status && status.moviesFound > 0
-              ? `${status.moviesFound.toLocaleString()} films scanned`
-              : 'Scanning Jellyfin catalog'}
+            {status && status.moviesFound > 0 ? `${status.moviesFound.toLocaleString()} films scanned` : 'Scanning the Jellyfin catalog'}
           </div>
-          <Button variant="line" onClick={onOpenLibrary}>
-            Open library anyway
+          <Button variant="outline" onClick={onOpenLibrary} className="mt-8">
+            Open the library anyway
           </Button>
         </>
       ) : (
         <>
-          <p className="text-[14px] text-text-dim mb-2">
-            {movieCount !== null && <>{movieCount.toLocaleString()} films in your catalog</>}
-          </p>
-          <p className="text-[12px] text-muted max-w-md mb-10 leading-relaxed">
-            Add your Anthropic and OMDb keys from Settings when you're ready. Auto-tagging and
-            richer metadata unlock once they're set.
-          </p>
-          <Button variant="primary" onClick={onOpenLibrary}>
-            Open library
+          <p className="mt-3 text-[15px] text-mute">{movieCount !== null && <>{movieCount.toLocaleString()} films in your catalog.</>}</p>
+          <p className="mt-2 max-w-[380px] text-[13.5px] leading-relaxed text-faint">Add your Anthropic and OMDb keys in Settings when you are ready. Auto-tagging and ratings unlock once they are set.</p>
+          <Button variant="primary" size="lg" onClick={onOpenLibrary} className="mt-8">
+            Open the library
           </Button>
         </>
       )}

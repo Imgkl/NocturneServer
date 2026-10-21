@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import { ChevronRight } from 'lucide-react';
+import { api, posterUrl } from '../lib/api';
+import { cn } from '../lib/cn';
 import { worklistReason } from '../lib/enrichment';
 import { Button } from '../ui/Button';
+import { Chip } from '../ui/Chip';
+import { Bar } from '../ui/Stat';
 import type { CoverageStatus, EnrichmentRow, EnrichmentSummary, Movie, WorklistFilter } from '../lib/types';
 
 interface EnrichmentCoverageCardProps {
@@ -29,15 +33,7 @@ const PILLS: { key: PillKey; count: keyof EnrichmentSummary; label: string }[] =
 
 const PREVIEW_ROWS = 8;
 
-export function EnrichmentCoverageCard({
-  summary,
-  status,
-  otherRunActive,
-  onStart,
-  onCancel,
-  onOpenMovie,
-  movieLookup,
-}: EnrichmentCoverageCardProps) {
+export function EnrichmentCoverageCard({ summary, status, otherRunActive, onStart, onCancel, onOpenMovie, movieLookup }: EnrichmentCoverageCardProps) {
   const [filter, setFilter] = useState<PillKey>('no_plot');
   const [rows, setRows] = useState<EnrichmentRow[]>([]);
   const [loadingRows, setLoadingRows] = useState(false);
@@ -47,7 +43,6 @@ export function EnrichmentCoverageCard({
   const running = status?.running === true;
   const total = summary?.total ?? 0;
 
-  // Reload the list when the filter changes or a run finishes (the summary refreshes then).
   useEffect(() => {
     if (filter === 'english_plot') {
       setRows([]);
@@ -71,14 +66,11 @@ export function EnrichmentCoverageCard({
     };
   }, [filter, summary]);
 
-  useEffect(() => {
-    setShowAll(false);
-  }, [filter]);
+  useEffect(() => setShowAll(false), [filter]);
 
-  const activeLabel = PILLS.find((p) => p.key === filter)?.label ?? '';
-  const activeCount = summary?.[PILLS.find((p) => p.key === filter)?.count ?? 'no_plot'] ?? 0;
+  const active = PILLS.find((p) => p.key === filter);
+  const activeCount = summary?.[active?.count ?? 'no_plot'] ?? 0;
   const visible = showAll ? rows : rows.slice(0, PREVIEW_ROWS);
-  const pct = status && status.total > 0 ? Math.min(100, Math.round((status.processed / status.total) * 100)) : 0;
 
   async function start() {
     setStartError(null);
@@ -90,141 +82,84 @@ export function EnrichmentCoverageCard({
   }
 
   return (
-    <div className="border border-border p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="text-[14px] text-text">Story sources</div>
-          <p className="text-[12px] text-text-dim mt-1 leading-snug">
-            {running
-              ? 'Running in background. Wikidata and Wikipedia, two requests a second.'
-              : 'Wikipedia plots, reception and awards for every film. The tagger reads these, not the Jellyfin blurb.'}
-          </p>
-        </div>
-        <div className="flex-shrink-0">
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={start}
-            disabled={running || otherRunActive}
-            title={otherRunActive ? 'Another run is in progress' : undefined}
-          >
-            {running ? 'Running…' : 'Run coverage'}
-          </Button>
-        </div>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-[560px] text-[13.5px] leading-[1.5] text-mute">
+          {running ? 'Running in background. Wikidata and Wikipedia, two requests a second.' : 'Wikipedia plots, reception and awards for every film. The tagger reads these, not the Jellyfin blurb.'}
+        </p>
+        <Button variant="primary" onClick={() => void start()} disabled={running || otherRunActive} reason={otherRunActive ? 'Another run is in progress' : null} reasonInline={false}>
+          {running ? 'Running…' : 'Run coverage'}
+        </Button>
       </div>
 
       {running && status && (
-        <div className="mt-3 space-y-2">
-          <div className="h-[2px] bg-border overflow-hidden">
-            <div className="h-full bg-text transition-all" style={{ width: `${pct}%` }} />
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-[10px] uppercase tracking-widest text-muted">
+        <div className="space-y-2">
+          <Bar value={status.total > 0 ? status.processed / status.total : 0} />
+          <div className="flex items-center justify-between gap-3 text-[12.5px] text-mute">
+            <span className="tabular-nums">
               {status.processed} / {status.total}
               {statsLine(status.stats)}
-              {status.cancelRequested && <span className="ml-2">· cancelling</span>}
+              {status.cancelRequested && ' · cancelling'}
             </span>
             {!status.cancelRequested && (
-              <button
-                onClick={onCancel}
-                className="text-[10px] uppercase tracking-widest text-text-dim hover:text-text underline decoration-dotted underline-offset-2 cursor-pointer"
-              >
+              <Button variant="ghost" size="sm" onClick={() => void onCancel()}>
                 Cancel
-              </button>
+              </Button>
             )}
           </div>
         </div>
       )}
-      {!running && status?.error && (
-        <p className="mt-3 text-[11px] text-danger">Last run stopped: {status.error}</p>
-      )}
-      {startError && <p className="mt-3 text-[11px] text-danger">{startError}</p>}
+      {!running && status?.error && <p className="text-[12.5px] text-bad">Last run stopped: {status.error}</p>}
+      {startError && <p className="text-[12.5px] text-bad">{startError}</p>}
 
-      <div className="mt-4 flex flex-wrap items-center gap-1.5">
-        {PILLS.map((p) => {
-          const active = p.key === filter;
-          return (
-            <button
-              key={p.key}
-              type="button"
-              onClick={() => setFilter(p.key)}
-              aria-pressed={active}
-              className={`inline-flex items-baseline gap-1.5 border px-2.5 py-1 cursor-pointer transition-colors ${
-                active ? 'bg-text border-text text-bg' : 'border-border text-text-dim hover:border-border-hover hover:text-text'
-              }`}
-            >
-              <span className={`text-[14px] tabular-nums ${active ? 'text-bg' : 'text-text'}`}>
-                {summary?.[p.count] ?? 0}
-              </span>
-              <span className="text-[10px] uppercase tracking-wider">{p.label}</span>
-            </button>
-          );
-        })}
-        <span className="text-[10px] uppercase tracking-wider text-muted pl-1">
-          · {total} total · {summary?.unverified ?? 0} unverified
+      <div className="flex flex-wrap items-center gap-1.5">
+        {PILLS.map((p) => (
+          <Chip key={p.key} active={p.key === filter} onClick={() => setFilter(p.key)} count={summary?.[p.count] ?? 0}>
+            {p.label}
+          </Chip>
+        ))}
+        <span className="pl-1 text-[12.5px] text-faint">
+          {total} total · {summary?.unverified ?? 0} unverified
         </span>
       </div>
 
-      <div className="mt-3 border border-border">
-        <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border">
-          <span className="text-[10px] uppercase tracking-widest text-muted">
-            {activeLabel} · {activeCount} {activeCount === 1 ? 'film' : 'films'}
+      <div className="overflow-hidden rounded-2xl ring-1 ring-line">
+        <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5">
+          <span className="text-[12.5px] font-medium text-mute">
+            {active?.label} · {activeCount} {activeCount === 1 ? 'film' : 'films'}
           </span>
-          {rows.length > 0 && (
-            <span className="text-[10px] uppercase tracking-widest text-muted">tap a film to open it</span>
-          )}
+          {rows.length > 0 && <span className="text-[12px] text-faint">tap a film to open it</span>}
         </div>
         {filter === 'english_plot' ? (
-          <div className="px-3 py-3 text-[12px] text-muted">
-            {activeCount > 0
-              ? `${activeCount} films have a full English plot. Nothing to fix here.`
-              : 'No film has an English plot yet. Run coverage to fetch them.'}
-          </div>
+          <p className="px-4 py-3 text-[13px] text-mute">{activeCount > 0 ? `${activeCount} films have a full English plot. Nothing to fix here.` : 'No film has an English plot yet. Run coverage to fetch them.'}</p>
         ) : loadingRows && rows.length === 0 ? (
-          <div className="px-3 py-3 text-[12px] text-muted">Loading…</div>
+          <p className="px-4 py-3 text-[13px] text-mute">Loading…</p>
         ) : rows.length === 0 ? (
-          <div className="px-3 py-3 text-[12px] text-muted">
-            {total === 0 ? 'Nothing fetched yet. Run coverage to build the story sources.' : 'Nothing in this bucket.'}
-          </div>
+          <p className="px-4 py-3 text-[13px] text-mute">{total === 0 ? 'Nothing fetched yet. Run coverage to build the story sources.' : 'Nothing in this bucket.'}</p>
         ) : (
           <>
-            {visible.map((row) => {
-              const movie = movieLookup(row.jellyfinId);
-              return (
-                <button
-                  key={row.jellyfinId}
-                  type="button"
-                  onClick={() => onOpenMovie(row.jellyfinId)}
-                  className="flex w-full items-center gap-2.5 px-3 py-2 border-t border-border first:border-t-0 text-left hover:bg-surface cursor-pointer"
-                >
-                  <span className="w-6 h-9 flex-shrink-0 bg-surface border border-border overflow-hidden flex items-center justify-center font-serif italic text-[12px] text-muted">
-                    {movie?.posterUrl ? (
-                      <img src={movie.posterUrl} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      (movie?.title || row.jellyfinId).charAt(0).toUpperCase()
-                    )}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-text">
-                    {movie?.title || row.jellyfinId}
-                    {movie?.year && <span className="ml-1.5 text-[11px] text-muted">{movie.year}</span>}
-                  </span>
-                  <span className="hidden sm:block max-w-[45%] truncate text-[11px] text-muted">{worklistReason(row)}</span>
-                  <span className="text-muted" aria-hidden>
-                    →
-                  </span>
-                </button>
-              );
-            })}
+            <ul className="divide-y divide-[#f0f0f0]">
+              {visible.map((row) => {
+                const movie = movieLookup(row.jellyfinId);
+                return (
+                  <li key={row.jellyfinId}>
+                    <button type="button" onClick={() => onOpenMovie(row.jellyfinId)} className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-[#f7f7f7] cursor-pointer">
+                      <img src={posterUrl(row.jellyfinId, 'thumb')} alt="" className="h-9 w-6 shrink-0 rounded-md bg-canvas object-cover" loading="lazy" />
+                      <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-ink">
+                        {movie?.title || row.jellyfinId}
+                        {movie?.year && <span className="ml-1.5 text-[12px] font-normal tabular-nums text-faint">{movie.year}</span>}
+                      </span>
+                      <span className="hidden max-w-[45%] truncate text-[12px] text-mute sm:block">{worklistReason(row)}</span>
+                      <ChevronRight size={14} className="shrink-0 text-faint" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
             {rows.length > PREVIEW_ROWS && (
-              <div className="px-3 py-2 border-t border-border">
-                <button
-                  type="button"
-                  onClick={() => setShowAll((v) => !v)}
-                  className="text-[10px] uppercase tracking-widest text-text-dim hover:text-text underline decoration-dotted underline-offset-2 cursor-pointer"
-                >
-                  {showAll ? 'Show fewer' : `Show all ${rows.length}`}
-                </button>
-              </div>
+              <button type="button" onClick={() => setShowAll((v) => !v)} className={cn('w-full border-t border-line px-4 py-2.5 text-left text-[12.5px] font-medium text-mute hover:text-ink cursor-pointer')}>
+                {showAll ? 'Show fewer' : `Show all ${rows.length}`}
+              </button>
             )}
           </>
         )}

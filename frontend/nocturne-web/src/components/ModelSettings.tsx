@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../ui/Button';
-import { Divider } from '../ui/Divider';
+import { Field, inputCls } from '../ui/Input';
+import { Select } from '../ui/Select';
+import { Bar, Stat } from '../ui/Stat';
 import { Toggle } from '../ui/Toggle';
 import type { ModelSettings as ModelSettingsApi, ModelSettingsUpdate } from '../lib/types';
 
@@ -9,9 +11,7 @@ interface ModelSettingsProps {
   onSave: (update: ModelSettingsUpdate) => Promise<void>;
 }
 
-const selectCls =
-  'w-full bg-transparent border-0 border-b border-border focus:border-text outline-none text-text text-[14px] py-2 transition-colors cursor-pointer';
-
+// Reader and strong model, the synopsis fallback, the monthly cap with the month's spend.
 export function ModelSettings({ settings, onSave }: ModelSettingsProps) {
   const [reader, setReader] = useState('');
   const [strong, setStrong] = useState('');
@@ -29,29 +29,15 @@ export function ModelSettings({ settings, onSave }: ModelSettingsProps) {
     setFallback(settings.model_fallback);
   }, [settings]);
 
-  if (!settings) {
-    return (
-      <div className="border border-border p-5">
-        <div className="text-[11px] uppercase tracking-widest text-muted">Models &amp; budget</div>
-        <p className="text-[12px] text-muted mt-3">Loading…</p>
-      </div>
-    );
-  }
+  if (!settings) return <p className="text-[13px] text-mute">Loading…</p>;
   const current = settings;
 
   const budgetNumber = budget.trim() === '' ? null : Number(budget);
   const budgetValid = budgetNumber === null || (Number.isFinite(budgetNumber) && budgetNumber >= 0);
   const budgetChanged = budgetNumber !== null && budgetNumber !== (current.monthly_budget_usd ?? null);
-  const dirty =
-    reader !== current.reader_model ||
-    strong !== current.strong_model ||
-    fallback !== current.model_fallback ||
-    budgetChanged;
-
+  const dirty = reader !== current.reader_model || strong !== current.strong_model || fallback !== current.model_fallback || budgetChanged;
   const cap = current.monthly_budget_usd ?? 0;
   const spent = current.budget_spent_usd;
-  const spentPct = cap > 0 ? Math.min(100, (spent / cap) * 100) : 0;
-  const overCap = cap > 0 && spent >= cap;
 
   async function save() {
     const update: ModelSettingsUpdate = {};
@@ -72,102 +58,48 @@ export function ModelSettings({ settings, onSave }: ModelSettingsProps) {
     }
   }
 
-  return (
-    <div className="border border-border p-5 space-y-5">
-      <div className="text-[11px] uppercase tracking-widest text-muted">Models &amp; budget</div>
+  const withCurrent = (list: string[], v: string) => (v && !list.includes(v) ? [v, ...list] : list);
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="reader-model" className="text-[10px] uppercase tracking-widest text-muted">
-            Reader model
-          </label>
-          <select id="reader-model" className={selectCls} value={reader} onChange={(e) => setReader(e.target.value)}>
-            {withCurrent(current.reader_models, reader).map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <p className="text-[12px] text-text-dim leading-snug">
-            Reads the story block and proposes moods. About $0.001 per film with the cached prefix.
-          </p>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="strong-model" className="text-[10px] uppercase tracking-widest text-muted">
-            Strong model
-          </label>
-          <select id="strong-model" className={selectCls} value={strong} onChange={(e) => setStrong(e.target.value)}>
-            {withCurrent(current.strong_models, strong).map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <p className="text-[12px] text-text-dim leading-snug">
-            Writes a spoiler synopsis with web search when no plot exists anywhere. About $0.05 to $0.10 per film.
-          </p>
-        </div>
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <Field label="Reader model" hint="Reads the story block and proposes moods. About $0.001 per film with the cached prefix.">
+          <Select value={reader} onChange={setReader} label="Reader model" block options={withCurrent(current.reader_models, reader).map((m) => [m, m])} />
+        </Field>
+        <Field label="Strong model" hint="Writes a spoiler synopsis with web search when no plot exists anywhere. About $0.05 to $0.10 per film.">
+          <Select value={strong} onChange={setStrong} label="Strong model" block options={withCurrent(current.strong_models, strong).map((m) => [m, m])} />
+        </Field>
       </div>
 
-      <Divider />
-
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="text-[14px] text-text">Write synopses automatically</div>
-          <p className="text-[12px] text-text-dim mt-1 leading-snug">
-            During coverage runs, films with no plot anywhere get a strong-model synopsis. It is marked unverified and
-            its moods always go to review.
-          </p>
+      <div className="flex items-start justify-between gap-4 border-t border-line pt-4">
+        <div className="min-w-0">
+          <div className="text-[14px] font-semibold text-ink">Write synopses automatically</div>
+          <p className="mt-1 text-[13px] leading-snug text-mute">During coverage runs, films with no plot anywhere get a strong-model synopsis. It is marked unverified and its moods always go to review.</p>
         </div>
         <Toggle active={fallback} onChange={setFallback} label="Write synopses automatically" />
       </div>
 
-      <Divider />
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:items-end">
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="monthly-budget" className="text-[10px] uppercase tracking-widest text-muted">
-            Monthly budget
-          </label>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-[14px] text-muted">$</span>
-            <input
-              id="monthly-budget"
-              type="number"
-              min="0"
-              step="1"
-              inputMode="decimal"
-              value={budget}
-              onChange={(e) => setBudget(e.target.value)}
-              className="w-28 bg-transparent border-0 border-b border-border focus:border-text outline-none text-text text-[14px] py-2 tabular-nums transition-colors"
-            />
+      <div className="grid grid-cols-1 gap-5 border-t border-line pt-4 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-end">
+        <Field label="Monthly budget">
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13.5px] text-faint">$</span>
+            <input id="monthly-budget" type="number" min="0" step="1" inputMode="decimal" value={budget} onChange={(e) => setBudget(e.target.value)} className={`${inputCls} pl-6 tabular-nums`} />
           </div>
-        </div>
-        <div className="flex flex-col gap-2">
-          <div className="h-[2px] bg-border overflow-hidden">
-            <div className="h-full bg-text transition-all" style={{ width: `${spentPct}%` }} />
-          </div>
-          <p className="text-[12px] text-text-dim leading-snug">
-            ${spent.toFixed(2)} spent this month{overCap ? ' · at the cap' : ''}. Scheduled and real-time tagging
-            pause at the cap; manual runs warn and continue.
-          </p>
+        </Field>
+        <div>
+          <Stat label="Spent this month" value={`$${spent.toFixed(2)}`} sub={cap > 0 ? `of $${cap}. Scheduled and real-time tagging pause at the cap; manual runs warn and continue.` : 'No cap set.'} tone={cap > 0 && spent >= cap ? 'bad' : undefined} />
+          <Bar value={cap > 0 ? spent / cap : 0} className="mt-3" />
         </div>
       </div>
 
       <div className="flex items-center justify-end gap-3">
-        {error && <span className="text-[11px] text-danger">{error}</span>}
-        {saved && !error && <span className="text-[10px] uppercase tracking-widest text-muted">Saved</span>}
-        {!budgetValid && <span className="text-[11px] text-danger">Budget must be zero or more.</span>}
-        <Button variant="primary" size="sm" onClick={save} disabled={!dirty || !budgetValid || saving}>
+        {error && <span className="text-[12.5px] text-bad">{error}</span>}
+        {saved && !error && <span className="text-[12.5px] font-medium text-good">Saved</span>}
+        {!budgetValid && <span className="text-[12.5px] text-bad">Budget must be zero or more.</span>}
+        <Button variant="primary" onClick={() => void save()} disabled={!dirty || !budgetValid || saving}>
           {saving ? 'Saving…' : 'Save'}
         </Button>
       </div>
     </div>
   );
-}
-
-// Keep a value the admin set by hand (or an older default) selectable even when it is not in
-// the server's list.
-function withCurrent(list: string[], current: string): string[] {
-  return current && !list.includes(current) ? [current, ...list] : list;
 }

@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
-import { Divider } from '../ui/Divider';
+import { Field, inputCls } from '../ui/Input';
 
 interface JellyfinConnectFormProps {
-  /** Called on successful connection. Wizard uses this to advance. */
+  /** Called on successful connection. The wizard uses this to advance. */
   onConnected?: (info: { serverName?: string; version?: string; localAddress?: string }) => void;
-  /** If true, pre-fills URL + username from server (used in Settings). */
+  /** Pre-fill URL and username from the server (Settings). */
   loadExisting?: boolean;
 }
 
@@ -58,7 +57,7 @@ export function JellyfinConnectForm({ onConnected, loadExisting = false }: Jelly
     try {
       const r = await api.settings.saveJellyfin(url.trim(), username.trim(), password);
       if (r.success) {
-        setStatus('Saved & authenticated');
+        setStatus('Saved and signed in');
         setServerInfo({ serverName: r.serverName, version: r.version, localAddress: r.localAddress });
         setPassword('');
         onConnected?.({ serverName: r.serverName, version: r.version, localAddress: r.localAddress });
@@ -73,40 +72,34 @@ export function JellyfinConnectForm({ onConnected, loadExisting = false }: Jelly
   }
 
   return (
-    <div className="space-y-5">
-      <Input label="Jellyfin URL" placeholder="http://192.168.1.24:8096" value={url} onChange={(e) => setUrl(e.target.value)} />
-      <Input label="Username" placeholder="admin" value={username} onChange={(e) => setUsername(e.target.value)} />
-      <Input
-        label={loadExisting ? 'Password (blank to keep existing)' : 'Password'}
-        type="password"
-        placeholder="••••••••"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
+    <div className="space-y-4">
+      <Field label="Jellyfin URL">
+        <input className={inputCls} placeholder="http://192.168.1.24:8096" value={url} onChange={(e) => setUrl(e.target.value)} />
+      </Field>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Username">
+          <input className={inputCls} placeholder="admin" value={username} onChange={(e) => setUsername(e.target.value)} />
+        </Field>
+        <Field label={loadExisting ? 'Password (blank keeps the current one)' : 'Password'}>
+          <input className={inputCls} type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </Field>
+      </div>
 
-      {status && (
-        <div className="text-[11px] uppercase tracking-widest text-text-dim">{status}</div>
-      )}
-      {error && (
-        <div className="text-[13px] text-text border border-border bg-surface px-3 py-2">{error}</div>
-      )}
+      {status && <p className="text-[13px] font-medium text-good">{status}</p>}
+      {error && <p className="rounded-xl bg-[#fff6f2] px-3 py-2 text-[13px] text-bad ring-1 ring-[#f0d6cc]">{error}</p>}
       {serverInfo && (
-        <>
-          <Divider />
-          <div className="text-[11px] uppercase tracking-widest text-muted">Server</div>
-          <div className="text-[13px] text-text-dim">
-            {serverInfo.serverName}
-            {serverInfo.version && <> · Jellyfin {serverInfo.version}</>}
-            {serverInfo.localAddress && <> · {serverInfo.localAddress}</>}
-          </div>
-        </>
+        <p className="text-[13px] text-mute">
+          {serverInfo.serverName}
+          {serverInfo.version && <> · Jellyfin {serverInfo.version}</>}
+          {serverInfo.localAddress && <> · {serverInfo.localAddress}</>}
+        </p>
       )}
 
-      <div className="flex gap-2 justify-end pt-2">
-        <Button variant="line" onClick={testConnection} disabled={busy} size="sm">
+      <div className="flex justify-end gap-2 pt-1">
+        <Button variant="outline" onClick={() => void testConnection()} disabled={busy}>
           {busy ? 'Testing…' : 'Test connection'}
         </Button>
-        <Button variant="primary" onClick={save} disabled={busy || !url || !username} size="sm">
+        <Button variant="primary" onClick={() => void save()} disabled={busy || !url || !username}>
           {busy ? 'Saving…' : 'Save'}
         </Button>
       </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { Check } from 'lucide-react';
 import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
+import { Field, inputCls } from '../ui/Input';
 
 interface ApiKeyFormProps {
   label: string;
@@ -13,8 +14,6 @@ interface ApiKeyFormProps {
 export function ApiKeyForm({ label, placeholder, helpText, isSet, onSave }: ApiKeyFormProps) {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
-
-  const effectivePlaceholder = isSet && !value ? '••••••••••••' : placeholder;
 
   async function submit() {
     const v = value.trim();
@@ -29,25 +28,35 @@ export function ApiKeyForm({ label, placeholder, helpText, isSet, onSave }: ApiK
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-end gap-2">
-        <div className="flex-1">
-          <Input
-            label={label}
-            type="password"
-            placeholder={effectivePlaceholder}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') submit();
-            }}
-          />
-        </div>
-        <Button variant="primary" size="sm" onClick={submit} disabled={busy || !value.trim()}>
+    <Field
+      label={
+        <span className="inline-flex items-center gap-2">
+          {label}
+          {isSet && (
+            <span className="inline-flex items-center gap-1 text-good">
+              <Check size={12} strokeWidth={3} /> set
+            </span>
+          )}
+        </span>
+      }
+      hint={helpText}
+    >
+      <div className="flex gap-2">
+        <input
+          type="password"
+          autoComplete="off"
+          placeholder={isSet && !value ? '•••••••••••• (paste a new key to replace)' : placeholder}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void submit();
+          }}
+          className={inputCls}
+        />
+        <Button variant="primary" size="md" onClick={() => void submit()} disabled={busy || !value.trim()}>
           {busy ? 'Saving…' : 'Save'}
         </Button>
       </div>
-      {helpText && <p className="text-[11px] text-muted">{helpText}</p>}
-    </div>
+    </Field>
   );
 }

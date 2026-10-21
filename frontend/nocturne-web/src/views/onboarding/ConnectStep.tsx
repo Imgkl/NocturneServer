@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { Check, RotateCw } from 'lucide-react';
 import { api } from '../../lib/api';
+import { cn } from '../../lib/cn';
 import { Button } from '../../ui/Button';
-import { Input } from '../../ui/Input';
 import { Divider } from '../../ui/Divider';
+import { Field, inputCls } from '../../ui/Input';
 import { Spinner } from '../../ui/Spinner';
 import type { DiscoveredServer } from '../../lib/types';
 
@@ -26,19 +28,15 @@ export function ConnectStep({ onConnected }: ConnectStepProps) {
       const { servers: found } = await api.jellyfin.discover();
       setServers(found);
     } catch {
-      // Non-fatal — manual URL is always available.
+      // Non-fatal: the manual URL is always available.
     } finally {
       setDiscovering(false);
     }
   }
 
   useEffect(() => {
-    runDiscovery();
+    void runDiscovery();
   }, []);
-
-  function pickServer(s: DiscoveredServer) {
-    setUrl(s.address);
-  }
 
   async function connect() {
     if (!url || !username) return;
@@ -47,8 +45,7 @@ export function ConnectStep({ onConnected }: ConnectStepProps) {
     try {
       const r = await api.settings.saveJellyfin(url.trim(), username.trim(), password);
       if (r.success) {
-        // Kick off an initial sync so the local DB is populated before the user
-        // hits the library. DoneStep polls /sync/status and shows progress.
+        // Kick off the first sync so the library is filling while the last step shows progress.
         api.sync.trigger();
         onConnected();
       } else {
@@ -62,94 +59,71 @@ export function ConnectStep({ onConnected }: ConnectStepProps) {
   }
 
   return (
-    <div className="w-full max-w-xl">
-      <p className="text-[10px] uppercase tracking-widest text-muted mb-3">Step 2 of 3 · Connect</p>
-      <h2 className="font-serif italic text-3xl lg:text-4xl text-text mb-2">Find your Jellyfin server</h2>
-      <p className="text-[13px] text-text-dim mb-8">
-        We broadcast on your local network and show any Jellyfin servers that respond.
-      </p>
+    <div className="w-full max-w-[480px]">
+      <p className="text-[12px] font-semibold text-faint">Step 2 of 3</p>
+      <h2 className="mt-3 text-[30px] font-semibold leading-[1.05] tracking-[-0.035em] text-ink">Find your Jellyfin server</h2>
+      <p className="mt-2 text-[14px] leading-[1.5] text-mute">We ask the local network and list any Jellyfin server that answers.</p>
 
-      {/* Discovered */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-[10px] uppercase tracking-widest text-muted">Discovered on your network</span>
-          <button
-            onClick={runDiscovery}
-            disabled={discovering}
-            className="text-[10px] uppercase tracking-widest text-muted hover:text-text cursor-pointer disabled:opacity-40"
-          >
-            {discovering ? 'Searching…' : 'Refresh'}
+      <div className="mt-7">
+        <div className="mb-2.5 flex items-center justify-between">
+          <span className="text-[12px] font-semibold text-mute">On your network</span>
+          <button type="button" onClick={() => void runDiscovery()} disabled={discovering} className="inline-flex items-center gap-1 text-[12.5px] font-medium text-mute hover:text-ink disabled:opacity-40 cursor-pointer">
+            <RotateCw size={12} className={cn(discovering && 'animate-spin')} /> {discovering ? 'Searching' : 'Search again'}
           </button>
         </div>
         {discovering && servers.length === 0 && (
-          <div className="flex items-center gap-3 px-4 py-4 border border-border bg-surface text-[13px] text-text-dim">
-            <Spinner size={12} />
-            Searching…
+          <div className="flex items-center gap-3 rounded-2xl bg-canvas px-4 py-3.5 text-[13.5px] text-mute">
+            <Spinner size={12} /> Searching…
           </div>
         )}
-        {!discovering && servers.length === 0 && (
-          <div className="px-4 py-4 border border-border text-[13px] text-text-dim">
-            No servers found. Enter your URL manually below.
-          </div>
-        )}
+        {!discovering && servers.length === 0 && <div className="rounded-2xl bg-canvas px-4 py-3.5 text-[13.5px] text-mute">No server answered. Enter the URL below.</div>}
         {servers.length > 0 && (
-          <div className="flex flex-col">
-            {servers.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => pickServer(s)}
-                className={`flex items-center justify-between px-4 py-4 border border-border hover:border-border-hover text-left cursor-pointer ${
-                  url === s.address ? 'bg-surface' : 'bg-bg'
-                } [&:not(:first-child)]:border-t-0`}
-              >
-                <div>
-                  <div className="text-[14px] text-text">{s.name}</div>
-                  <div className="text-[11px] text-muted mt-0.5">
-                    {s.address}
-                    {s.version && ` · Jellyfin ${s.version}`}
-                  </div>
-                </div>
-                <span className="text-[10px] uppercase tracking-widest text-muted">
-                  {url === s.address ? 'Selected' : 'Select →'}
-                </span>
-              </button>
-            ))}
+          <div className="overflow-hidden rounded-2xl ring-1 ring-line">
+            {servers.map((s) => {
+              const picked = url === s.address;
+              return (
+                <button key={s.id} type="button" onClick={() => setUrl(s.address)} className={cn('flex w-full items-center justify-between gap-3 border-t border-line px-4 py-3.5 text-left first:border-t-0 cursor-pointer', picked ? 'bg-canvas' : 'bg-white hover:bg-[#f7f7f7]')}>
+                  <span className="min-w-0">
+                    <span className="block text-[14px] font-medium text-ink">{s.name}</span>
+                    <span className="mt-0.5 block truncate text-[12px] text-faint">
+                      {s.address}
+                      {s.version && ` · Jellyfin ${s.version}`}
+                    </span>
+                  </span>
+                  {picked ? (
+                    <span className="inline-flex items-center gap-1 text-[12.5px] font-medium text-ink">
+                      <Check size={13} strokeWidth={3} /> Selected
+                    </span>
+                  ) : (
+                    <span className="text-[12.5px] font-medium text-mute">Select</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
 
-      <Divider label="Or enter manually" />
+      <Divider label="or enter it yourself" className="my-6" />
 
-      <div className="mt-6 space-y-5">
-        <Input
-          label="Jellyfin URL"
-          placeholder="http://192.168.1.24:8096"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-        />
-        <Input
-          label="Username"
-          placeholder="admin"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-        <Input
-          label="Password"
-          type="password"
-          placeholder="••••••••"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+      <div className="space-y-4">
+        <Field label="Jellyfin URL">
+          <input className={inputCls} placeholder="http://192.168.1.24:8096" value={url} onChange={(e) => setUrl(e.target.value)} />
+        </Field>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Username">
+            <input className={inputCls} placeholder="admin" value={username} onChange={(e) => setUsername(e.target.value)} />
+          </Field>
+          <Field label="Password">
+            <input className={inputCls} type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </Field>
+        </div>
       </div>
 
-      {error && (
-        <div className="mt-5 border border-border bg-surface px-4 py-3 text-[13px] text-text">
-          {error}
-        </div>
-      )}
+      {error && <p className="mt-4 rounded-xl bg-[#fff6f2] px-3 py-2 text-[13px] text-bad ring-1 ring-[#f0d6cc]">{error}</p>}
 
-      <div className="mt-8 flex justify-end">
-        <Button variant="primary" onClick={connect} disabled={busy || !url || !username}>
+      <div className="mt-7 flex justify-end">
+        <Button variant="primary" size="lg" onClick={() => void connect()} disabled={busy || !url || !username}>
           {busy ? 'Connecting…' : 'Connect'}
         </Button>
       </div>
