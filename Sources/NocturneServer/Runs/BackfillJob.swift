@@ -98,6 +98,16 @@ final class BackfillJob: @unchecked Sendable {
         }
     }
 
+    /// A classifier-only pass over the given films (Teach, after a rule lands).
+    func startRegrade(ids: [String], trigger: RunTrigger) async throws -> Run {
+        let run = try await runService.start(kind: .regrade, trigger: trigger, total: ids.count, params: ["scope": "targeted"])
+        let runId = try run.requireID()
+        Task.detached { [self] in
+            await self.run(runId: runId, ids: ids, replaceExistingPending: true, mode: .regrade)
+        }
+        return run
+    }
+
     /// The loop. Calibration is built once per run. A credentials failure aborts the whole run;
     /// any other failure marks the film and continues.
     func run(runId: UUID, ids: [String], replaceExistingPending: Bool, mode: Mode = .backfill) async {

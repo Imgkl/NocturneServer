@@ -227,3 +227,22 @@ struct AddLeadTextToEnrichment: AsyncMigration {
 
     func revert(on database: Database) async throws {}
 }
+
+/// Teach: one row per film and boundary with the owner's answer.
+struct CreateTeachAnswers: AsyncMigration {
+    func prepare(on database: Database) async throws {
+        try await database.schema(TeachAnswer.schema)
+            .id()
+            .field("jellyfin_id", .string, .required)
+            .field("boundary", .string, .required)
+            .field("answer", .string, .required)
+            .field("decision_id", .uuid)
+            .field("created_at", .datetime)
+            .unique(on: "jellyfin_id", "boundary")
+            .create()
+    }
+
+    func revert(on database: Database) async throws {
+        try await database.schema(TeachAnswer.schema).delete()
+    }
+}

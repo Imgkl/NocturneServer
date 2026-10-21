@@ -131,6 +131,9 @@ struct NocturneServerApp {
         let modelSettingsRoutes = ModelSettingsRoutes(settings: settingsStore, budget: budget, coverage: coverageJob, config: appConfig, classifier: jevClient)
         let evalService = EvalService(fluent: fluent, config: appConfig, settings: settingsStore, runService: runService)
         let evalRoutes = EvalRoutes(eval: evalService)
+        let teachService = TeachService(fluent: fluent, config: appConfig, settings: settingsStore, anthropic: anthropic, backfill: backfillJob)
+        let teachRoutes = TeachRoutes(teach: teachService, settings: settingsStore, config: appConfig)
+        let guideRoutes = GuideRoutes(teach: teachService, settings: settingsStore, config: appConfig)
 
         // One-time seed: the legacy ANTHROPIC_MODEL env var becomes the initial reader model setting.
         if let envModel = ProcessInfo.processInfo.environment["ANTHROPIC_MODEL"], !envModel.isEmpty,
@@ -169,6 +172,8 @@ struct NocturneServerApp {
             taggerRoutes: taggerRoutes,
             modelSettingsRoutes: modelSettingsRoutes,
             evalRoutes: evalRoutes,
+            teachRoutes: teachRoutes,
+            guideRoutes: guideRoutes,
             eventLoopGroup: eventLoopGroup
         )
 
@@ -229,6 +234,7 @@ let taggerV2Migrations: [any AsyncMigration] = [
     SeedMissingMoodTags(),
     AddPlayedToMovies(),
     AddLeadTextToEnrichment(),
+    CreateTeachAnswers(),
 ]
 
 func runMigrations(fluent: Fluent, logger: Logger) async throws {
@@ -255,6 +261,8 @@ func createApplication(
     taggerRoutes: TaggerRoutes,
     modelSettingsRoutes: ModelSettingsRoutes,
     evalRoutes: EvalRoutes,
+    teachRoutes: TeachRoutes,
+    guideRoutes: GuideRoutes,
     eventLoopGroup: EventLoopGroup
 ) async throws -> Application<RouterResponder<BasicRequestContext>> {
 
@@ -273,7 +281,9 @@ func createApplication(
         enrichmentRoutes: enrichmentRoutes,
         taggerRoutes: taggerRoutes,
         modelSettingsRoutes: modelSettingsRoutes,
-        evalRoutes: evalRoutes
+        evalRoutes: evalRoutes,
+        teachRoutes: teachRoutes,
+        guideRoutes: guideRoutes
     )
     apiRoutes.addRoutes(to: router)
 

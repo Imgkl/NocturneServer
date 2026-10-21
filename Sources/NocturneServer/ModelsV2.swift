@@ -231,3 +231,27 @@ final class WikidataLabel: Model, @unchecked Sendable {
         self.fetchedAt = Date()
     }
 }
+
+// MARK: - Teach answers (one tap per film per boundary)
+
+final class TeachAnswer: Model, @unchecked Sendable {
+    static let schema = "teach_answers"
+
+    @ID(key: .id) var id: UUID?
+    @Field(key: "jellyfin_id") var jellyfinId: String
+    /// `slugA|slugB`, the boundary the answer sharpens.
+    @Field(key: "boundary") var boundary: String
+    /// The left slug, the right slug, or `neither`.
+    @Field(key: "answer") var answer: String
+    @OptionalField(key: "decision_id") var decisionId: UUID?
+    @Timestamp(key: "created_at", on: .create) var createdAt: Date?
+
+    init() {}
+
+    init(jellyfinId: String, boundary: String, answer: String, decisionId: UUID?) {
+        self.jellyfinId = jellyfinId
+        self.boundary = boundary
+        self.answer = answer
+        self.decisionId = decisionId
+    }
+}

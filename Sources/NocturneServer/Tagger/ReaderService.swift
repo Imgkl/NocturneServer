@@ -49,7 +49,10 @@ final class ReaderService: Sendable {
 
     let anthropic: AnthropicClient
     let settings: SettingsStore
+    /// The system block for the bundled guide; an edited guide is rendered per call.
     let systemBlock: String
+    let fallbackRules: String
+    let buckets: [String: MoodBucket]
     let knownSlugs: Set<String>
     let maxTags: Int
     let logger: Logger
@@ -63,6 +66,8 @@ final class ReaderService: Sendable {
         self.anthropic = anthropic
         self.settings = settings
         self.systemBlock = ReaderPrompt.systemBlock(rules: rules, buckets: buckets)
+        self.fallbackRules = rules
+        self.buckets = buckets
         self.knownSlugs = Set(buckets.keys)
         self.maxTags = maxTags
         self.logger = logger
@@ -87,7 +92,9 @@ final class ReaderService: Sendable {
         let model = try await model()
         let userTurn = ReaderPrompt.userTurn(
             learnedRules: learnedRules, calibration: calibration, textBlock: textBlock, maxTags: maxTags)
-        let body = try Self.requestBody(model: model, systemBlock: systemBlock, userTurn: userTurn)
+        let rules = try await GuideStore.manual(settings: settings, fallback: fallbackRules)
+        let block = rules == fallbackRules ? systemBlock : ReaderPrompt.systemBlock(rules: rules, buckets: buckets)
+        let body = try Self.requestBody(model: model, systemBlock: block, userTurn: userTurn)
         let response = try await anthropic.messages(apiKey: apiKey, model: model, body: body, context: context)
 
         if let stop = response.stopReason, stop != "end_turn" {
