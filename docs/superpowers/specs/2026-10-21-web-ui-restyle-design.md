@@ -1,6 +1,6 @@
 # Spec: NocturneServer web UI restyle after X-Cache Live
 
-> Status: **draft 2026-10-21**, direction approved by the owner ("follow that design structure"), mockup pending their pick on two choices. Replaces the Editorial Light look (EB Garamond, uppercase tracked labels, square corners, hairlines) in `frontend/nocturne-web`. Server routes do not change.
+> Status: **implemented 2026-10-21 on branch `gkl_web_ui_restyle`** (commits `2d1ae0b` foundation, `dc27407` every screen) with choice A for both open questions (a Review page, a centred film modal); the owner's pick on those two is still open, and the branch is not deployed yet. Direction approved by the owner ("follow that design structure"). Replaces the Editorial Light look (EB Garamond, uppercase tracked labels, square corners, hairlines) in `frontend/nocturne-web`. Server routes do not change.
 
 ## Why
 

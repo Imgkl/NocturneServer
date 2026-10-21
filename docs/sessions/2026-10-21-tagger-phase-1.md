@@ -41,6 +41,10 @@ A hotspot drop paused the run for half an hour (the Mac fell off the LAN; the Pi
 
 The next step is the owner's: review the 197 watched films in the queue, then Start auto-tag with scope unwatched.
 
+## Web UI restyle (same day, evening)
+
+The owner wants the admin UI in X-Cache Live's language. Spec: `docs/superpowers/specs/2026-10-21-web-ui-restyle-design.md`; mockup with real posters: https://claude.ai/artifact/AeMZUkQuTXFDJMka27Eo1M. Implemented on `gkl_web_ui_restyle` (cut from the tagger branch): Geist and the token set, pill primitives, one header with the search pill and the Sync menu, centred tabs, a mood band of poster collages, poster cards with pills, a Review page of rows with one-tap mood pills and keyboard moves, a film modal with the story source card and the reader's evidence, an accordion settings page, the onboarding wizard. Checked locally against the fake Jellyfin: library, settings, review, film modal. Not deployed: the owner's two picks (review page or tray, film modal or sheet) are open; A was built for both.
+
 ## Not verified yet (owner touchpoints)
 
 1. **Reader live check (plan Task 9).** No Anthropic key on this Mac. On the Pi, with `models.reader = claude-haiku-5-5`: tag two films, then confirm in `api_calls` that the second call has `cache_read_input_tokens > 0` in `units_json` and that the response parsed (a `decisions` row with `reader_json` and outcome other than `error`).
