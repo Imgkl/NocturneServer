@@ -49,6 +49,7 @@ interface SettingsPageProps {
   onSaveJevKey: (key: string) => Promise<void>;
   onTestJev: () => Promise<JevTestResult>;
   onRegrade: (scope: BackfillScope) => Promise<void>;
+  onReplay: () => Promise<void>;
   say: (text: string, tone?: 'ok' | 'error') => void;
   onToggleAutoTag: (next: boolean) => Promise<void>;
   onClearMovies: () => Promise<void>;
@@ -62,7 +63,7 @@ export function SettingsPage(props: SettingsPageProps) {
   const {
     movieCount, untaggedCount, untaggedWatchedCount, reviewCount, backfillStatus, coverageStatus, enrichmentSummary, modelSettings, moods,
     anthKeySet, omdbKeySet, jevKeySet, jellyfinUrl, autoTagEnabled, syncing, lastSyncLabel, version, onSync, onStartBackfill, onCancelBackfill, onReprocessAll,
-    onStartCoverage, onCancelCoverage, onSaveModels, onOpenMovie, movieLookup, onSaveAnthKey, onSaveOmdbKey, onSaveJevKey, onTestJev, onRegrade, say, onToggleAutoTag, onClearMovies, onImportFile, onExportTags,
+    onStartCoverage, onCancelCoverage, onSaveModels, onOpenMovie, movieLookup, onSaveAnthKey, onSaveOmdbKey, onSaveJevKey, onTestJev, onRegrade, onReplay, say, onToggleAutoTag, onClearMovies, onImportFile, onExportTags,
   } = props;
 
   const importRef = useRef<HTMLInputElement | null>(null);
@@ -151,7 +152,7 @@ export function SettingsPage(props: SettingsPageProps) {
               Reprocess…
             </Button>
           </Row>
-          <Row title="Regrade" help={`Jev and the policy again over the ${scope === 'all' ? 'whole library' : `${scope} films`} that have a stored AI answer. AI is not called; about $0.001 per film. Changed films land in Review.`}>
+          <Row title="Regrade" help={`Jev reads the ${scope === 'all' ? 'whole library' : `${scope} films`} again with the current guide and rules; AI is not called. About $0.002 per film. For a changed guide or new rules; a changed floor applies for free from the floors table below.`}>
             <Button
               variant="outline"
               onClick={async () => {
@@ -166,8 +167,8 @@ export function SettingsPage(props: SettingsPageProps) {
             </Button>
           </Row>
           {modelSettings && (
-            <Details label="Floors per mood" hint="The grader probability each mood has to clear.">
-              <FloorsTable moods={moods} floors={modelSettings.floors} high={modelSettings.high} onSave={(floors, high) => onSaveModels({ floors, high })} />
+            <Details label="Floors per mood" hint="The grader probability each mood has to clear. Saved floors apply to the library with one more click, free.">
+              <FloorsTable moods={moods} floors={modelSettings.floors} high={modelSettings.high} onSave={(floors, high) => onSaveModels({ floors, high })} onReplay={onReplay} replayDisabledReason={anyRunActive ? 'A run is in progress' : null} />
             </Details>
           )}
           <Details label="Guide" hint={modelSettings ? `What AI reads on every film · v${modelSettings.guide_version}` : 'What AI reads on every film'}>

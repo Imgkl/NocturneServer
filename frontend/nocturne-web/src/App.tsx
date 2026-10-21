@@ -21,6 +21,7 @@ import { FilmSheet } from './components/FilmSheet';
 import { LinkAppPanel } from './components/LinkAppPanel';
 import { MoodChips, bandMoods } from './components/MoodBand';
 import { ReviewTray } from './components/ReviewTray';
+import { CheckPage } from './views/CheckPage';
 import { EvalPage } from './views/EvalPage';
 import { LibraryPage, type LibraryFilter, type LibrarySort } from './views/LibraryPage';
 import { SettingsPage } from './views/SettingsPage';
@@ -59,7 +60,7 @@ export default function App() {
   const syncStartTsRef = useRef<number | null>(null);
   const [backfillStatus, setBackfillStatus] = useState<BackfillStatusApi | null>(null);
   // What the tagger's latest run did, for the header label and the toasts.
-  const runVerb = backfillStatus?.kind === 'regrade' ? 'Regrading' : backfillStatus?.kind === 'reprocess' ? 'Re-tagging' : 'Auto-tagging';
+  const runVerb = backfillStatus?.kind === 'regrade' ? (backfillStatus.replay ? 'Replaying' : 'Regrading') : backfillStatus?.kind === 'reprocess' ? 'Re-tagging' : 'Auto-tagging';
   const backfillPollRef = useRef<number | null>(null);
   const [coverageStatus, setCoverageStatus] = useState<CoverageStatus | null>(null);
   const coveragePollRef = useRef<number | null>(null);
@@ -280,6 +281,18 @@ export default function App() {
       say(`Regrading ${status.total} films`);
     } catch (e) {
       say(e instanceof ApiError && e.status === 409 ? 'Another run is in progress' : e instanceof Error ? e.message : 'Failed to start the regrade', 'error');
+    }
+  }
+
+  // The policy again over the stored answers, no AI call, no Jev call: a changed floor reaches the films.
+  async function startReplay() {
+    try {
+      const status = await api.backfill.replay('all');
+      setBackfillStatus(status);
+      schedulePollBackfill();
+      say(`Replaying ${status.total} films, free`);
+    } catch (e) {
+      say(e instanceof ApiError && e.status === 409 ? 'Another run is in progress' : e instanceof Error ? e.message : 'Failed to start the replay', 'error');
     }
   }
 
@@ -651,6 +664,17 @@ export default function App() {
           loading={loading}
         />
       )}
+      {page === 'check' && (
+        <CheckPage
+          movieLookup={lookup}
+          onOpenMovie={(m) => openMovieIn(m, [m])}
+          say={say}
+          onVerified={() => {
+            void fetchAllMovies();
+            void fetchTeachSummary();
+          }}
+        />
+      )}
       {page === 'teach' && (
         <TeachPage
           moods={moods}
@@ -661,7 +685,7 @@ export default function App() {
           onRegradeStarted={regradeStartedElsewhere}
         />
       )}
-      {page === 'eval' && <EvalPage say={say} teachWaiting={teachWaiting} learnedRules={learnedRules} onFloorsAccepted={fetchModelSettings} />}
+      {page === 'eval' && <EvalPage say={say} teachWaiting={teachWaiting} learnedRules={learnedRules} onFloorsAccepted={fetchModelSettings} onReplay={startReplay} />}
       {page === 'settings' && (
         <SettingsPage
           movieCount={movies.length}
@@ -698,6 +722,7 @@ export default function App() {
           onSaveJevKey={saveJevKey}
           onTestJev={() => api.settings.testJev()}
           onRegrade={startRegrade}
+          onReplay={startReplay}
           say={say}
           onToggleAutoTag={toggleAutoTagging}
           onClearMovies={clearMovies}

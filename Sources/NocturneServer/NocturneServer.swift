@@ -127,7 +127,8 @@ struct NocturneServerApp {
         movieService.tagger = pipeline
         let reviewQueue = ReviewQueue(fluent: fluent, config: appConfig, movies: movieService, pipeline: pipeline)
         let backfillJob = BackfillJob(runService: runService, pipeline: pipeline, queue: reviewQueue, fluent: fluent, config: appConfig)
-        let taggerRoutes = TaggerRoutes(movies: movieService, pipeline: pipeline, queue: reviewQueue, backfill: backfillJob)
+        let verifyService = VerifyService(fluent: fluent, config: appConfig, movies: movieService)
+        let taggerRoutes = TaggerRoutes(movies: movieService, pipeline: pipeline, queue: reviewQueue, backfill: backfillJob, verify: verifyService)
         let modelSettingsRoutes = ModelSettingsRoutes(settings: settingsStore, budget: budget, coverage: coverageJob, config: appConfig, classifier: jevClient)
         let evalService = EvalService(fluent: fluent, config: appConfig, settings: settingsStore, runService: runService)
         let evalRoutes = EvalRoutes(eval: evalService)

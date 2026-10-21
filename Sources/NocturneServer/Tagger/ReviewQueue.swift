@@ -32,6 +32,14 @@ final class ReviewQueue: @unchecked Sendable {
         return rows.filter { known.contains($0.jellyfinId) }
     }
 
+    /// The film's newest row of any status: what AI last decided and why.
+    func latest(jellyfinId: String) async throws -> TagSuggestion? {
+        try await TagSuggestion.query(on: fluent.db())
+            .filter(\.$jellyfinId == jellyfinId)
+            .sort(\.$createdAt, .descending)
+            .first()
+    }
+
     func list(status: String) async throws -> [TagSuggestion] {
         try await TagSuggestion.query(on: fluent.db())
             .filter(\.$status == status)

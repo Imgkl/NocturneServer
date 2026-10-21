@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, Plus, Sparkles, X } from 'lucide-react';
-import { posterUrl } from '../lib/api';
+import { api, posterUrl } from '../lib/api';
 import { cn } from '../lib/cn';
 import { Button } from '../ui/Button';
 import { EvidenceList } from './EvidenceList';
@@ -61,7 +61,23 @@ export function FilmSheet({ movie, moods, covers, position, suggestion, jellyfin
   );
 }
 
-function Body({ movie, moods, covers, position, suggestion, jellyfinUrl, onClose, onPrev, onNext, onSaveTags, onRetag }: FilmSheetProps & { movie: Movie }) {
+function Body({ movie, moods, covers, position, suggestion: openRow, jellyfinUrl, onClose, onPrev, onNext, onSaveTags, onRetag }: FilmSheetProps & { movie: Movie }) {
+  // With no open review row, the film's newest decision still explains the moods on it.
+  const [latest, setLatest] = useState<TagSuggestionApi | null>(null);
+  useEffect(() => {
+    if (openRow) return;
+    let live = true;
+    api.movies
+      .latestSuggestion(movie.jellyfinId)
+      .then((row) => {
+        if (live) setLatest(row);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [movie.jellyfinId, openRow]);
+  const suggestion = openRow ?? latest ?? undefined;
   const original = useMemo(() => (movie.tags || []).map((t) => t.slug), [movie]);
   const [selected, setSelected] = useState<string[]>(original);
   const [pick, setPick] = useState(false);

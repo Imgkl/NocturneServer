@@ -20,6 +20,8 @@ import type {
   TagSuggestionApi,
   TeachAccepted,
   TeachGroups,
+  VerifySample,
+  VerifySaved,
   WorklistFilter,
 } from './types';
 
@@ -112,6 +114,13 @@ export const api = {
       put(`/movies/${jellyfinId}/tags`, { tagSlugs, replaceAll }),
     autoTag: (jellyfinId: string) =>
       post<TagSuggestionApi>(`/movies/${jellyfinId}/auto-tag`, {}),
+    // The film's newest decision row of any status: what AI last decided and why.
+    latestSuggestion: (jellyfinId: string) => getOrNull<TagSuggestionApi>(`/admin/movies/${enc(jellyfinId)}/suggestion`),
+  },
+  // The spot check: a seeded random sample of tagged films, judged mood by mood.
+  verify: {
+    sample: (n = 30, seed?: string) => get<VerifySample>(`/admin/verify/sample?n=${n}${seed ? `&seed=${enc(seed)}` : ''}`),
+    save: (jellyfinId: string, wrong: string[]) => post<VerifySaved>('/admin/verify', { jellyfinId, wrong }),
   },
   suggestions: {
     listPending: () =>
@@ -176,6 +185,8 @@ export const api = {
       post<BackfillStatusApi>('/admin/auto-tag/reprocess-all', { scope }),
     // The grader and the policy again over films with a stored AI answer; AI is not called.
     regrade: (scope: BackfillScope = 'all') => post<BackfillStatusApi>('/admin/auto-tag/regrade', { scope }),
+    // The policy again over the stored answers: no AI call, no grader call. For a floor change.
+    replay: (scope: BackfillScope = 'all') => post<BackfillStatusApi>('/admin/auto-tag/replay', { scope }),
     cancel: () => post<BackfillStatusApi>('/admin/auto-tag/cancel'),
     status: () => get<BackfillStatusApi>('/admin/auto-tag/backfill/status'),
   },

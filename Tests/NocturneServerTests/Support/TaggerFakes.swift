@@ -91,7 +91,13 @@ func classifierAnswer(_ probabilities: [String: Double], primary: String? = nil,
     let pick = primary ?? probabilities.max { $0.value < $1.value }?.key ?? "none"
     let pass1 = ClassifierChoice(choice: pick, probabilities: probabilities, confidence: 0.9)
     let pass2 = ClassifierChoice(choice: secondPick ?? pick, probabilities: probabilities, confidence: 0.9)
-    return ClassifierAnswer(provider: "typesafe", model: "jev-1.13.0", probabilities: probabilities, pass1: pass1, pass2: pass2, rawJson: "{\"answers\":{}}", inputTokens: 12_000)
+    // The raw JSON is shaped like Jev's response, so a replay can parse the stored answer back.
+    var answers: [String: Any] = [:]
+    for (slug, p) in probabilities { answers[JevClient.questionKey(for: slug)] = ["noul": p] }
+    answers["primary_pass1"] = ["choice": pass1.choice, "probabilities": probabilities, "confidence": 0.9]
+    answers["primary_pass2"] = ["choice": pass2.choice, "probabilities": probabilities, "confidence": 0.9]
+    let raw = (try? JSONSerialization.data(withJSONObject: ["model": "jev-1.13.0", "usage": ["input_tokens": 12_000], "answers": answers])).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+    return ClassifierAnswer(provider: "typesafe", model: "jev-1.13.0", probabilities: probabilities, pass1: pass1, pass2: pass2, rawJson: raw, inputTokens: 12_000)
 }
 
 /// A MovieService over the test database. Jellyfin is never reached by the tag paths.

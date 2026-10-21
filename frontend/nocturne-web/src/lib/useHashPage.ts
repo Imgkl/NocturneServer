@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 
-export type Page = '' | 'teach' | 'eval' | 'settings';
+export type Page = '' | 'check' | 'teach' | 'eval' | 'settings';
 
-const PAGES: Page[] = ['', 'teach', 'eval', 'settings'];
+const PAGES: Page[] = ['', 'check', 'teach', 'eval', 'settings'];
 
 function read(): Page {
   const p = location.hash.replace(/^#/, '').split(/[/?]/)[0];

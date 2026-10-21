@@ -291,6 +291,8 @@ struct BackfillStatus: Codable, Sendable {
     let scope: String?
     /// `backfill`, `reprocess` or `regrade`: what the latest run did.
     var kind: String? = nil
+    /// True for a regrade that replayed the stored answers without calling the grader.
+    var replay: Bool? = nil
 }
 
 // MARK: - OMDb DTOs

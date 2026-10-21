@@ -11,17 +11,22 @@ interface FloorsTableProps {
   floors: Record<string, number>;
   high: Record<string, number>;
   onSave: (floors: Record<string, number>, high: Record<string, number>) => Promise<void>;
+  // Re-apply the policy across the library from the stored answers (free, no grader call).
+  onReplay: () => Promise<void>;
+  replayDisabledReason?: string | null;
 }
 
 const cell = 'h-8 w-[76px] rounded-lg bg-canvas px-2 text-right text-[13px] tabular-nums text-ink outline-none ring-1 ring-inset ring-transparent transition focus:bg-white focus:ring-line-2';
 
 // One row per mood: the grader probability it has to clear (floor), and the line above which a
 // mood AI never named still becomes a suggestion (high). The Accuracy page suggests floors.
-export function FloorsTable({ moods, floors, high, onSave }: FloorsTableProps) {
+export function FloorsTable({ moods, floors, high, onSave, onReplay, replayDisabledReason }: FloorsTableProps) {
   const [f, setF] = useState<Record<string, string>>({});
   const [h, setH] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Floors were saved and not yet applied to the library.
+  const [unapplied, setUnapplied] = useState(false);
   const reset = () => {
     setF(Object.fromEntries(Object.entries(floors).map(([k, v]) => [k, String(v)])));
     setH(Object.fromEntries(Object.entries(high).map(([k, v]) => [k, String(v)])));
@@ -57,6 +62,7 @@ export function FloorsTable({ moods, floors, high, onSave }: FloorsTableProps) {
         Object.keys(changedFloors).length ? Object.fromEntries(rows.map((s) => [s, changedFloors[s] ?? floors[s]])) : floors,
         Object.keys(changedHigh).length ? Object.fromEntries(rows.map((s) => [s, changedHigh[s] ?? high[s]])) : high,
       );
+      setUnapplied(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save');
     } finally {
@@ -91,9 +97,24 @@ export function FloorsTable({ moods, floors, high, onSave }: FloorsTableProps) {
           </tbody>
         </table>
       </div>
-      <div className="mt-3 flex items-center justify-end gap-3">
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
         {error && <span className="text-[12.5px] text-bad">{error}</span>}
         {invalid && <span className="text-[12.5px] text-bad">Every value must be between 0 and 1.</span>}
+        {unapplied && !dirty && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!!replayDisabledReason}
+            reason={replayDisabledReason ?? null}
+            reasonInline={false}
+            onClick={async () => {
+              await onReplay();
+              setUnapplied(false);
+            }}
+          >
+            Apply to the library (free)
+          </Button>
+        )}
         {dirty && (
           <Button variant="ghost" size="sm" onClick={reset}>
             Reset

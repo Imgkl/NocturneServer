@@ -50,7 +50,8 @@ export type TagSuggestionApi = {
   status: string;
   // `regrade` rows are the grader's second look at a tagged film: adds, plus `remove` items for
   // the moods it would drop. Approve takes the new decision; Reject puts the film back as it was.
-  kind: 'additive' | 'removal' | 'regrade';
+  // `verify` rows are the owner's spot-check verdicts; they are never pending.
+  kind: 'additive' | 'removal' | 'regrade' | 'verify';
   removalTagSlug?: string;
   createdAt?: string;
   resolvedAt?: string;
@@ -69,7 +70,33 @@ export type BackfillStatusApi = {
   scope?: BackfillScope;
   // What the latest run did: tag untagged films, re-tag them, or grade them again.
   kind?: 'backfill' | 'reprocess' | 'regrade';
+  // A regrade that replayed the stored answers without calling the grader (a floor change).
+  replay?: boolean;
 };
+
+// The spot check: a random sample of tagged films the owner judges mood by mood.
+export type VerifyMood = {
+  slug: string;
+  title: string;
+  // The grader's probability when one ran for the film, else AI's own confidence.
+  probability?: number;
+  evidence?: string;
+};
+
+export type VerifyFilm = {
+  jellyfinId: string;
+  title: string;
+  year?: number;
+  played: boolean;
+  residue?: string;
+  moods: VerifyMood[];
+};
+
+export type VerifyTally = { films: number; judged: number; right: number; wrong: number };
+
+export type VerifySample = { films: VerifyFilm[]; remaining: number; tally: VerifyTally };
+
+export type VerifySaved = { kept: string[]; wrong: string[]; tally: VerifyTally };
 
 export type EnrichmentBucket =
   | 'english_plot'

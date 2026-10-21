@@ -9,10 +9,15 @@ struct TaggerRoutes: @unchecked Sendable {
     let pipeline: TaggerPipeline
     let queue: ReviewQueue
     let backfill: BackfillJob
+    let verify: VerifyService
     let logger = Logger(label: "TaggerRoutes")
 
     struct ApproveBody: Codable { let tags: [String]? }
     struct ScopeBody: Codable { let scope: String? }
+    struct VerifyBody: Codable {
+        let jellyfinId: String
+        let wrong: [String]?
+    }
     struct BusyResponse: Codable {
         let error: String
         let runningId: UUID
@@ -48,6 +53,29 @@ struct TaggerRoutes: @unchecked Sendable {
                 let extra = row.decisionId.flatMap { extras[$0] }
                 return TagSuggestionResponse(row, source: extra?.source, alternates: extra?.alternates ?? [])
             }))
+        }
+
+        // GET /admin/movies/:id/suggestion: the film's newest row of any status, for the film sheet.
+        admin.get("movies/:id/suggestion") { _, context in
+            let jellyfinId = String(try context.parameters.require("id"))
+            guard let row = try await self.queue.latest(jellyfinId: jellyfinId) else { throw HTTPError(.notFound, message: "no decision for this film yet") }
+            return try jsonResponse(try await self.response(row))
+        }
+
+        // The spot check: a seeded random sample of tagged films, and the owner's verdict per film.
+        admin.get("verify/sample") { request, _ in
+            let count = min(100, max(1, Int(request.uri.queryParameters["n"] ?? "30") ?? 30))
+            let seed = request.uri.queryParameters["seed"].map(String.init) ?? VerifyService.daySeed()
+            return try jsonResponse(try await self.verify.sample(count: count, seed: seed))
+        }
+
+        admin.post("verify") { request, context in
+            let body = try await request.decode(as: VerifyBody.self, context: context)
+            do {
+                return try jsonResponse(try await self.verify.save(jellyfinId: body.jellyfinId, wrong: body.wrong ?? []))
+            } catch let error as VerifyError {
+                throw HTTPError(.badRequest, message: error.description)
+            }
         }
 
         admin.post("suggestions/:id/approve") { request, context in
@@ -95,6 +123,17 @@ struct TaggerRoutes: @unchecked Sendable {
             let scope = try await self.scope(from: request, context: context)
             do {
                 _ = try await self.backfill.start(mode: .regrade, trigger: .manual, scope: scope)
+                return try jsonResponse(try await self.backfill.status())
+            } catch RunError.busy(let runningId, let kind) {
+                return try jsonResponse(BusyResponse(error: "a \(kind) run is already in progress", runningId: runningId), status: .conflict)
+            }
+        }
+
+        // POST /admin/auto-tag/replay: the policy again over the stored answers, no call to anyone.
+        admin.post("auto-tag/replay") { request, context in
+            let scope = try await self.scope(from: request, context: context)
+            do {
+                _ = try await self.backfill.start(mode: .replay, trigger: .manual, scope: scope)
                 return try jsonResponse(try await self.backfill.status())
             } catch RunError.busy(let runningId, let kind) {
                 return try jsonResponse(BusyResponse(error: "a \(kind) run is already in progress", runningId: runningId), status: .conflict)

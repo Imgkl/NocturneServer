@@ -162,7 +162,7 @@ actor RunService {
         return BackfillStatus(
             running: running, total: run.total, processed: run.processed, startedAt: run.startedAt,
             cancelled: running ? run.cancelRequested : (run.status == RunStatus.cancelled.rawValue),
-            scope: Self.params(of: run)["scope"], kind: run.kind)
+            scope: Self.params(of: run)["scope"], kind: run.kind, replay: Self.params(of: run)["replay"] == "true")
     }
 
     static func params(of run: Run) -> [String: String] {

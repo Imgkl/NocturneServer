@@ -19,11 +19,13 @@ interface EvalPageProps {
   learnedRules: number;
   // The floors changed: the caller refetches the model settings.
   onFloorsAccepted: () => Promise<void>;
+  // Re-apply the policy across the library from the stored answers (free).
+  onReplay: () => Promise<void>;
 }
 
 // X-Cache's accuracy page, for moods: the owner's own decisions replayed through the policy with
 // no AI call, the policies side by side, and a floor per mood that keeps the applied moods right.
-export function EvalPage({ say, teachWaiting, learnedRules, onFloorsAccepted }: EvalPageProps) {
+export function EvalPage({ say, teachWaiting, learnedRules, onFloorsAccepted, onReplay }: EvalPageProps) {
   const [report, setReport] = useState<EvalReport | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
 
@@ -62,6 +64,8 @@ export function EvalPage({ say, teachWaiting, learnedRules, onFloorsAccepted }: 
       await onFloorsAccepted();
       setReport(await api.eval.run());
       say(`${changes.length} floor${changes.length === 1 ? '' : 's'} updated`);
+      // The new floors reach the films through a free replay of the stored answers.
+      await onReplay();
     } catch (e) {
       say(e instanceof Error ? e.message : 'Failed to apply the floors', 'error');
     } finally {
@@ -136,7 +140,7 @@ export function EvalPage({ say, teachWaiting, learnedRules, onFloorsAccepted }: 
                       <SlidersHorizontal size={15} className="text-mute" />
                       {applied ? 'The suggested floors are in use' : changes.length ? `Use the ${changes.length} suggested floor${changes.length === 1 ? '' : 's'}` : 'No floor to suggest yet'}
                     </div>
-                    <p className="mt-0.5 text-[13px] leading-[1.45] text-mute">{changes.length ? `The lowest floor per mood whose applied moods are at least ${pct(r.targetPrecision)} right, with five or more films behind it.` : 'A floor needs five or more judged films behind it before it counts.'}</p>
+                    <p className="mt-0.5 text-[13px] leading-[1.45] text-mute">{changes.length ? `The lowest floor per mood whose applied moods are at least ${pct(r.targetPrecision)} right, with five or more films behind it. Using them replays the library for free.` : 'A floor needs five or more judged films behind it before it counts.'}</p>
                   </div>
                   <Button variant={applied ? 'secondary' : 'primary'} size="sm" disabled={busy || changes.length === 0} onClick={() => void accept()}>
                     {applied ? 'In use' : 'Use them'}

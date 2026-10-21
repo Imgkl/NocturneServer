@@ -214,7 +214,10 @@ final class TaggerPipeline: @unchecked Sendable {
             decision,
             with: .init(enrichment: enrichmentRow, reader: readerResult, classifier: classifierAnswer, policy: policy, outcome: policy.outcome, reasons: policy.reasons, models: [:], policyVersion: policyVersion))
 
-        let pending = policy.outcome != .applied
+        // A row waits for a human only when the film is unsure: nothing applied, the grader's two
+        // passes disagreed, or the story is unverified. Suggestions below the floor ride along on an
+        // auto-approved row and show on the film sheet, so the tray holds decisions, not a wall.
+        let pending = policy.unsure
         logger.info("[\(jellyfinId)] \(policy.outcome.rawValue): applied \(policy.applied.map(\.slug)), suggested \(policy.suggested.map(\.slug)), cost $\(Self.money(decision.costUsd))")
         return try await writeSuggestion(jellyfinId: jellyfinId, decision: decision, policy: policy, residue: readerResult.answer.residue, pending: pending)
     }
@@ -223,8 +226,10 @@ final class TaggerPipeline: @unchecked Sendable {
     /// decision's reader answer is reused, the classifier runs fresh, the policy decides again.
     /// Additions follow the policy; a mood the tagger applied earlier that the new decision does
     /// not apply is reported as a removal item, never removed.
+    /// With `reuseClassifier` (a replay) the stored grader answer is used too, so a changed floor or
+    /// policy re-applies across the library without a call to anyone.
     @discardableResult
-    func regrade(jellyfinId: String, trigger: RunTrigger, runId: UUID? = nil) async throws -> TagSuggestion {
+    func regrade(jellyfinId: String, trigger: RunTrigger, runId: UUID? = nil, reuseClassifier: Bool = false) async throws -> TagSuggestion {
         let db = fluent.db()
         guard let movie = try await Movie.query(on: db).filter(\.$jellyfinId == jellyfinId).with(\.$tags).first() else {
             throw TaggerError.movieNotFound(jellyfinId)
@@ -248,12 +253,25 @@ final class TaggerPipeline: @unchecked Sendable {
         let decision = try await recorder.begin(jellyfinId: jellyfinId, runId: runId, policyVersion: PolicyEngine.legacyVersion)
         decision.readerJson = readerJson
         let context = CallContext(runId: runId, decisionId: decision.id)
-        let enrichmentRow = try await enrichment.enrich(jellyfinId: jellyfinId, item: nil, force: false, context: context)
-        let textBlock = enrichmentRow.textBlock ?? Self.fallbackBlock(from: enrichmentRow)
-        let unverified = enrichmentRow.enrichmentSource == .model
-
         let policyConfig = (try? await PolicyConfig.load(settings: settings, slugs: config.moodBuckets.keys)) ?? PolicyConfig.defaults(slugs: config.moodBuckets.keys)
-        let (classifierAnswer, classifierNote) = try await classify(textBlock: textBlock, jellyfinId: jellyfinId, policy: policyConfig, context: context)
+        let enrichmentRow: MovieEnrichment
+        let classifierAnswer: ClassifierAnswer?
+        let classifierNote: String?
+        if reuseClassifier {
+            // A replay: the stored story row and the stored grader answer, no call to anyone.
+            if let stored = try await MovieEnrichment.find(jellyfinId, on: db) {
+                enrichmentRow = stored
+            } else {
+                enrichmentRow = try await enrichment.enrich(jellyfinId: jellyfinId, item: nil, force: false, context: context)
+            }
+            classifierAnswer = Self.storedClassifier(of: previous, buckets: config.moodBuckets)
+            classifierNote = (classifierAnswer == nil && policyConfig.provider != .none) ? "no stored grader answer to replay" : nil
+        } else {
+            enrichmentRow = try await enrichment.enrich(jellyfinId: jellyfinId, item: nil, force: false, context: context)
+            let textBlock = enrichmentRow.textBlock ?? Self.fallbackBlock(from: enrichmentRow)
+            (classifierAnswer, classifierNote) = try await classify(textBlock: textBlock, jellyfinId: jellyfinId, policy: policyConfig, context: context)
+        }
+        let unverified = enrichmentRow.enrichmentSource == .model
         let cap = max(0, config.maxAutoTags - (try await movies.userTagCount(jellyfinId: jellyfinId)))
         let (policy, policyVersion) = decide(reader: readerAnswer, classifier: classifierAnswer, note: classifierNote, policy: policyConfig, cap: cap, unverified: unverified)
 
@@ -274,15 +292,25 @@ final class TaggerPipeline: @unchecked Sendable {
         let added = keptBySystem.subtracting(before)
         var reasons = policy.reasons
         for slug in removals { reasons.append("\(slug): removal suggested, the new decision does not apply it") }
+        var models = ["regrade": "true"]
+        if reuseClassifier { models["replay"] = "true" }
         try await recorder.complete(
             decision,
-            with: .init(enrichment: enrichmentRow, reader: nil, classifier: classifierAnswer, policy: policy, outcome: policy.outcome, reasons: reasons, models: ["regrade": "true"], policyVersion: policyVersion))
-        let needsHuman = policy.outcome != .applied || !removals.isEmpty
+            with: .init(enrichment: enrichmentRow, reader: nil, classifier: classifierAnswer, policy: policy, outcome: policy.outcome, reasons: reasons, models: models, policyVersion: policyVersion))
+        // Same rule as a first tagging, plus a human looks at every mood the new decision would drop.
+        let needsHuman = policy.unsure || !removals.isEmpty
         logger.info("[\(jellyfinId)] regrade \(policy.outcome.rawValue): applied \(policy.applied.map(\.slug)), suggested \(policy.suggested.map(\.slug)), removals \(removals)")
         return try await writeSuggestion(jellyfinId: jellyfinId, decision: decision, policy: policy, residue: readerAnswer.residue, pending: needsHuman, regrade: (removals: removals, added: added))
     }
 
     // MARK: Helpers
+
+    /// The grader answer stored on a decision, parsed the way the live call is.
+    static func storedClassifier(of decision: Decision, buckets: [String: MoodBucket]) -> ClassifierAnswer? {
+        guard let json = decision.classifierJson, let response = try? JSONDecoder().decode(JevClient.Response.self, from: Data(json.utf8)) else { return nil }
+        let order1 = buckets.keys.sorted() + [JevClient.noneOption]
+        return JevClient.parse(response, buckets: buckets, order1: order1, provider: decision.classifierProvider ?? "typesafe", fallbackModel: JevClient.defaultModel, rawJson: json)
+    }
 
     /// A regrade row marks what it put on the film (so a reject can undo it) and lists the moods it would drop.
     private func writeSuggestion(jellyfinId: String, decision: Decision, policy: PolicyDecision, residue: String?, pending: Bool, regrade: (removals: [String], added: Set<String>)? = nil) async throws -> TagSuggestion {

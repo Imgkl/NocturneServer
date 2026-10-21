@@ -11,12 +11,15 @@ final class BackfillJob: @unchecked Sendable {
         case reprocessAll
         /// Classifier-only pass over films that already carry a reader answer; no reader call.
         case regrade
+        /// The policy again over the stored answers: no reader call, no classifier call. For a
+        /// changed floor or policy version.
+        case replay
 
         var kind: RunKind {
             switch self {
             case .backfill: return .backfill
             case .reprocessAll: return .reprocess
-            case .regrade: return .regrade
+            case .regrade, .replay: return .regrade
             }
         }
     }
@@ -56,7 +59,9 @@ final class BackfillJob: @unchecked Sendable {
     /// Starts in the background and returns the run. Throws `RunError.busy` when another run is active.
     func start(mode: Mode, trigger: RunTrigger, scope: Scope = .all) async throws -> Run {
         let ids = try await candidates(for: mode, scope: scope)
-        let run = try await runService.start(kind: mode.kind, trigger: trigger, total: ids.count, params: ["scope": scope.rawValue])
+        var params = ["scope": scope.rawValue]
+        if mode == .replay { params["replay"] = "true" }
+        let run = try await runService.start(kind: mode.kind, trigger: trigger, total: ids.count, params: params)
         let runId = try run.requireID()
         Task.detached { [self] in
             await self.run(runId: runId, ids: ids, replaceExistingPending: true, mode: mode)
@@ -93,7 +98,7 @@ final class BackfillJob: @unchecked Sendable {
                 try await old.save(on: db)
             }
             return jellyfinIds
-        case .regrade:
+        case .regrade, .replay:
             return all.filter { $0.currentDecisionId != nil }.map(\.jellyfinId)
         }
     }
@@ -112,15 +117,15 @@ final class BackfillJob: @unchecked Sendable {
     /// any other failure marks the film and continues.
     func run(runId: UUID, ids: [String], replaceExistingPending: Bool, mode: Mode = .backfill) async {
         let titles = await pipeline.titles()
-        let calibration = mode == .regrade ? [:] : (try? await buildCalibration(fluent: fluent, titles: titles, availableTags: config.moodBuckets)) ?? [:]
+        let calibration = (mode == .regrade || mode == .replay) ? [:] : (try? await buildCalibration(fluent: fluent, titles: titles, availableTags: config.moodBuckets)) ?? [:]
         var processed = 0
         var stats: [String: Int] = ["applied": 0, "review": 0, "error": 0, "skipped": 0]
 
         for id in ids {
             if (try? await runService.isCancelled(runId)) ?? true { break }
             do {
-                let sugg = mode == .regrade
-                    ? try await pipeline.regrade(jellyfinId: id, trigger: .manual, runId: runId)
+                let sugg = (mode == .regrade || mode == .replay)
+                    ? try await pipeline.regrade(jellyfinId: id, trigger: .manual, runId: runId, reuseClassifier: mode == .replay)
                     : try await pipeline.tag(
                         jellyfinId: id, trigger: .manual, replaceExistingPending: replaceExistingPending,
                         calibration: calibration, runId: runId)

@@ -9,7 +9,7 @@ import Testing
 @Suite struct SuggestionFlowTests {
     private let config = NocturneConfiguration()
 
-    @Test func mixedAnswerAppliesStrongTagsAndQueuesTheRest() async throws {
+    @Test func mixedAnswerAppliesStrongTagsAndKeepsTheRestAsSuggestions() async throws {
         try await withTestFluent { fluent in
             try await Movie(jellyfinId: "jf-heat").save(on: fluent.db())
             let enricher = ScriptedEnricher()
@@ -18,9 +18,9 @@ import Testing
             let (pipeline, _, _) = try await makePipeline(fluent, config: config, enricher: enricher, reader: reader)
 
             let sugg = try await pipeline.tag(jellyfinId: "jf-heat", trigger: .manual)
-            #expect(sugg.status == "pending")
+            #expect(sugg.status == "approved")  // tags applied and a suggestion below the floor: no human needed
             #expect(sugg.suggestedTags == ["cat-and-mouse", "crime-grit-style"])
-            #expect(sugg.resolvedBy == nil)
+            #expect(sugg.resolvedBy == "auto")
             #expect(sugg.reasoning == "A quiet ache.")
             let items = try JSONDecoder().decode([SuggestionItem].self, from: Data(try #require(sugg.itemsJson).utf8))
             #expect(items.map(\.slug) == ["cat-and-mouse", "crime-grit-style", "bittersweet-aftermath"])
@@ -255,7 +255,7 @@ import Testing
             #expect(classifier.calls == 1)
             #expect(classifier.lastGuide??.contains("Rule 0") == true)
             #expect(sugg.suggestedTags == ["cat-and-mouse"])
-            #expect(sugg.status == "pending")  // ha-ha-ha and heist-energy wait for a human
+            #expect(sugg.status == "approved")  // ha-ha-ha and heist-energy ride along as suggestions; the passes agree
             let items = try JSONDecoder().decode([SuggestionItem].self, from: Data(try #require(sugg.itemsJson).utf8))
             #expect(items.map(\.slug) == ["cat-and-mouse", "heist-energy", "ha-ha-ha"])
             #expect(items[1].reason == "classifier 0.9, reader silent")
@@ -263,7 +263,7 @@ import Testing
             let decision = try #require(try await Decision.query(on: fluent.db()).filter(\.$jellyfinId == "jf-1").first())
             #expect(decision.policyVersion == "p1")
             #expect(decision.classifierProvider == "typesafe")
-            #expect(decision.classifierJson == "{\"answers\":{}}")
+            #expect(decision.classifierJson?.contains("mood_cat_and_mouse") == true)  // the raw answer, replayable
             let models = try JSONDecoder().decode([String: String].self, from: Data(decision.modelsJson.utf8))
             #expect(models["classifier"] == "jev-1.13.0")
         }
@@ -337,8 +337,8 @@ import Testing
             let queue = ReviewQueue(fluent: fluent, config: config, movies: movies, pipeline: pipeline)
             for id in ["jf-5", "jf-6"] {
                 let first = try await pipeline.tag(jellyfinId: id, trigger: .manual)
-                #expect(first.status == "pending")  // ha-ha-ha named by the reader, below the floor: suggested
-                _ = try await queue.approve(try first.requireID())
+                #expect(first.status == "approved" && first.resolvedBy == "auto")  // ha-ha-ha below the floor rides along as a suggestion
+                try await movies.promoteAutoTagsToUser(jellyfinId: id)  // the owner confirms the film on the spot check
                 #expect(try await tagSlugs(fluent, id) == ["cat-and-mouse:user"])
             }
 
@@ -356,6 +356,29 @@ import Testing
             let editedRow = try await pipeline.regrade(jellyfinId: "jf-6", trigger: .manual)
             _ = try await queue.approve(try editedRow.requireID(), overrideTags: ["ha-ha-ha", "quiet-epics"])
             #expect(try await tagSlugs(fluent, "jf-6") == ["cat-and-mouse:user", "ha-ha-ha:user", "quiet-epics:user"])
+        }
+    }
+
+    /// A replay re-applies the policy from the stored answers: a lowered floor applies the mood the
+    /// grader backed, with no call to the reader or the grader.
+    @Test func replayReappliesTheStoredAnswersUnderNewFloors() async throws {
+        try await withTestFluent { fluent in
+            try await Movie(jellyfinId: "jf-7").save(on: fluent.db())
+            let reader = ScriptedReader(answer: answer([candidate("cat-and-mouse", 0.95), candidate("ha-ha-ha", 0.9)]))
+            let classifier = ScriptedClassifier(answer: classifierAnswer(["cat-and-mouse": 0.92, "ha-ha-ha": 0.65], primary: "cat-and-mouse"))
+            let (pipeline, _, settings) = try await makePipeline(fluent, config: config, enricher: ScriptedEnricher(), reader: reader, classifier: classifier)
+            let first = try await pipeline.tag(jellyfinId: "jf-7", trigger: .manual)
+            #expect(first.status == "approved")
+            #expect(try await tagSlugs(fluent, "jf-7") == ["cat-and-mouse:auto"])  // ha-ha-ha at 0.65 is under its 0.80 floor
+
+            try await settings.set(PolicyConfig.floorsSetting, PolicyConfig.encode(["ha-ha-ha": 0.6]))
+            let replayed = try await pipeline.regrade(jellyfinId: "jf-7", trigger: .manual, reuseClassifier: true)
+            #expect(reader.calls == 1 && classifier.calls == 1)
+            #expect(replayed.status == "approved" && replayed.kind == TaggerPipeline.regradeKind)
+            #expect(try await tagSlugs(fluent, "jf-7") == ["cat-and-mouse:auto", "ha-ha-ha:auto"])
+            let decision = try #require(try await Decision.find(try #require(replayed.decisionId), on: fluent.db()))
+            #expect(decision.modelsJson.contains("\"replay\":\"true\""))
+            #expect(decision.policyVersion == "p1")
         }
     }
 }

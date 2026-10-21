@@ -165,6 +165,7 @@ export function ProgressLine({ active }: { active: boolean }) {
 
 const TABS: { id: Page; label: string }[] = [
   { id: '', label: 'Library' },
+  { id: 'check', label: 'Check' },
   { id: 'teach', label: 'Teach' },
   { id: 'eval', label: 'Accuracy' },
   { id: 'settings', label: 'Settings' },
