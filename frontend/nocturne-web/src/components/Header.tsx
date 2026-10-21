@@ -165,14 +165,17 @@ export function ProgressLine({ active }: { active: boolean }) {
 
 const TABS: { id: Page; label: string }[] = [
   { id: '', label: 'Library' },
+  { id: 'teach', label: 'Teach' },
+  { id: 'eval', label: 'Accuracy' },
   { id: 'settings', label: 'Settings' },
 ];
 
 // Where the underline was on the previous page, so the bar starts there and slides.
 let lastBar: { x: number; w: number } | null = null;
 
-// The page tabs: one centred row under the header on every page. One underline slides to the current tab.
-export function PageTabs({ page }: { page: Page }) {
+// The page tabs: one centred row under the header on every page. One underline slides to the
+// current tab. `counts` puts a faint number beside a tab (films waiting on Teach).
+export function PageTabs({ page, counts }: { page: Page; counts?: Partial<Record<Page, number>> }) {
   const inner = useRef<HTMLDivElement>(null);
   const [bar, setBar] = useState<{ x: number; w: number } | null>(lastBar);
   useEffect(() => {
@@ -208,6 +211,7 @@ export function PageTabs({ page }: { page: Page }) {
                 className={cn('relative inline-flex h-11 items-center gap-1.5 whitespace-nowrap px-2.5 text-[14px] font-medium tracking-[-0.01em] transition-colors duration-200 sm:px-3', active ? 'text-ink' : 'text-mute hover:text-ink')}
               >
                 <span data-label>{t.label}</span>
+                {!!counts?.[t.id] && <span className={cn('text-[12px] tabular-nums', active ? 'text-faint' : 'text-[#b4b4b4]')}>{counts[t.id]}</span>}
               </a>
             );
           })}

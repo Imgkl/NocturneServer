@@ -83,8 +83,15 @@ final class ReviewQueue: @unchecked Sendable {
         return Set(rows.map(\.jellyfinId))
     }
 
-    /// Approve. Without `overrideTags` the applied tags are confirmed as the admin's; with them,
-    /// the admin's edited set replaces the film's tags. Legacy removal rows drop their tag.
+    /// The per-mood items stored on a row; empty for rows written before items existed.
+    static func items(of row: TagSuggestion) -> [SuggestionItem] {
+        guard let json = row.itemsJson, let items = try? JSONDecoder().decode([SuggestionItem].self, from: Data(json.utf8)) else { return [] }
+        return items
+    }
+
+    /// Approve. Without `overrideTags` the applied tags are confirmed as the admin's (a regrade row
+    /// first drops the moods its new decision no longer applies); with them, the admin's edited set
+    /// replaces the tagger's tags while the admin's own earlier tags stay. Legacy removal rows drop their tag.
     func approve(_ id: UUID, overrideTags: [String]? = nil) async throws -> TagSuggestion {
         let db = fluent.db()
         guard let sugg = try await TagSuggestion.find(id, on: db) else { throw TaggerError.notFound(id) }
@@ -96,9 +103,12 @@ final class ReviewQueue: @unchecked Sendable {
             }
         } else if let overrideTags {
             let valid = overrideTags.filter { config.moodBuckets[$0] != nil }
-            _ = try await movies.updateMovieTags(jellyfinId: sugg.jellyfinId, tagSlugs: valid, replaceAll: true, labelSource: .user)
+            try await movies.removeAutoTags(jellyfinId: sugg.jellyfinId, tagSlugs: try await movies.autoTagSlugs(jellyfinId: sugg.jellyfinId))
+            _ = try await movies.updateMovieTags(jellyfinId: sugg.jellyfinId, tagSlugs: valid, replaceAll: false, labelSource: .user)
             sugg.suggestedTags = valid
         } else {
+            let removals = Self.items(of: sugg).filter { $0.kind == .remove }.map(\.slug)
+            try await movies.removeAutoTags(jellyfinId: sugg.jellyfinId, tagSlugs: removals)
             try await movies.promoteAutoTagsToUser(jellyfinId: sugg.jellyfinId)
         }
 
@@ -109,12 +119,16 @@ final class ReviewQueue: @unchecked Sendable {
         return sugg
     }
 
-    /// Reject. Additive rows lose the tags the tagger applied; the admin's own tags stay.
+    /// Reject. Additive rows lose the tags the tagger applied; a regrade row loses only what the
+    /// regrade put on the film, so the film goes back to how it was; the admin's own tags stay.
     func reject(_ id: UUID) async throws -> TagSuggestion {
         let db = fluent.db()
         guard let sugg = try await TagSuggestion.find(id, on: db) else { throw TaggerError.notFound(id) }
         guard sugg.status == "pending" else { throw TaggerError.alreadyResolved(id) }
-        if sugg.kind != "removal" {
+        if sugg.kind == TaggerPipeline.regradeKind {
+            let added = Self.items(of: sugg).filter { $0.kind == .add && $0.applied && $0.reason == TaggerPipeline.addedOnRegrade }.map(\.slug)
+            try await movies.removeAutoTags(jellyfinId: sugg.jellyfinId, tagSlugs: added)
+        } else if sugg.kind != "removal" {
             try await movies.removeAutoTags(jellyfinId: sugg.jellyfinId, tagSlugs: sugg.suggestedTags)
         }
         sugg.status = "rejected"

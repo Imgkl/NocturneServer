@@ -48,7 +48,9 @@ export type TagSuggestionApi = {
   confidence: number;
   reasoning?: string;
   status: string;
-  kind: 'additive' | 'removal';
+  // `regrade` rows are the grader's second look at a tagged film: adds, plus `remove` items for
+  // the moods it would drop. Approve takes the new decision; Reject puts the film back as it was.
+  kind: 'additive' | 'removal' | 'regrade';
   removalTagSlug?: string;
   createdAt?: string;
   resolvedAt?: string;
@@ -65,6 +67,8 @@ export type BackfillStatusApi = {
   startedAt?: string;
   cancelled?: boolean;
   scope?: BackfillScope;
+  // What the latest run did: tag untagged films, re-tag them, or grade them again.
+  kind?: 'backfill' | 'reprocess' | 'regrade';
 };
 
 export type EnrichmentBucket =
@@ -117,6 +121,14 @@ export type CoverageStatus = {
   error?: string;
 };
 
+// Who grades AI's proposals: nobody (AI's own confidence decides) or Jev, TypeSafe's classifier.
+export type ClassifierProvider = 'none' | 'jev';
+
+// Which policy turns the answers into tags. `p1`: AI proposes, the grader has to agree above the
+// mood's floor. `p0`: the grader alone. `p-legacy`: AI's own confidence against the floors.
+// `pr`: AI only, nothing applied (a dry run).
+export type PolicyVersion = 'p1' | 'p0' | 'p-legacy' | 'pr';
+
 export type ModelSettings = {
   reader_model: string;
   strong_model: string;
@@ -126,6 +138,17 @@ export type ModelSettings = {
   budget_spent_usd: number;
   model_fallback: boolean;
   enrichment: EnrichmentSummary;
+  classifier_provider: ClassifierProvider;
+  classifier_providers: ClassifierProvider[];
+  classifier_model: string;
+  jev_key_set: boolean;
+  policy_version: PolicyVersion;
+  policy_versions: PolicyVersion[];
+  // Per mood: the grader probability a mood has to clear to be applied.
+  floors: Record<string, number>;
+  // Per mood: above this line a mood AI never named still becomes a suggestion.
+  high: Record<string, number>;
+  guide_version: number;
 };
 
 export type ModelSettingsUpdate = Partial<{
@@ -133,7 +156,115 @@ export type ModelSettingsUpdate = Partial<{
   strong_model: string;
   monthly_budget_usd: number;
   model_fallback: boolean;
+  classifier_provider: ClassifierProvider;
+  classifier_model: string;
+  policy_version: PolicyVersion;
+  floors: Record<string, number>;
+  high: Record<string, number>;
 }>;
+
+export type JevTestResult = {
+  ok: boolean;
+  model?: string;
+  answered?: number;
+  error?: string;
+};
+
+// The guide AI reads on every film: the manual text (the bundled one until edited) and the rules
+// learned from the owner's Teach answers.
+export type LearnedRule = {
+  boundary: string;
+  text: string;
+  acceptedAt: string;
+};
+
+export type GuideResponse = {
+  manual: string;
+  bundled: boolean;
+  learned: LearnedRule[];
+  version: number;
+};
+
+// The eval: the policy replayed over the owner's own decisions, no model call.
+export type EvalMetrics = {
+  floor: number;
+  applied: number;
+  correct: number;
+  wrong: number;
+  precision?: number;
+  wilsonLower?: number;
+  recall?: number;
+};
+
+export type EvalMoodReport = {
+  slug: string;
+  title: string;
+  positives: number;
+  negatives: number;
+  currentFloor: number;
+  current: EvalMetrics;
+  grid: EvalMetrics[];
+  suggestedFloor?: number;
+  brier?: number;
+};
+
+export type EvalOverall = {
+  applied: number;
+  correct: number;
+  wrong: number;
+  precision?: number;
+  wilsonLower?: number;
+  filmsWithApplied: number;
+  films: number;
+};
+
+export type EvalReport = {
+  generatedAt: string;
+  policyVersion: PolicyVersion;
+  targetPrecision: number;
+  films: number;
+  positives: number;
+  negatives: number;
+  moods: EvalMoodReport[];
+  overall: EvalOverall;
+  overallAtSuggested: EvalOverall;
+  versions: Record<string, EvalOverall>;
+};
+
+// Teach: films where the owner and the system disagree, grouped by the two moods in question.
+export type TeachBoundary = { key: string; left: string; right: string };
+
+export type TeachFilm = {
+  jellyfinId: string;
+  title: string;
+  residue?: string;
+  leftProbability?: number;
+  rightProbability?: number;
+  systemPick?: string;
+  adminPick?: string;
+  // The owner's answer: the left slug, the right slug, or `neither`.
+  answer?: string;
+  // Who the probabilities come from: the grader, or AI's own confidence.
+  probabilitySource?: 'classifier' | 'reader';
+};
+
+export type TeachGroup = {
+  boundary: TeachBoundary;
+  leftTitle: string;
+  rightTitle: string;
+  films: TeachFilm[];
+  answered: number;
+  rules: string[];
+};
+
+export type TeachGroups = { groups: TeachGroup[]; guideVersion: number };
+
+export type TeachAccepted = {
+  guideVersion: number;
+  rules: number;
+  regradeStarted: boolean;
+  regradeFilms: number;
+};
 
 export type MoodBuckets = Record<string, { title: string; description: string }>;
 
@@ -162,6 +293,7 @@ export type SettingsInfo = {
   jellyfin_username?: string;
   anthropic_key_set: boolean;
   omdb_key_set: boolean;
+  jev_key_set: boolean;
   enable_auto_tagging: boolean;
 };
 

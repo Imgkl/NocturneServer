@@ -6,8 +6,11 @@ import type {
   DiscoveredServer,
   EnrichmentRow,
   EnrichmentSummary,
+  EvalReport,
+  GuideResponse,
   JellyfinConnectResult,
   JellyfinTestResult,
+  JevTestResult,
   ModelSettings,
   ModelSettingsUpdate,
   MoodBuckets,
@@ -15,6 +18,8 @@ import type {
   SettingsInfo,
   SyncStatus,
   TagSuggestionApi,
+  TeachAccepted,
+  TeachGroups,
   WorklistFilter,
 } from './types';
 
@@ -80,6 +85,10 @@ function put<T = unknown>(path: string, body?: unknown): Promise<T> {
   });
 }
 
+function del<T = unknown>(path: string): Promise<T> {
+  return request<T>(path, { method: 'DELETE' });
+}
+
 // Fire-and-forget; doesn't throw on non-2xx. For endpoints where the caller
 // intentionally doesn't await (e.g. starting a sync + polling its status).
 function postVoid(path: string): void {
@@ -115,6 +124,9 @@ export const api = {
     info: () => get<SettingsInfo>('/settings/info'),
     saveAnthropicKey: (key: string) => post('/settings/keys', { anthropic_api_key: key }),
     saveOmdbKey: (key: string) => post('/settings/keys', { omdb_api_key: key }),
+    saveJevKey: (key: string) => post('/settings/keys', { jev_api_key: key }),
+    // One small classification with the stored key.
+    testJev: () => post<JevTestResult>('/settings/jev-test'),
     setAutoTagging: (enabled: boolean) => post('/settings/keys', { enable_auto_tagging: enabled }),
     clearMovies: () => post('/settings/clear-movies'),
     saveJellyfin: (url: string, username: string, password: string) =>
@@ -125,6 +137,27 @@ export const api = {
       }),
     models: () => get<ModelSettings>('/settings/models'),
     saveModels: (update: ModelSettingsUpdate) => post<ModelSettings>('/settings/models', update),
+  },
+  // The guide AI reads on every film: the manual text and the learned rules.
+  guide: {
+    get: () => get<GuideResponse>('/settings/guide'),
+    save: (manual: string) => put<GuideResponse>('/settings/guide', { manual }),
+    reset: () => put<GuideResponse>('/settings/guide/reset'),
+    removeLearned: (index: number) => del<GuideResponse>(`/settings/guide/learned/${index}`),
+  },
+  // The eval replays the policy over the owner's decisions; 404 before the first run.
+  eval: {
+    latest: () => getOrNull<EvalReport>('/admin/eval'),
+    run: () => post<EvalReport>('/admin/eval'),
+    acceptFloors: () => post<{ floors: Record<string, number> }>('/admin/eval/accept-floors'),
+  },
+  teach: {
+    groups: () => get<TeachGroups>('/admin/teach'),
+    answer: (jellyfinId: string, boundary: string, answer: string) =>
+      post<{ ok: boolean; answer: string }>('/admin/teach/answer', { jellyfinId, boundary, answer }),
+    // The strong model drafts up to three rules from the answers (about $0.05).
+    previewRules: (boundary: string) => post<{ rules: string[] }>('/admin/teach/rules/preview', { boundary }),
+    acceptRules: (boundary: string, rules: string[]) => post<TeachAccepted>('/admin/teach/rules/accept', { boundary, rules }),
   },
   sync: {
     status: () => get<SyncStatus>('/sync/status'),
@@ -141,6 +174,8 @@ export const api = {
     start: (scope: BackfillScope = 'all') => post<BackfillStatusApi>('/admin/auto-tag/backfill', { scope }),
     reprocessAll: (scope: BackfillScope = 'all') =>
       post<BackfillStatusApi>('/admin/auto-tag/reprocess-all', { scope }),
+    // The grader and the policy again over films with a stored AI answer; AI is not called.
+    regrade: (scope: BackfillScope = 'all') => post<BackfillStatusApi>('/admin/auto-tag/regrade', { scope }),
     cancel: () => post<BackfillStatusApi>('/admin/auto-tag/cancel'),
     status: () => get<BackfillStatusApi>('/admin/auto-tag/backfill/status'),
   },

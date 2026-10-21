@@ -223,6 +223,18 @@ final class MovieService {
 
   /// Remove the specific tags the tagger added to a movie. Rows the admin wrote
   /// (`label_source = user`) are never touched.
+  /// The slugs of the tagger's own tags on a film (label source `auto`), sorted.
+  func autoTagSlugs(jellyfinId: String) async throws -> [String] {
+    guard let movie = try await Movie.query(on: fluent.db()).filter(\.$jellyfinId == jellyfinId).first() else { return [] }
+    return try await MovieTag.query(on: fluent.db())
+      .filter(\.$movie.$id == movie.requireID())
+      .filter(\.$labelSource == LabelSource.auto.rawValue)
+      .with(\.$tag)
+      .all()
+      .map(\.tag.slug)
+      .sorted()
+  }
+
   func removeAutoTags(jellyfinId: String, tagSlugs: [String]) async throws {
     guard !tagSlugs.isEmpty else { return }
     let movie = try await Movie.query(on: fluent.db())

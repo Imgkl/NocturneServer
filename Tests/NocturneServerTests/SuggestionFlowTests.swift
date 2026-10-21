@@ -296,7 +296,7 @@ import Testing
             try await Movie(jellyfinId: "jf-4").save(on: fluent.db())
             let reader = ScriptedReader(answer: answer([candidate("cat-and-mouse", 0.95), candidate("ha-ha-ha", 0.9)]))
             let classifier = ScriptedClassifier(answer: classifierAnswer(["cat-and-mouse": 0.92, "ha-ha-ha": 0.9], primary: "cat-and-mouse"))
-            let (pipeline, _, _) = try await makePipeline(fluent, config: config, enricher: ScriptedEnricher(), reader: reader, classifier: classifier)
+            let (pipeline, movies, _) = try await makePipeline(fluent, config: config, enricher: ScriptedEnricher(), reader: reader, classifier: classifier)
             let first = try await pipeline.tag(jellyfinId: "jf-4", trigger: .manual)
             #expect(first.status == "approved")
             #expect(try await tagSlugs(fluent, "jf-4") == ["cat-and-mouse:auto", "ha-ha-ha:auto"])
@@ -317,6 +317,45 @@ import Testing
             let regradeDecision = try #require(decisions.first { ($0.reasonsJson).contains("removal suggested") })
             #expect(regradeDecision.modelsJson.contains("\"regrade\":\"true\""))
             #expect(try await TagSuggestion.query(on: fluent.db()).filter(\.$jellyfinId == "jf-4").filter(\.$status == "pending").count() == 1)
+            #expect(regraded.kind == TaggerPipeline.regradeKind)
+
+            // Approving the regrade takes the new decision: ha-ha-ha comes off, cat-and-mouse becomes the owner's.
+            let queue = ReviewQueue(fluent: fluent, config: config, movies: movies, pipeline: pipeline)
+            _ = try await queue.approve(try regraded.requireID())
+            #expect(try await tagSlugs(fluent, "jf-4") == ["cat-and-mouse:user"])
+        }
+    }
+
+    /// A regrade that adds a mood the owner has not seen yet: reject puts the film back as it was,
+    /// approve with an edited set keeps the owner's own earlier tags.
+    @Test func regradeRejectUndoesWhatItAddedAndOverrideKeepsTheOwnersTags() async throws {
+        try await withTestFluent { fluent in
+            for id in ["jf-5", "jf-6"] { try await Movie(jellyfinId: id).save(on: fluent.db()) }
+            let reader = ScriptedReader(answer: answer([candidate("cat-and-mouse", 0.95), candidate("ha-ha-ha", 0.9)]))
+            let classifier = ScriptedClassifier(answer: classifierAnswer(["cat-and-mouse": 0.92, "ha-ha-ha": 0.3], primary: "cat-and-mouse"))
+            let (pipeline, movies, _) = try await makePipeline(fluent, config: config, enricher: ScriptedEnricher(), reader: reader, classifier: classifier)
+            let queue = ReviewQueue(fluent: fluent, config: config, movies: movies, pipeline: pipeline)
+            for id in ["jf-5", "jf-6"] {
+                let first = try await pipeline.tag(jellyfinId: id, trigger: .manual)
+                #expect(first.status == "pending")  // ha-ha-ha named by the reader, below the floor: suggested
+                _ = try await queue.approve(try first.requireID())
+                #expect(try await tagSlugs(fluent, id) == ["cat-and-mouse:user"])
+            }
+
+            // The classifier now backs ha-ha-ha but its two passes disagree: applied, yet the row needs a human.
+            classifier.answer = classifierAnswer(["cat-and-mouse": 0.93, "ha-ha-ha": 0.9], primary: "cat-and-mouse", secondPick: "ha-ha-ha")
+            let rejectedRow = try await pipeline.regrade(jellyfinId: "jf-5", trigger: .manual)
+            #expect(rejectedRow.status == "pending" && rejectedRow.kind == TaggerPipeline.regradeKind)
+            #expect(try await tagSlugs(fluent, "jf-5") == ["cat-and-mouse:user", "ha-ha-ha:auto"])
+            let items = try JSONDecoder().decode([SuggestionItem].self, from: Data(try #require(rejectedRow.itemsJson).utf8))
+            #expect(items.first { $0.slug == "ha-ha-ha" }?.reason == TaggerPipeline.addedOnRegrade)
+            #expect(items.first { $0.slug == "cat-and-mouse" }?.reason == nil)
+            _ = try await queue.reject(try rejectedRow.requireID())
+            #expect(try await tagSlugs(fluent, "jf-5") == ["cat-and-mouse:user"])
+
+            let editedRow = try await pipeline.regrade(jellyfinId: "jf-6", trigger: .manual)
+            _ = try await queue.approve(try editedRow.requireID(), overrideTags: ["ha-ha-ha", "quiet-epics"])
+            #expect(try await tagSlugs(fluent, "jf-6") == ["cat-and-mouse:user", "ha-ha-ha:user", "quiet-epics:user"])
         }
     }
 }

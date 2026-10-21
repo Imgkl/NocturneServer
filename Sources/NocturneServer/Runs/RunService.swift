@@ -148,11 +148,11 @@ actor RunService {
         return out
     }
 
-    /// The legacy `/admin/auto-tag/backfill/status` shape, derived from the latest backfill or
-    /// reprocess run.
+    /// The legacy `/admin/auto-tag/backfill/status` shape, derived from the latest backfill,
+    /// reprocess or regrade run (the three runs that share the tagger's job slot).
     func backfillStatus() async throws -> BackfillStatus {
         let latest = try await Run.query(on: fluent.db())
-            .group(.or) { $0.filter(\.$kind == RunKind.backfill.rawValue).filter(\.$kind == RunKind.reprocess.rawValue) }
+            .filter(\.$kind ~~ [RunKind.backfill.rawValue, RunKind.reprocess.rawValue, RunKind.regrade.rawValue])
             .sort(\.$startedAt, .descending)
             .first()
         guard let run = latest else {
@@ -162,7 +162,7 @@ actor RunService {
         return BackfillStatus(
             running: running, total: run.total, processed: run.processed, startedAt: run.startedAt,
             cancelled: running ? run.cancelRequested : (run.status == RunStatus.cancelled.rawValue),
-            scope: Self.params(of: run)["scope"])
+            scope: Self.params(of: run)["scope"], kind: run.kind)
     }
 
     static func params(of run: Run) -> [String: String] {

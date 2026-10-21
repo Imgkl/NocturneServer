@@ -95,6 +95,14 @@ import Testing
             #expect(abs((cost["anthropic"] ?? 0) - 0.03) < 1e-9)
             #expect(cost["wikimedia"] == 0)
             #expect(try await runs.backfillStatus().running == false)
+            #expect(try await runs.backfillStatus().kind == "backfill")
+
+            // A regrade run shows in the same status, with its kind.
+            let regrade = try await runs.start(kind: .regrade, trigger: .manual, total: 3)
+            let regradeStatus = try await runs.backfillStatus()
+            #expect(regradeStatus.running && regradeStatus.kind == "regrade" && regradeStatus.total == 3)
+            try await runs.finish(try regrade.requireID(), status: .done)
+            #expect(try await runs.backfillStatus().running == false)
         }
     }
 }

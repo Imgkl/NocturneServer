@@ -4,17 +4,21 @@ import { Field, inputCls } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { Bar, Stat } from '../ui/Stat';
 import { Toggle } from '../ui/Toggle';
-import type { ModelSettings as ModelSettingsApi, ModelSettingsUpdate } from '../lib/types';
+import { GRADER_LABEL, POLICY_HINT, POLICY_LABEL } from '../lib/policy';
+import type { ClassifierProvider, ModelSettings as ModelSettingsApi, ModelSettingsUpdate, PolicyVersion } from '../lib/types';
 
 interface ModelSettingsProps {
   settings: ModelSettingsApi | null;
   onSave: (update: ModelSettingsUpdate) => Promise<void>;
 }
 
-// Reader and strong model, the synopsis fallback, the monthly cap with the month's spend.
+// AI and strong model, the grader and the policy, the synopsis fallback, the monthly cap with the month's spend.
 export function ModelSettings({ settings, onSave }: ModelSettingsProps) {
   const [reader, setReader] = useState('');
   const [strong, setStrong] = useState('');
+  const [provider, setProvider] = useState<ClassifierProvider>('none');
+  const [policy, setPolicy] = useState<PolicyVersion>('p1');
+  const [jevModel, setJevModel] = useState('');
   const [budget, setBudget] = useState('');
   const [fallback, setFallback] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -25,6 +29,9 @@ export function ModelSettings({ settings, onSave }: ModelSettingsProps) {
     if (!settings) return;
     setReader(settings.reader_model);
     setStrong(settings.strong_model);
+    setProvider(settings.classifier_provider);
+    setPolicy(settings.policy_version);
+    setJevModel(settings.classifier_model);
     setBudget(settings.monthly_budget_usd == null ? '' : String(settings.monthly_budget_usd));
     setFallback(settings.model_fallback);
   }, [settings]);
@@ -35,7 +42,9 @@ export function ModelSettings({ settings, onSave }: ModelSettingsProps) {
   const budgetNumber = budget.trim() === '' ? null : Number(budget);
   const budgetValid = budgetNumber === null || (Number.isFinite(budgetNumber) && budgetNumber >= 0);
   const budgetChanged = budgetNumber !== null && budgetNumber !== (current.monthly_budget_usd ?? null);
-  const dirty = reader !== current.reader_model || strong !== current.strong_model || fallback !== current.model_fallback || budgetChanged;
+  const jevModelChanged = jevModel.trim() !== '' && jevModel.trim() !== current.classifier_model;
+  const dirty =
+    reader !== current.reader_model || strong !== current.strong_model || provider !== current.classifier_provider || policy !== current.policy_version || jevModelChanged || fallback !== current.model_fallback || budgetChanged;
   const cap = current.monthly_budget_usd ?? 0;
   const spent = current.budget_spent_usd;
 
@@ -43,6 +52,9 @@ export function ModelSettings({ settings, onSave }: ModelSettingsProps) {
     const update: ModelSettingsUpdate = {};
     if (reader !== current.reader_model) update.reader_model = reader;
     if (strong !== current.strong_model) update.strong_model = strong;
+    if (provider !== current.classifier_provider) update.classifier_provider = provider;
+    if (policy !== current.policy_version) update.policy_version = policy;
+    if (jevModelChanged) update.classifier_model = jevModel.trim();
     if (fallback !== current.model_fallback) update.model_fallback = fallback;
     if (budgetChanged && budgetNumber !== null) update.monthly_budget_usd = budgetNumber;
     setSaving(true);
@@ -63,13 +75,26 @@ export function ModelSettings({ settings, onSave }: ModelSettingsProps) {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <Field label="AI model" hint="Reads the story and proposes moods. About $0.001 per film with the cached prefix.">
+        <Field label="AI model" hint="Reads the story and lists every mood that fits. With the cached prefix: Haiku about $0.001 per film, Sonnet about $0.015.">
           <Select value={reader} onChange={setReader} label="AI model" block options={withCurrent(current.reader_models, reader).map((m) => [m, m])} />
         </Field>
         <Field label="Strong model" hint="Writes a spoiler synopsis with web search when no plot exists anywhere. About $0.05 to $0.10 per film.">
           <Select value={strong} onChange={setStrong} label="Strong model" block options={withCurrent(current.strong_models, strong).map((m) => [m, m])} />
         </Field>
       </div>
+
+      <div className="grid grid-cols-1 gap-5 border-t border-line pt-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_150px]">
+        <Field label="Grader" hint={provider === 'jev' ? (current.jev_key_set ? 'Jev grades every mood AI proposes, one question per mood. About $0.001 per film.' : 'Add the TypeSafe key under Connections, or the tagger falls back to AI alone.') : 'Nobody grades. AI\'s own confidence against the floors decides.'}>
+          <Select<ClassifierProvider> value={provider} onChange={setProvider} label="Grader" block options={current.classifier_providers.map((p) => [p, GRADER_LABEL[p] ?? p])} />
+        </Field>
+        <Field label="Policy" hint={POLICY_HINT[policy] ?? ''}>
+          <Select<PolicyVersion> value={policy} onChange={setPolicy} label="Policy" block options={current.policy_versions.map((v) => [v, `${POLICY_LABEL[v] ?? v} (${v})`])} />
+        </Field>
+        <Field label="Jev model" hint="TypeSafe model id.">
+          <input id="jev-model" type="text" value={jevModel} onChange={(e) => setJevModel(e.target.value)} placeholder={current.classifier_model} spellCheck={false} className={inputCls} />
+        </Field>
+      </div>
+      {provider === 'jev' && !current.jev_key_set && <p className="text-[12.5px] text-bad">The TypeSafe key is missing: films would be tagged by AI alone and marked unsure. Add it under Connections.</p>}
 
       <div className="flex items-start justify-between gap-4 border-t border-line pt-4">
         <div className="min-w-0">

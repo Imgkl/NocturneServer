@@ -37,10 +37,22 @@ final class EvalService: @unchecked Sendable {
         var negatives: [String: Set<String>] = [:]
         let resolved = try await TagSuggestion.query(on: db).filter(\.$resolvedBy == ResolvedBy.user).all()
         for row in resolved {
-            let proposed = Set(Self.proposedSlugs(in: row))
-            guard !proposed.isEmpty else { continue }
             let kept = positives[row.jellyfinId] ?? []
-            let rejected = row.status == "rejected" ? proposed : proposed.subtracting(kept)
+            let rejected: Set<String>
+            if row.kind == TaggerPipeline.regradeKind {
+                let items = ReviewQueue.items(of: row)
+                if row.status == "rejected" {
+                    // The owner undid the regrade: what it added was wrong; what it wanted dropped stays unjudged.
+                    rejected = Set(items.filter { $0.kind == .add && $0.applied && $0.reason == TaggerPipeline.addedOnRegrade }.map(\.slug)).subtracting(kept)
+                } else {
+                    // The owner took the new decision: the moods it dropped, and the proposals not kept, are wrong.
+                    rejected = Set(Self.proposedSlugs(in: row)).union(items.filter { $0.kind == .remove }.map(\.slug)).subtracting(kept)
+                }
+            } else {
+                let proposed = Set(Self.proposedSlugs(in: row))
+                guard !proposed.isEmpty else { continue }
+                rejected = row.status == "rejected" ? proposed : proposed.subtracting(kept)
+            }
             if !rejected.isEmpty { negatives[row.jellyfinId, default: []].formUnion(rejected) }
         }
         let ids = Set(positives.keys).union(negatives.keys)

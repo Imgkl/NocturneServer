@@ -35,6 +35,10 @@ typealias TitleProvider = @Sendable () async -> [String: String]
 /// write the review row. Realtime, the manual route and the backfill job all come through here.
 final class TaggerPipeline: @unchecked Sendable {
     static let apiKeySetting = "anthropic_api_key"
+    /// Review rows written by `regrade`: the classifier's second look at a tagged film.
+    static let regradeKind = "regrade"
+    /// Marks an applied item the regrade put on the film (it was not there before), so a reject can take it off again.
+    static let addedOnRegrade = "added on regrade"
 
     let fluent: Fluent
     let config: NocturneConfiguration
@@ -260,12 +264,14 @@ final class TaggerPipeline: @unchecked Sendable {
             old.resolvedAt = Date()
             try await old.save(on: db)
         }
+        let before = Set(movie.tags.map(\.slug))
+        let autoBefore = Set(try await movies.autoTagSlugs(jellyfinId: jellyfinId))
         if !policy.applied.isEmpty {
             _ = try await movies.updateMovieTags(jellyfinId: jellyfinId, tagSlugs: policy.applied.map(\.slug), replaceAll: false, labelSource: .auto)
         }
-        let autoBefore = try await MovieTag.query(on: db).filter(\.$movie.$id == movie.requireID()).filter(\.$labelSource == LabelSource.auto.rawValue).with(\.$tag).all().map(\.tag.slug)
         let keptBySystem = Set(policy.applied.map(\.slug))
         let removals = autoBefore.filter { !keptBySystem.contains($0) }.sorted()
+        let added = keptBySystem.subtracting(before)
         var reasons = policy.reasons
         for slug in removals { reasons.append("\(slug): removal suggested, the new decision does not apply it") }
         try await recorder.complete(
@@ -273,20 +279,28 @@ final class TaggerPipeline: @unchecked Sendable {
             with: .init(enrichment: enrichmentRow, reader: nil, classifier: classifierAnswer, policy: policy, outcome: policy.outcome, reasons: reasons, models: ["regrade": "true"], policyVersion: policyVersion))
         let needsHuman = policy.outcome != .applied || !removals.isEmpty
         logger.info("[\(jellyfinId)] regrade \(policy.outcome.rawValue): applied \(policy.applied.map(\.slug)), suggested \(policy.suggested.map(\.slug)), removals \(removals)")
-        return try await writeSuggestion(jellyfinId: jellyfinId, decision: decision, policy: policy, residue: readerAnswer.residue, pending: needsHuman, removals: removals)
+        return try await writeSuggestion(jellyfinId: jellyfinId, decision: decision, policy: policy, residue: readerAnswer.residue, pending: needsHuman, regrade: (removals: removals, added: added))
     }
 
     // MARK: Helpers
 
-    private func writeSuggestion(jellyfinId: String, decision: Decision, policy: PolicyDecision, residue: String?, pending: Bool, removals: [String] = []) async throws -> TagSuggestion {
+    /// A regrade row marks what it put on the film (so a reject can undo it) and lists the moods it would drop.
+    private func writeSuggestion(jellyfinId: String, decision: Decision, policy: PolicyDecision, residue: String?, pending: Bool, regrade: (removals: [String], added: Set<String>)? = nil) async throws -> TagSuggestion {
         var items = DecisionRecorder.items(from: policy)
-        items += removals.map { SuggestionItem(slug: $0, probability: 0, evidence: nil, kind: .remove, applied: true, reason: "the new decision does not apply it") }
+        if let regrade {
+            items = items.map { item in
+                guard item.kind == .add, item.applied, regrade.added.contains(item.slug) else { return item }
+                return SuggestionItem(slug: item.slug, probability: item.probability, evidence: item.evidence, kind: .add, applied: true, reason: Self.addedOnRegrade)
+            }
+            items += regrade.removals.map { SuggestionItem(slug: $0, probability: 0, evidence: nil, kind: .remove, applied: true, reason: "the new decision does not apply it") }
+        }
         let sugg = TagSuggestion(
             jellyfinId: jellyfinId,
             suggestedTags: policy.applied.map(\.slug),
             confidence: policy.applied.map(\.probability).min() ?? 0,
             reasoning: residue,
-            status: pending ? "pending" : "approved")
+            status: pending ? "pending" : "approved",
+            kind: regrade == nil ? "additive" : Self.regradeKind)
         sugg.decisionId = decision.id
         sugg.itemsJson = DecisionRecorder.json(items)
         if !pending {

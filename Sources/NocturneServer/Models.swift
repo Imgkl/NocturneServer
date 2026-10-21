@@ -153,6 +153,7 @@ final class TagSuggestion: Model, @unchecked Sendable {
 
     /// "additive" — row proposes adding the tags in `suggestedTags` (the standard auto-tag flow).
     /// "removal"  — row proposes dropping `removalTagSlug`, surfaced by the per-tag refine pass.
+    /// "regrade"  — the classifier's second look at a tagged film: its adds, plus the moods it would drop as `remove` items.
     @Field(key: "kind")
     var kind: String
 
@@ -288,6 +289,8 @@ struct BackfillStatus: Codable, Sendable {
     let cancelled: Bool?
     /// `all`, `watched` or `unwatched`: which films the latest run covered.
     let scope: String?
+    /// `backfill`, `reprocess` or `regrade`: what the latest run did.
+    var kind: String? = nil
 }
 
 // MARK: - OMDb DTOs

@@ -2,15 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { GRADER_LABEL, policyLabel } from '../lib/policy';
 import { Button } from '../ui/Button';
 import { Segmented } from '../ui/Segmented';
 import { Toggle } from '../ui/Toggle';
 import { ApiKeyForm } from '../components/ApiKeyForm';
 import { EnrichmentCoverageCard } from '../components/EnrichmentCoverageCard';
+import { FloorsTable } from '../components/FloorsTable';
+import { GuideEditor } from '../components/GuideEditor';
 import { JellyfinConnectForm } from '../components/JellyfinConnectForm';
 import { LinkAppPanel } from '../components/LinkAppPanel';
 import { ModelSettings } from '../components/ModelSettings';
-import type { BackfillScope, BackfillStatusApi, CoverageStatus, EnrichmentSummary, ModelSettings as ModelSettingsApi, ModelSettingsUpdate, Movie } from '../lib/types';
+import type { BackfillScope, BackfillStatusApi, CoverageStatus, EnrichmentSummary, JevTestResult, ModelSettings as ModelSettingsApi, ModelSettingsUpdate, MoodBuckets, Movie } from '../lib/types';
 
 type SectionId = 'tagger' | 'connections' | 'sources' | 'link' | 'data' | 'about';
 
@@ -23,8 +26,10 @@ interface SettingsPageProps {
   coverageStatus: CoverageStatus | null;
   enrichmentSummary: EnrichmentSummary | null;
   modelSettings: ModelSettingsApi | null;
+  moods: MoodBuckets;
   anthKeySet: boolean;
   omdbKeySet: boolean;
+  jevKeySet: boolean;
   jellyfinUrl?: string;
   autoTagEnabled: boolean;
   syncing: boolean;
@@ -41,6 +46,10 @@ interface SettingsPageProps {
   movieLookup: (jellyfinId: string) => Movie | undefined;
   onSaveAnthKey: (key: string) => Promise<void>;
   onSaveOmdbKey: (key: string) => Promise<void>;
+  onSaveJevKey: (key: string) => Promise<void>;
+  onTestJev: () => Promise<JevTestResult>;
+  onRegrade: (scope: BackfillScope) => Promise<void>;
+  say: (text: string, tone?: 'ok' | 'error') => void;
   onToggleAutoTag: (next: boolean) => Promise<void>;
   onClearMovies: () => Promise<void>;
   onImportFile: (file: File) => Promise<void>;
@@ -51,13 +60,15 @@ interface SettingsPageProps {
 // The section that needs attention starts open; the rest start closed.
 export function SettingsPage(props: SettingsPageProps) {
   const {
-    movieCount, untaggedCount, untaggedWatchedCount, reviewCount, backfillStatus, coverageStatus, enrichmentSummary, modelSettings,
-    anthKeySet, omdbKeySet, jellyfinUrl, autoTagEnabled, syncing, lastSyncLabel, version, onSync, onStartBackfill, onCancelBackfill, onReprocessAll,
-    onStartCoverage, onCancelCoverage, onSaveModels, onOpenMovie, movieLookup, onSaveAnthKey, onSaveOmdbKey, onToggleAutoTag, onClearMovies, onImportFile, onExportTags,
+    movieCount, untaggedCount, untaggedWatchedCount, reviewCount, backfillStatus, coverageStatus, enrichmentSummary, modelSettings, moods,
+    anthKeySet, omdbKeySet, jevKeySet, jellyfinUrl, autoTagEnabled, syncing, lastSyncLabel, version, onSync, onStartBackfill, onCancelBackfill, onReprocessAll,
+    onStartCoverage, onCancelCoverage, onSaveModels, onOpenMovie, movieLookup, onSaveAnthKey, onSaveOmdbKey, onSaveJevKey, onTestJev, onRegrade, say, onToggleAutoTag, onClearMovies, onImportFile, onExportTags,
   } = props;
 
   const importRef = useRef<HTMLInputElement | null>(null);
   const [scope, setScope] = useState<BackfillScope>('watched');
+  const [jevTest, setJevTest] = useState<JevTestResult | 'running' | null>(null);
+  const graderOn = modelSettings?.classifier_provider === 'jev';
   const backfillRunning = backfillStatus?.running === true;
   const coverageRunning = coverageStatus?.running === true;
   const anyRunActive = backfillRunning || coverageRunning;
@@ -85,7 +96,16 @@ export function SettingsPage(props: SettingsPageProps) {
     {
       id: 'tagger',
       title: 'Tagger',
-      summary: [modelSettings?.reader_model?.replace('claude-', ''), spend, autoTagEnabled ? 'auto-tag on sync' : 'auto-tag on sync off'].filter(Boolean).join(' · '),
+      summary: [
+        modelSettings?.reader_model?.replace('claude-', ''),
+        modelSettings ? (graderOn ? `graded by ${GRADER_LABEL.jev}` : 'no grader') : '',
+        modelSettings ? `${policyLabel(modelSettings.policy_version)} (${modelSettings.policy_version})` : '',
+        modelSettings ? `guide v${modelSettings.guide_version}` : '',
+        spend,
+        autoTagEnabled ? 'auto-tag on sync' : 'auto-tag on sync off',
+      ]
+        .filter(Boolean)
+        .join(' · '),
       body: (
         <div className="space-y-5">
           <ModelSettings settings={modelSettings} onSave={onSaveModels} />
@@ -131,13 +151,35 @@ export function SettingsPage(props: SettingsPageProps) {
               Reprocess…
             </Button>
           </Row>
+          <Row title="Regrade" help={`Jev and the policy again over the ${scope === 'all' ? 'whole library' : `${scope} films`} that have a stored AI answer. AI is not called; about $0.001 per film. Changed films land in Review.`}>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                if (!confirm(`Regrade the ${scope} films with Jev and the current policy? AI is not called.`)) return;
+                await onRegrade(scope);
+              }}
+              disabled={!graderOn || !jevKeySet || anyRunActive || movieCount === 0}
+              reason={!graderOn ? 'Pick Jev as the grader first' : !jevKeySet ? 'Needs the TypeSafe key' : anyRunActive ? 'A run is in progress' : null}
+              reasonInline={false}
+            >
+              Regrade
+            </Button>
+          </Row>
+          {modelSettings && (
+            <Details label="Floors per mood" hint="The grader probability each mood has to clear.">
+              <FloorsTable moods={moods} floors={modelSettings.floors} high={modelSettings.high} onSave={(floors, high) => onSaveModels({ floors, high })} />
+            </Details>
+          )}
+          <Details label="Guide" hint={modelSettings ? `What AI reads on every film · v${modelSettings.guide_version}` : 'What AI reads on every film'}>
+            <GuideEditor moods={moods} say={say} />
+          </Details>
         </div>
       ),
     },
     {
       id: 'connections',
       title: 'Connections',
-      summary: [jellyfinUrl ? 'Jellyfin connected' : 'Jellyfin not set', anthKeySet ? 'Anthropic key set' : 'Anthropic key missing', omdbKeySet ? 'OMDb key set' : 'OMDb optional'].join(' · '),
+      summary: [jellyfinUrl ? 'Jellyfin connected' : 'Jellyfin not set', anthKeySet ? 'Anthropic key set' : 'Anthropic key missing', jevKeySet ? 'TypeSafe key set' : 'TypeSafe key missing', omdbKeySet ? 'OMDb key set' : 'OMDb optional'].join(' · '),
       attention: !anthKeySet,
       body: (
         <div className="space-y-6">
@@ -148,6 +190,31 @@ export function SettingsPage(props: SettingsPageProps) {
           <div className="space-y-4 border-t border-line pt-5">
             <ApiKeyForm label="Anthropic API key" placeholder="sk-ant-…" helpText="Required for auto-tagging." isSet={anthKeySet} onSave={onSaveAnthKey} />
             <ApiKeyForm label="OMDb API key" placeholder="omdb api key" helpText="Optional: IMDb, Rotten Tomatoes and Metacritic scores, plus awards." isSet={omdbKeySet} onSave={onSaveOmdbKey} />
+            <div>
+              <ApiKeyForm label="TypeSafe API key" placeholder="typesafe api key" helpText="For Jev, the grader: one question per mood on every film, about $0.001 per film. Keys at console.typesafe.ai." isSet={jevKeySet} onSave={async (key) => { await onSaveJevKey(key); setJevTest(null); }} />
+              {jevKeySet && (
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={jevTest === 'running'}
+                    onClick={async () => {
+                      setJevTest('running');
+                      try {
+                        setJevTest(await onTestJev());
+                      } catch (e) {
+                        setJevTest({ ok: false, error: e instanceof Error ? e.message : 'The test failed' });
+                      }
+                    }}
+                  >
+                    {jevTest === 'running' ? 'Testing…' : 'Test the key'}
+                  </Button>
+                  {jevTest && jevTest !== 'running' && (
+                    <span className={cn('text-[12.5px]', jevTest.ok ? 'text-good' : 'text-bad')}>{jevTest.ok ? `Jev ${jevTest.model ?? ''} answered ${jevTest.answered ?? 0} questions.` : jevTest.error ?? 'The test failed'}</span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       ),
@@ -241,6 +308,22 @@ export function SettingsPage(props: SettingsPageProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+// A collapsed block under a row title: the floors table, the guide editor.
+function Details({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  return (
+    <details className="group border-t border-line pt-4">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0">
+          <span className="block text-[14px] font-semibold text-ink">{label}</span>
+          {hint && <span className="mt-1 block text-[13px] leading-snug text-mute">{hint}</span>}
+        </span>
+        <ChevronDown size={16} className="shrink-0 text-mute transition-transform duration-300 group-open:rotate-180" />
+      </summary>
+      <div className="mt-4">{children}</div>
+    </details>
   );
 }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FolderSearch, ListChecks, QrCode, RefreshCw, Settings as SettingsIcon, Sparkles } from 'lucide-react';
+import { FolderSearch, GraduationCap, ListChecks, QrCode, RefreshCw, Settings as SettingsIcon, Sparkles } from 'lucide-react';
 import { api, ApiError, fetchVersion as fetchVersionApi, posterUrl } from './lib/api';
 import { timeAgo } from './lib/enrichment';
 import { goTo, useHashPage } from './lib/useHashPage';
@@ -21,8 +21,10 @@ import { FilmSheet } from './components/FilmSheet';
 import { LinkAppPanel } from './components/LinkAppPanel';
 import { MoodChips, bandMoods } from './components/MoodBand';
 import { ReviewTray } from './components/ReviewTray';
+import { EvalPage } from './views/EvalPage';
 import { LibraryPage, type LibraryFilter, type LibrarySort } from './views/LibraryPage';
 import { SettingsPage } from './views/SettingsPage';
+import { TeachPage } from './views/TeachPage';
 import { OnboardingView } from './views/onboarding/OnboardingView';
 import { Dialog } from './ui/Dialog';
 import { Spinner } from './ui/Spinner';
@@ -45,6 +47,10 @@ export default function App() {
   const [version, setVersion] = useState('');
   const [anthKeySet, setAnthKeySet] = useState(false);
   const [omdbKeySet, setOmdbKeySet] = useState(false);
+  const [jevKeySet, setJevKeySet] = useState(false);
+  // Films waiting on the Teach page, for the tab.
+  const [teachWaiting, setTeachWaiting] = useState(0);
+  const [learnedRules, setLearnedRules] = useState(0);
   const [autoTagEnabled, setAutoTagEnabled] = useState(false);
   const [jellyfinUrl, setJellyfinUrl] = useState<string | undefined>(undefined);
   const [lastSyncAt, setLastSyncAt] = useState<string | undefined>(undefined);
@@ -52,6 +58,8 @@ export default function App() {
   const syncTimerRef = useRef<number | null>(null);
   const syncStartTsRef = useRef<number | null>(null);
   const [backfillStatus, setBackfillStatus] = useState<BackfillStatusApi | null>(null);
+  // What the tagger's latest run did, for the header label and the toasts.
+  const runVerb = backfillStatus?.kind === 'regrade' ? 'Regrading' : backfillStatus?.kind === 'reprocess' ? 'Re-tagging' : 'Auto-tagging';
   const backfillPollRef = useRef<number | null>(null);
   const [coverageStatus, setCoverageStatus] = useState<CoverageStatus | null>(null);
   const coveragePollRef = useRef<number | null>(null);
@@ -108,6 +116,7 @@ export default function App() {
       const info = await api.settings.info();
       setAnthKeySet(!!info.anthropic_key_set);
       setOmdbKeySet(!!info.omdb_key_set);
+      setJevKeySet(!!info.jev_key_set);
       setAutoTagEnabled(!!info.enable_auto_tagging);
       setJellyfinUrl(info.jellyfin_url || undefined);
     } catch {
@@ -142,12 +151,28 @@ export default function App() {
     }
   }
 
+  // The Teach count for the tab and the learned rules for the Accuracy page's next steps.
+  const fetchTeachSummary = useCallback(async () => {
+    try {
+      const r = await api.teach.groups();
+      setTeachWaiting(r.groups.reduce((n, g) => n + g.films.length - g.answered, 0));
+    } catch {
+      // optional
+    }
+    try {
+      setLearnedRules((await api.guide.get()).learned.length);
+    } catch {
+      // optional
+    }
+  }, []);
+
   async function bootstrap() {
     try {
       const status = await api.onboarding.status();
       setOnboardingStatus(status);
       if (status.configured) {
         await Promise.all([fetchMoods(), fetchAllMovies(), fetchVersionApi().then((v) => v && setVersion(v)), fetchPendingSuggestions(), fetchSettingsInfo(), fetchModelSettings(), fetchSyncStamp()]);
+        void fetchTeachSummary();
       } else {
         await Promise.all([fetchMoods(), fetchVersionApi().then((v) => v && setVersion(v))]);
       }
@@ -164,10 +189,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (page === 'settings') {
+    if (page === 'settings' || page === 'eval') {
       void fetchSettingsInfo();
       void fetchModelSettings();
     }
+    if (page === 'eval') void fetchTeachSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
@@ -214,7 +240,10 @@ export default function App() {
       await fetchAllMovies();
       await fetchPendingSuggestions();
       if (status.running) schedulePollBackfill();
-      else say(status.cancelled ? 'Auto-tagging stopped' : `Auto-tagging done · ${status.processed} films`);
+      else {
+        say(status.cancelled ? `${runVerb} stopped` : `${runVerb} done · ${status.processed} films`);
+        void fetchTeachSummary();
+      }
     } catch {
       schedulePollBackfill();
     }
@@ -240,6 +269,23 @@ export default function App() {
     } catch (e) {
       say(e instanceof ApiError && e.status === 409 ? 'Another run is in progress' : 'Failed to start. Check the Anthropic key.', 'error');
     }
+  }
+
+  // Jev and the policy again over films with a stored AI answer; AI is not called.
+  async function startRegrade(scope: BackfillScope) {
+    try {
+      const status = await api.backfill.regrade(scope);
+      setBackfillStatus(status);
+      schedulePollBackfill();
+      say(`Regrading ${status.total} films`);
+    } catch (e) {
+      say(e instanceof ApiError && e.status === 409 ? 'Another run is in progress' : e instanceof Error ? e.message : 'Failed to start the regrade', 'error');
+    }
+  }
+
+  // Accepted Teach rules start a regrade on the server; pick up its progress.
+  function regradeStartedElsewhere() {
+    schedulePollBackfill();
   }
 
   async function cancelBackfill() {
@@ -355,6 +401,7 @@ export default function App() {
     try {
       await api.suggestions.approve(id, overrideTags);
       await Promise.all([fetchPendingSuggestions(), fetchAllMovies()]);
+      void fetchTeachSummary();
       say(`Approved${s ? ` · ${moviesById.get(s.jellyfinId)?.title ?? ''}` : ''}`);
     } catch {
       say('Failed to approve', 'error');
@@ -365,6 +412,7 @@ export default function App() {
     try {
       await api.suggestions.reject(id);
       await Promise.all([fetchPendingSuggestions(), fetchAllMovies()]);
+      void fetchTeachSummary();
       say('Rejected');
     } catch {
       say('Failed to reject', 'error');
@@ -395,6 +443,17 @@ export default function App() {
       await api.settings.saveOmdbKey(key);
       setOmdbKeySet(true);
       say('OMDb key saved');
+    } catch {
+      say('Failed to save the key', 'error');
+    }
+  }
+
+  async function saveJevKey(key: string) {
+    try {
+      await api.settings.saveJevKey(key);
+      setJevKeySet(true);
+      await fetchModelSettings();
+      say('TypeSafe key saved');
     } catch {
       say('Failed to save the key', 'error');
     }
@@ -495,7 +554,7 @@ export default function App() {
   const syncLabel = syncActive
     ? 'Syncing'
     : backfillStatus?.running
-      ? `Auto-tagging ${backfillStatus.processed} of ${backfillStatus.total}`
+      ? `${runVerb} ${backfillStatus.processed} of ${backfillStatus.total}`
       : coverageStatus?.running
         ? `Story sources ${coverageStatus.processed} of ${coverageStatus.total}`
         : lastSyncAt
@@ -505,6 +564,7 @@ export default function App() {
   const menu: MenuItem[] = [
     { icon: <RefreshCw size={15} />, label: 'Sync library', disabled: running, reason: 'A run is in progress', onClick: syncAll },
     { icon: <ListChecks size={15} />, label: 'Review', hint: pendingSuggestions.length ? String(pendingSuggestions.length) : 'empty', onClick: () => setTray(true) },
+    { icon: <GraduationCap size={15} />, label: 'Teach', hint: teachWaiting ? String(teachWaiting) : 'empty', onClick: () => goTo('teach') },
     { icon: <FolderSearch size={15} />, label: 'Run coverage', hint: 'free', disabled: running, reason: 'A run is in progress', onClick: () => void startCoverage().catch(() => {}) },
     { icon: <Sparkles size={15} />, label: 'Start auto-tag…', disabled: !anthKeySet, reason: 'Needs an Anthropic key', onClick: () => goTo('settings') },
     { icon: <QrCode size={15} />, label: 'Link Nocturne app', onClick: () => setLinkOpen(true) },
@@ -568,7 +628,7 @@ export default function App() {
           </div>
         }
       />
-      <PageTabs page={page} />
+      <PageTabs page={page} counts={{ teach: teachWaiting }} />
 
       {page === '' && (
         <LibraryPage
@@ -591,6 +651,17 @@ export default function App() {
           loading={loading}
         />
       )}
+      {page === 'teach' && (
+        <TeachPage
+          moods={moods}
+          movieLookup={lookup}
+          onOpenMovie={(m) => openMovieIn(m, [m])}
+          say={say}
+          onWaiting={setTeachWaiting}
+          onRegradeStarted={regradeStartedElsewhere}
+        />
+      )}
+      {page === 'eval' && <EvalPage say={say} teachWaiting={teachWaiting} learnedRules={learnedRules} onFloorsAccepted={fetchModelSettings} />}
       {page === 'settings' && (
         <SettingsPage
           movieCount={movies.length}
@@ -601,8 +672,10 @@ export default function App() {
           coverageStatus={coverageStatus}
           enrichmentSummary={enrichmentSummary}
           modelSettings={modelSettings}
+          moods={moods}
           anthKeySet={anthKeySet}
           omdbKeySet={omdbKeySet}
+          jevKeySet={jevKeySet}
           jellyfinUrl={jellyfinUrl}
           autoTagEnabled={autoTagEnabled}
           syncing={syncActive}
@@ -622,6 +695,10 @@ export default function App() {
           movieLookup={lookup}
           onSaveAnthKey={saveAnthropicKey}
           onSaveOmdbKey={saveOmdbKey}
+          onSaveJevKey={saveJevKey}
+          onTestJev={() => api.settings.testJev()}
+          onRegrade={startRegrade}
+          say={say}
           onToggleAutoTag={toggleAutoTagging}
           onClearMovies={clearMovies}
           onImportFile={importTagsFile}

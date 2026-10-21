@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
 
-export type Page = '' | 'settings';
+export type Page = '' | 'teach' | 'eval' | 'settings';
 
-const PAGES: Page[] = ['', 'settings'];
+const PAGES: Page[] = ['', 'teach', 'eval', 'settings'];
 
 function read(): Page {
   const p = location.hash.replace(/^#/, '').split(/[/?]/)[0];
   return (PAGES as string[]).includes(p) ? (p as Page) : '';
 }
 
-// The page comes from the hash (`#settings`); the library is the empty hash. Review is a tray
-// over the library, not a page.
+// The page comes from the hash (`#teach`, `#eval`, `#settings`); the library is the empty hash.
+// Review is a tray over the library, not a page.
 export function useHashPage(): Page {
   const [page, setPage] = useState<Page>(read);
   useEffect(() => {

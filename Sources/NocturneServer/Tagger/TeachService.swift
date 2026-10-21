@@ -65,6 +65,8 @@ final class TeachService: @unchecked Sendable {
         let adminPick: String?
         /// The owner's answer for this boundary, when given: the left slug, the right slug, or `neither`.
         let answer: String?
+        /// Who the probabilities come from: `classifier` (the grader) or `reader` (AI's own confidence).
+        var probabilitySource: String? = nil
     }
 
     struct Group: Codable, Sendable, Equatable {
@@ -182,7 +184,8 @@ final class TeachService: @unchecked Sendable {
                 rightProbability: probability(boundary.right),
                 systemPick: applied.first,
                 adminPick: admin.first { $0 == boundary.left || $0 == boundary.right },
-                answer: answers[movie.jellyfinId]?[boundary.key]))
+                answer: answers[movie.jellyfinId]?[boundary.key],
+                probabilitySource: !classifier.isEmpty ? "classifier" : (reader.isEmpty ? nil : "reader")))
         }
 
         var groups: [Group] = []
