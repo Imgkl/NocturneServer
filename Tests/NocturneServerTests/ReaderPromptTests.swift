@@ -41,7 +41,7 @@ import Testing
         ]
         let turn = ReaderPrompt.userTurn(learnedRules: "Topic beats kind.", calibration: calibration, textBlock: "# Identity\nTitle: Heat (1995)", maxTags: 5)
         #expect(turn.contains("a short quote from the Film text, a colon, then the condition it satisfies"))
-        #expect(turn.contains("up to 3 alternates you would not defend"))
+        #expect(turn.contains("up to 3 alternates you considered and set aside"))
         let learned = turn.range(of: "## Learned from you\nTopic beats kind.")!
         let decisions = turn.range(of: "## Your recent decisions")!
         let film = turn.range(of: "## Film\n# Identity")!
@@ -53,7 +53,7 @@ import Testing
         #expect(turn.contains("ha-ha-ha: confirmed on A, B, C, D, E; rejected on X, Y, Z"))
         #expect(!turn.contains("F, G"))
         #expect(!turn.contains("quiet-epics"))
-        #expect(turn.contains("every mood whose checklist the film meets (1 to 5)"))
+        #expect(turn.contains("every mood that plausibly fits the whole film (2 to 4 is typical, at most 5)"))
         #expect(turn.contains("Never mention events after the first act"))
     }
 

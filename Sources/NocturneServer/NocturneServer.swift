@@ -129,6 +129,8 @@ struct NocturneServerApp {
         let backfillJob = BackfillJob(runService: runService, pipeline: pipeline, queue: reviewQueue, fluent: fluent, config: appConfig)
         let taggerRoutes = TaggerRoutes(movies: movieService, pipeline: pipeline, queue: reviewQueue, backfill: backfillJob)
         let modelSettingsRoutes = ModelSettingsRoutes(settings: settingsStore, budget: budget, coverage: coverageJob, config: appConfig, classifier: jevClient)
+        let evalService = EvalService(fluent: fluent, config: appConfig, settings: settingsStore, runService: runService)
+        let evalRoutes = EvalRoutes(eval: evalService)
 
         // One-time seed: the legacy ANTHROPIC_MODEL env var becomes the initial reader model setting.
         if let envModel = ProcessInfo.processInfo.environment["ANTHROPIC_MODEL"], !envModel.isEmpty,
@@ -166,6 +168,7 @@ struct NocturneServerApp {
             enrichmentRoutes: enrichmentRoutes,
             taggerRoutes: taggerRoutes,
             modelSettingsRoutes: modelSettingsRoutes,
+            evalRoutes: evalRoutes,
             eventLoopGroup: eventLoopGroup
         )
 
@@ -251,6 +254,7 @@ func createApplication(
     enrichmentRoutes: EnrichmentRoutes,
     taggerRoutes: TaggerRoutes,
     modelSettingsRoutes: ModelSettingsRoutes,
+    evalRoutes: EvalRoutes,
     eventLoopGroup: EventLoopGroup
 ) async throws -> Application<RouterResponder<BasicRequestContext>> {
 
@@ -268,7 +272,8 @@ func createApplication(
         outbound: outbound,
         enrichmentRoutes: enrichmentRoutes,
         taggerRoutes: taggerRoutes,
-        modelSettingsRoutes: modelSettingsRoutes
+        modelSettingsRoutes: modelSettingsRoutes,
+        evalRoutes: evalRoutes
     )
     apiRoutes.addRoutes(to: router)
 

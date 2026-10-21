@@ -69,9 +69,9 @@ enum ReaderPrompt {
 
         out.append("## Task")
         out.append(
-            "State the residue in one sentence, then list every mood whose checklist the film meets (1 to \(maxTags)), each with "
-                + "evidence (a short quote from the Film text, a colon, then the condition it satisfies), "
-                + "a confidence in [0, 1] on the Rule 6 scale, and up to 3 alternates you would not defend. "
+            "State the residue in one sentence, then list every mood that plausibly fits the whole film (2 to 4 is typical, at most \(maxTags)), "
+                + "each with evidence (a short quote from the Film text, a colon, then the condition it satisfies) and "
+                + "a confidence in [0, 1] on the Rule 6 scale, then up to 3 alternates you considered and set aside. "
                 + "Use only slugs from the available mood tags. Never mention events after the first act "
                 + "in the residue sentence.")
         return out.joined(separator: "\n")
@@ -90,7 +90,7 @@ enum ReaderPrompt {
             ],
             "candidates": [
                 "type": "array",
-                "description": "Moods you would defend to the admin, 1 to 5, strongest first.",
+                "description": "Every mood that plausibly fits the whole film, strongest first. Two to four is typical; one is an error unless the film truly fits only one mood; at most 5.",
                 "items": [
                     "type": "object",
                     "additionalProperties": false,
@@ -107,7 +107,7 @@ enum ReaderPrompt {
             ],
             "alternates": [
                 "type": "array",
-                "description": "Up to 3 slugs you considered but would not defend.",
+                "description": "Up to 3 slugs you considered and set aside because a condition fails.",
                 "items": ["type": "string"],
             ],
         ],

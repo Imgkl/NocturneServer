@@ -25,7 +25,10 @@ Rule 1: Hard gates come from the text, never from memory
 
 Rule 2: Dominant register, not flavour notes
 Most films contain moments of humour, romance, warmth or violence that are not the primary register.
-Tag the whole, never the parts.
+Tag the whole, never the parts. This rule is about the register buckets (what the film is, for most
+of its runtime); a film still carries several moods of different kinds at once: its register, its
+structure (a twist, one room, a heist, a time mechanic), its standing (canon, cult, a regional gem)
+and its look. List each of them that holds.
 - A sad film with funny lines is not ha-ha-ha. A dramedy is not ha-ha-ha.
 - A film with a romantic subplot is not feel-good-romance. Romance must be the spine and the ending
   must unite the lovers.
@@ -74,16 +77,18 @@ Rule 6: Confidence means something
 - 0.90 to 0.95: every condition is stated outright in the text, no "Does NOT fit" line applies, and
   you would be surprised to be overruled.
 - 0.80 to 0.89: every condition holds, one of them by clear inference rather than a direct statement.
-- 0.65 to 0.79: the residue fits but one condition is uncertain, or a neighbouring bucket could win.
-  Prefer to put these in `alternates`.
-- Below 0.65: do not list it as a candidate.
-Candidates are moods you would defend to the admin. List every mood whose checklist the film meets,
-each with its own evidence: two or three is typical for a film that fits well, one is fine when only
-one fits, never more than 5. A film can be a comedy, a cult object and a canon film at once; list all
-three when each checklist holds. Do not park a mood in alternates when every condition holds; a
-candidate below its floor only goes to review, which costs nothing. Alternates are the maybes: up to
-3 slugs where one condition is uncertain, no evidence needed. If nothing reaches 0.65, return the
-single best fit with its honest confidence.
+- 0.60 to 0.79: the residue fits but one condition is uncertain, or a neighbouring bucket could win.
+  Still a candidate, at that confidence; the grader and the admin decide.
+- Below 0.60: not a candidate. Put it in `alternates` if you considered it.
+Candidates are every mood that plausibly fits the whole film, each with its own evidence. Two to
+four candidates is typical; a single candidate is an error unless the film truly fits only one
+mood; never more than 5. A film is usually several feelings at once: a register (ha-ha-ha,
+horror-and-unease, bittersweet-aftermath), a structure (the-twist-is-the-plot, one-room-pressure-
+cooker, heist-energy, time-twists), a standing (film-school-shelf, modern-masterpieces, regional-gems,
+cult-chaos) and a look (visual-worship, rain-neon-aesthetic). Check all four kinds before you answer.
+Your confidence is not a gate: a mood at 0.65 is a candidate at 0.65, not an alternate. Alternates
+are moods you considered and set aside because a condition fails, up to 3 slugs, no evidence needed.
+If nothing reaches 0.60, return the single best fit with its honest confidence.
 
 Rule 7: Valid slugs and the admin's calibration
 Tags MUST be slugs from the provided list. The server discards invented slugs, so a made-up tag earns
@@ -95,67 +100,79 @@ Few-shot calibration examples (use as a model; do not output these):
 
 1. Manchester by the Sea
    Residue: catatonic grief that never quite lifts.
-   Tags: ["emotional-gut-punch"]. Alternates: ["bittersweet-aftermath"].
-   NOT "ha-ha-ha" (one funeral laugh does not flip the register), NOT "coming-of-age" (the nephew is
-   a subplot).
+   Candidates: emotional-gut-punch 0.92, bittersweet-aftermath 0.66 (the boat at the end is a
+   grace note, so the condition "treated with grace" is uncertain: a candidate at 0.66, not an
+   alternate). Alternates: ["coming-of-age"].
+   NOT "ha-ha-ha" (one funeral laugh does not flip the register).
 
 2. The Big Lebowski
    Residue: shaggy comic joy, quotable for weeks.
-   Tags: ["ha-ha-ha", "cult-chaos"]. Cult because the reception says "cult following", not because
-   you know it.
+   Candidates: ha-ha-ha 0.93, cult-chaos 0.9 (the reception says "cult following"), dialogue-driven
+   0.7 (the lines are the pleasure, the plot a pretext). Alternates: ["crime-grit-style"].
 
 3. Memento
    Residue: puzzled, reassembling the film in your head.
-   Tags: ["brainmelt-zone", "the-twist-is-the-plot"].
+   Candidates: brainmelt-zone 0.9, the-twist-is-the-plot 0.85, film-school-shelf 0.8 (the text calls
+   it a landmark of narrative structure). Alternates: ["time-twists", "obsidian-noir"].
    NOT "time-twists": reverse editing is not a time mechanic.
 
 4. Groundhog Day
    Residue: a comic time loop that grows existential.
-   Tags: ["time-twists", "ha-ha-ha", "existential-core"].
+   Candidates: time-twists 0.95, ha-ha-ha 0.9, existential-core 0.8, rainy-day-rewinds 0.78.
 
 5. 12 Angry Men
    Residue: nailed to the jury room, every argument lands.
-   Tags: ["one-room-pressure-cooker", "dialogue-driven", "film-school-shelf"]. The shelf tag only
-   because the text calls it a landmark; without that sentence it would be an alternate.
+   Candidates: one-room-pressure-cooker 0.95, dialogue-driven 0.92, film-school-shelf 0.9 (the text
+   calls it a landmark). Alternates: ["psychological-pressure-cooker"].
    NOT "psychological-pressure-cooker": the squeeze is social and spatial, nobody unravels.
 
 6. Thelma & Louise
    Residue: awed defiance, the ache of the ending held in a kind of wonder.
-   Tags: ["bittersweet-aftermath"]. Alternates: ["antihero-study", "emotional-gut-punch"].
+   Candidates: bittersweet-aftermath 0.85, film-school-shelf 0.82 (National Film Registry in the
+   text), cat-and-mouse 0.62 (the pursuit is real but the women, not the duel, are the spine).
+   Alternates: ["antihero-study", "emotional-gut-punch"].
    The plot ends on a cliff; the residue is grace. Residue beats plot.
 
 7. Zindagi Na Milegi Dobara
    Residue: warm and reflective, three friends and the urge to stop postponing life.
-   Tags: ["rainy-day-rewinds"]. Alternates: ["bittersweet-aftermath"].
+   Candidates: rainy-day-rewinds 0.85, existential-core 0.66 (the film says out loud that life is to
+   be lived now; the condition "asks it on purpose" holds only partly). Alternates: ["ha-ha-ha",
+   "bittersweet-aftermath", "coming-of-age"].
    NOT "ha-ha-ha": a road movie with laughs is a dramedy. NOT "coming-of-age": the leads are adults.
 
 8. Rashomon
    Residue: unsettled by how little a true account can be trusted.
-   Tags: ["film-school-shelf", "existential-core"]. Alternates: ["dialogue-driven"].
+   Candidates: film-school-shelf 0.95, existential-core 0.85, dialogue-driven 0.7 (the film is four
+   tellings of one event). Alternates: ["brainmelt-zone", "regional-gems"].
    NOT "regional-gems": Japanese, not Indian. NOT "brainmelt-zone": each testimony is clear; the
    contradiction is the point, not a fractured perception.
 
 9. Om Shanti Om
    Residue: laughter and nostalgia, a campy love letter to old Bollywood.
-   Tags: ["rainy-day-rewinds"]. Alternates: ["ha-ha-ha", "cult-chaos"].
+   Candidates: rainy-day-rewinds 0.86, ha-ha-ha 0.7 (reviews call it funny; the second half turns to
+   revenge melodrama, so the register condition is uncertain), cult-chaos 0.62 (quoted, rewatched,
+   but the text never says cult). Alternates: ["time-twists", "feel-good-romance"].
    NOT "time-twists": reincarnation is not a time mechanic.
 
 10. Pisaasu
     Residue: dread in an apartment, then a sad understanding of why the ghost stayed.
-    Tags: ["horror-and-unease"]. Alternates: ["bittersweet-aftermath"].
-    NOT "psychological-pressure-cooker": the protagonist is sane and the threat is a ghost. NOT
-    "coming-of-age": a grieving adult.
+    Candidates: horror-and-unease 0.9, bittersweet-aftermath 0.7 (the ghost's reason lands as an
+    ache), regional-gems 0.62 (Tamil, praised, but no award or landmark language in the text).
+    Alternates: ["psychological-pressure-cooker", "coming-of-age"].
+    NOT "psychological-pressure-cooker": the protagonist is sane and the threat is a ghost.
 
 11. The Shawshank Redemption
     Residue: hope, and the urge to watch it again next year.
-    Tags: ["rainy-day-rewinds", "film-school-shelf"]. The shelf tag only when the text says "one of
-    the greatest films" or names the National Film Registry.
-    NOT "bittersweet-aftermath": the ending is a beach and a reunion. NOT "emotional-gut-punch".
+    Candidates: rainy-day-rewinds 0.9, film-school-shelf 0.88 ("one of the greatest films" and the
+    National Film Registry are in the text), slow-burn-sharp-blade 0.68 (twenty years of patience,
+    then one night). Alternates: ["bittersweet-aftermath", "crime-grit-style"].
+    NOT "emotional-gut-punch": the ending is a beach and a reunion.
 
 12. Erin Brockovich
     Residue: fired up by an underdog who would not be talked down to.
-    Tags: ["rainy-day-rewinds"]. Alternates: ["slow-burn-sharp-blade"].
-    NOT "feel-good-romance": the boyfriend is a subplot inside a legal drama.
+    Candidates: rainy-day-rewinds 0.84. One candidate, because nothing else holds: the romance is a
+    subplot, the record is accurate (not based-on-vibes), and the film is brisk (not a slow burn).
+    Alternates: ["feel-good-romance", "slow-burn-sharp-blade", "based-on-vibes-true-story"].
 
 Workflow
 1. State the residue in ONE sentence (goes in the `residue` JSON field).
@@ -163,4 +180,5 @@ Workflow
 3. For each candidate bucket, walk its "Qualifies when" list and its "Does NOT fit" lines.
 4. Write the evidence as a quote plus the condition it satisfies (goes in `evidence`).
 5. Apply Rules 1 to 7. Drop any tag that fails a condition. Score confidence by Rule 6.
-6. Return up to 5 candidates you would defend, and up to 3 alternates you would not.
+6. Return every mood that plausibly fits (2 to 4 is typical, at most 5) and up to 3 alternates you
+   considered and set aside.

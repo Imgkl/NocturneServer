@@ -21,6 +21,7 @@ final class APIRoutes: @unchecked Sendable {
   let enrichmentRoutes: EnrichmentRoutes
   let taggerRoutes: TaggerRoutes
   let modelSettingsRoutes: ModelSettingsRoutes
+  let evalRoutes: EvalRoutes
   let posterCache: PosterCache?
 
   init(
@@ -30,7 +31,8 @@ final class APIRoutes: @unchecked Sendable {
     outbound: OutboundClient,
     enrichmentRoutes: EnrichmentRoutes,
     taggerRoutes: TaggerRoutes,
-    modelSettingsRoutes: ModelSettingsRoutes
+    modelSettingsRoutes: ModelSettingsRoutes,
+    evalRoutes: EvalRoutes
   ) {
     self.movieService = movieService
     self.config = config
@@ -39,6 +41,7 @@ final class APIRoutes: @unchecked Sendable {
     self.enrichmentRoutes = enrichmentRoutes
     self.taggerRoutes = taggerRoutes
     self.modelSettingsRoutes = modelSettingsRoutes
+    self.evalRoutes = evalRoutes
     self.posterCache = (try? PosterCache(
       dir: config.posterCacheDir,
       maxBytes: config.posterCacheMaxBytes
@@ -73,6 +76,7 @@ final class APIRoutes: @unchecked Sendable {
     enrichmentRoutes.addRoutes(to: api)
     taggerRoutes.addRoutes(to: api)
     modelSettingsRoutes.addRoutes(to: api)
+    evalRoutes.addRoutes(to: api)
   }
 
   // MARK: - Mood Routes (admin needs the bucket list for display names)
