@@ -89,14 +89,27 @@ export type VerifyFilm = {
   year?: number;
   played: boolean;
   residue?: string;
+  // The moods on the film from AI, to judge.
   moods: VerifyMood[];
+  // Moods AI named that are not on the film, to add with one tap.
+  candidates: VerifyMood[];
 };
+
+// Which films the sample draws from, and whether they carry a mood yet.
+export type VerifyScope = 'watched' | 'all';
+export type VerifyMode = 'tagged' | 'untagged';
 
 export type VerifyTally = { films: number; judged: number; right: number; wrong: number };
 
-export type VerifySample = { films: VerifyFilm[]; remaining: number; tally: VerifyTally };
+export type VerifySample = {
+  films: VerifyFilm[];
+  remaining: number;
+  // Unjudged films per scope and mode, keyed `watched.tagged`, `all.untagged` and so on.
+  counts: Record<string, number>;
+  tally: VerifyTally;
+};
 
-export type VerifySaved = { kept: string[]; wrong: string[]; tally: VerifyTally };
+export type VerifySaved = { kept: string[]; wrong: string[]; added: string[]; tally: VerifyTally };
 
 export type EnrichmentBucket =
   | 'english_plot'

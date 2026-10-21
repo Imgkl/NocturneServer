@@ -17,6 +17,7 @@ struct TaggerRoutes: @unchecked Sendable {
     struct VerifyBody: Codable {
         let jellyfinId: String
         let wrong: [String]?
+        let add: [String]?
     }
     struct BusyResponse: Codable {
         let error: String
@@ -66,13 +67,15 @@ struct TaggerRoutes: @unchecked Sendable {
         admin.get("verify/sample") { request, _ in
             let count = min(100, max(1, Int(request.uri.queryParameters["n"] ?? "30") ?? 30))
             let seed = request.uri.queryParameters["seed"].map(String.init) ?? VerifyService.daySeed()
-            return try jsonResponse(try await self.verify.sample(count: count, seed: seed))
+            let scope = request.uri.queryParameters["scope"].flatMap { VerifyService.Scope(rawValue: String($0)) } ?? .watched
+            let mode = request.uri.queryParameters["mode"].flatMap { VerifyService.Mode(rawValue: String($0)) } ?? .tagged
+            return try jsonResponse(try await self.verify.sample(count: count, seed: seed, scope: scope, mode: mode))
         }
 
         admin.post("verify") { request, context in
             let body = try await request.decode(as: VerifyBody.self, context: context)
             do {
-                return try jsonResponse(try await self.verify.save(jellyfinId: body.jellyfinId, wrong: body.wrong ?? []))
+                return try jsonResponse(try await self.verify.save(jellyfinId: body.jellyfinId, wrong: body.wrong ?? [], add: body.add ?? []))
             } catch let error as VerifyError {
                 throw HTTPError(.badRequest, message: error.description)
             }

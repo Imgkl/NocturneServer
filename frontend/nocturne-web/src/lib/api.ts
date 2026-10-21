@@ -20,8 +20,10 @@ import type {
   TagSuggestionApi,
   TeachAccepted,
   TeachGroups,
+  VerifyMode,
   VerifySample,
   VerifySaved,
+  VerifyScope,
   WorklistFilter,
 } from './types';
 
@@ -119,8 +121,9 @@ export const api = {
   },
   // The spot check: a seeded random sample of tagged films, judged mood by mood.
   verify: {
-    sample: (n = 30, seed?: string) => get<VerifySample>(`/admin/verify/sample?n=${n}${seed ? `&seed=${enc(seed)}` : ''}`),
-    save: (jellyfinId: string, wrong: string[]) => post<VerifySaved>('/admin/verify', { jellyfinId, wrong }),
+    sample: (n = 30, scope: VerifyScope = 'watched', mode: VerifyMode = 'tagged', seed?: string) =>
+      get<VerifySample>(`/admin/verify/sample?n=${n}&scope=${scope}&mode=${mode}${seed ? `&seed=${enc(seed)}` : ''}`),
+    save: (jellyfinId: string, wrong: string[], add: string[] = []) => post<VerifySaved>('/admin/verify', { jellyfinId, wrong, add }),
   },
   suggestions: {
     listPending: () =>

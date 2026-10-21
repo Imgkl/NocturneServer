@@ -9,6 +9,22 @@ import Logging
 final class VerifyService: @unchecked Sendable {
     static let kind = "verify"
     static let wrongReason = "marked wrong by the owner"
+    /// A mood AI named that was not on the film; shown on the card, so it counts as judged.
+    static let consideredReason = "considered by AI, not applied"
+    static let addedReason = "added by the owner"
+
+    /// Which films the sample draws from: the owner's watched films (the baseline) or every film.
+    enum Scope: String, Sendable {
+        case watched
+        case all
+    }
+
+    /// `tagged`: films carrying a mood from AI, judged mood by mood. `untagged`: films with no mood
+    /// at all, where the owner picks from what AI considered or anything else.
+    enum Mode: String, Sendable {
+        case tagged
+        case untagged
+    }
 
     struct Mood: Codable, Sendable, Equatable {
         let slug: String
@@ -24,7 +40,10 @@ final class VerifyService: @unchecked Sendable {
         let year: Int?
         let played: Bool
         let residue: String?
+        /// The moods on the film from AI, to judge.
         let moods: [Mood]
+        /// Moods AI named that are not on the film, to add with one tap.
+        let candidates: [Mood]
     }
 
     /// Running totals over every verdict so far.
@@ -37,14 +56,17 @@ final class VerifyService: @unchecked Sendable {
 
     struct Sample: Codable, Sendable {
         let films: [Film]
-        /// Tagged films still unjudged after this sample.
+        /// Films of this scope and mode still unjudged after this sample.
         let remaining: Int
+        /// Unjudged films per scope and mode, keyed `watched.tagged`, `all.untagged` and so on.
+        let counts: [String: Int]
         let tally: Tally
     }
 
     struct Saved: Codable, Sendable {
         let kept: [String]
         let wrong: [String]
+        let added: [String]
         let tally: Tally
     }
 
@@ -60,16 +82,28 @@ final class VerifyService: @unchecked Sendable {
         self.logger = logger
     }
 
-    /// Films carrying at least one of the tagger's tags and no verdict yet, in a seeded order so a
-    /// reload shows the same films until they are judged.
-    func sample(count: Int, seed: String) async throws -> Sample {
+    /// Films of the scope and mode with no verdict yet, in a seeded order so a reload shows the same
+    /// films until they are judged.
+    func sample(count: Int, seed: String, scope: Scope = .watched, mode: Mode = .tagged) async throws -> Sample {
         let db = fluent.db()
         let verified = Set(try await TagSuggestion.query(on: db).filter(\.$kind == Self.kind).all().map(\.jellyfinId))
         var autoBy: [String: [String]] = [:]
-        for row in try await MovieTag.query(on: db).filter(\.$labelSource == LabelSource.auto.rawValue).with(\.$tag).with(\.$movie).all() {
-            autoBy[row.movie.jellyfinId, default: []].append(row.tag.slug)
+        var tagged = Set<String>()
+        for row in try await MovieTag.query(on: db).with(\.$tag).with(\.$movie).all() {
+            tagged.insert(row.movie.jellyfinId)
+            if row.labelSource == LabelSource.auto.rawValue { autoBy[row.movie.jellyfinId, default: []].append(row.tag.slug) }
         }
-        let candidates: [String] = autoBy.keys.filter { !verified.contains($0) }.sorted()
+        let allMovies = try await Movie.query(on: db).all()
+        func pool(_ scope: Scope, _ mode: Mode) -> [String] {
+            allMovies.filter { movie in
+                guard !verified.contains(movie.jellyfinId) else { return false }
+                guard scope == .all || movie.played else { return false }
+                return mode == .tagged ? (autoBy[movie.jellyfinId]?.isEmpty == false) : !tagged.contains(movie.jellyfinId)
+            }.map(\.jellyfinId).sorted()
+        }
+        var counts: [String: Int] = [:]
+        for s in [Scope.watched, .all] { for m in [Mode.tagged, .untagged] { counts["\(s.rawValue).\(m.rawValue)"] = pool(s, m).count } }
+        let candidates: [String] = pool(scope, mode)
         let picked: [String] = Array(Self.shuffle(candidates, seed: seed).prefix(max(0, count)))
         var films: [Film] = []
         if !picked.isEmpty {
@@ -106,14 +140,18 @@ final class VerifyService: @unchecked Sendable {
                         probability = classifier.probabilities
                     }
                 }
-                let moods = (autoBy[jellyfinId] ?? []).map { slug in
-                    Mood(slug: slug, title: config.moodBuckets[slug]?.title ?? slug, probability: probability[slug] ?? confidence[slug], evidence: evidence[slug])
-                }.sorted { ($0.probability ?? 0, $1.slug) > ($1.probability ?? 0, $0.slug) }
+                let applied = autoBy[jellyfinId] ?? []
+                let mood: (String) -> Mood = { slug in
+                    Mood(slug: slug, title: self.config.moodBuckets[slug]?.title ?? slug, probability: probability[slug] ?? confidence[slug], evidence: evidence[slug])
+                }
+                let byProbability: (Mood, Mood) -> Bool = { ($0.probability ?? 0, $1.slug) > ($1.probability ?? 0, $0.slug) }
+                let moods = applied.map(mood).sorted(by: byProbability)
+                let considered = confidence.keys.filter { !applied.contains($0) && known.contains($0) }.map(mood).sorted(by: byProbability)
                 let identity = identities[jellyfinId]
-                films.append(Film(jellyfinId: jellyfinId, title: identity?.title ?? jellyfinId, year: identity?.year, played: movie.played, residue: residue, moods: moods))
+                films.append(Film(jellyfinId: jellyfinId, title: identity?.title ?? jellyfinId, year: identity?.year, played: movie.played, residue: residue, moods: moods, candidates: considered))
             }
         }
-        return Sample(films: films, remaining: candidates.count - picked.count, tally: try await tally())
+        return Sample(films: films, remaining: candidates.count - picked.count, counts: counts, tally: try await tally())
     }
 
     func tally() async throws -> Tally {
@@ -122,19 +160,30 @@ final class VerifyService: @unchecked Sendable {
         var wrong = 0
         for row in rows {
             let items = ReviewQueue.items(of: row)
-            judged += items.filter { $0.kind == .add }.count
+            // Precision counts the moods AI applied and the owner judged, not the ones they added.
+            judged += items.filter { $0.kind == .add && $0.applied && $0.reason == nil }.count
             wrong += items.filter { $0.kind == .remove }.count
         }
         return Tally(films: rows.count, judged: judged, right: judged - wrong, wrong: wrong)
     }
 
     /// The owner's verdict on one film: the wrong moods come off, the rest become the owner's own
-    /// tags, open review rows are superseded, and a user-resolved verify row records it all.
-    func save(jellyfinId: String, wrong: [String]) async throws -> Saved {
+    /// tags, `add` lands as the owner's tags, open review rows are superseded, and a user-resolved
+    /// verify row records it all. Moods AI considered that the owner did not take are negatives too,
+    /// because they were on the card.
+    func save(jellyfinId: String, wrong: [String], add: [String] = []) async throws -> Saved {
         let db = fluent.db()
         guard let movie = try await Movie.query(on: db).filter(\.$jellyfinId == jellyfinId).first() else { throw TaggerError.movieNotFound(jellyfinId) }
+        let known = Set(config.moodBuckets.keys)
         let applied = try await movies.autoTagSlugs(jellyfinId: jellyfinId)
-        guard !applied.isEmpty else { throw VerifyError.nothingToJudge(jellyfinId) }
+        let onFilm = Set(try await MovieTag.query(on: db).filter(\.$movie.$id == movie.requireID()).with(\.$tag).all().map(\.tag.slug))
+        var considered: [String] = []
+        if let id = movie.currentDecisionId, let decision = try await Decision.find(id, on: db), let json = decision.readerJson,
+            let answer = try? ReaderService.parse(json, knownSlugs: known, maxTags: config.maxAutoTags, logger: logger) {
+            considered = answer.candidates.map(\.slug).filter { !onFilm.contains($0) }
+        }
+        let added = add.filter { known.contains($0) && !onFilm.contains($0) }
+        guard !applied.isEmpty || !added.isEmpty || !considered.isEmpty else { throw VerifyError.nothingToJudge(jellyfinId) }
         let wrongSet = Set(wrong).intersection(applied)
         try await movies.removeAutoTags(jellyfinId: jellyfinId, tagSlugs: wrongSet.sorted())
         try await movies.promoteAutoTagsToUser(jellyfinId: jellyfinId)
@@ -143,17 +192,22 @@ final class VerifyService: @unchecked Sendable {
             old.resolvedAt = Date()
             try await old.save(on: db)
         }
+        if !added.isEmpty {
+            _ = try await movies.updateMovieTags(jellyfinId: jellyfinId, tagSlugs: added, replaceAll: false, labelSource: .user)
+        }
         let kept = applied.filter { !wrongSet.contains($0) }
         let items = applied.map { SuggestionItem(slug: $0, probability: 0, evidence: nil, kind: .add, applied: true, reason: nil) }
             + wrongSet.sorted().map { SuggestionItem(slug: $0, probability: 0, evidence: nil, kind: .remove, applied: false, reason: Self.wrongReason) }
+            + considered.filter { !added.contains($0) }.map { SuggestionItem(slug: $0, probability: 0, evidence: nil, kind: .add, applied: false, reason: Self.consideredReason) }
+            + added.map { SuggestionItem(slug: $0, probability: 0, evidence: nil, kind: .add, applied: true, reason: Self.addedReason) }
         let row = TagSuggestion(jellyfinId: jellyfinId, suggestedTags: applied, confidence: 0, reasoning: nil, status: "approved", kind: Self.kind)
         row.decisionId = movie.currentDecisionId
         row.itemsJson = DecisionRecorder.json(items)
         row.resolvedAt = Date()
         row.resolvedBy = ResolvedBy.user
         try await row.save(on: db)
-        logger.info("[\(jellyfinId)] verified: kept \(kept), wrong \(wrongSet.sorted())")
-        return Saved(kept: kept, wrong: wrongSet.sorted(), tally: try await tally())
+        logger.info("[\(jellyfinId)] verified: kept \(kept), wrong \(wrongSet.sorted()), added \(added)")
+        return Saved(kept: kept, wrong: wrongSet.sorted(), added: added, tally: try await tally())
     }
 
     /// A seeded Fisher-Yates shuffle, so the same seed gives the same sample.

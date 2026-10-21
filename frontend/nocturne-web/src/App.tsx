@@ -666,6 +666,8 @@ export default function App() {
       )}
       {page === 'check' && (
         <CheckPage
+          moods={moods}
+          covers={moodCovers}
           movieLookup={lookup}
           onOpenMovie={(m) => openMovieIn(m, [m])}
           say={say}
