@@ -128,3 +128,36 @@ Server, on `gkl_web_ui_restyle` (`1a9d8d9` grader and policy, `72fa484` eval, `8
 Web UI, X-Cache's classes throughout: a Teach page (boundary chips, cards with poster, AI's one-line read, who picked what, Jev's two probabilities, keys j k 1 2 0, Write rules dialog with editable drafts), an Accuracy page (your decisions replayed, next steps, policies side by side, floors per mood with the suggested column and one button to use them), and Settings rows for the grader, the policy, the Jev model, the TypeSafe key with a test, Regrade, the floors table and the guide editor. The Review tray shows second-look rows with the moods AI would drop as strike-through pills. Checked locally against a copy of the Pi database with a watched-scope regrade run.
 
 Known limits: the eval needs the owner's decisions (the Pi had no user-labelled tag and two rejections when v0.3.0 shipped, so the first report is empty until the tray is worked); leave-one-out evaluation with fresh model calls, an OpenAI Decisions provider and a `scores` field in the client payload were left out.
+
+## v0.3.0 rollout (2026-10-21, 09:12 to 10:13)
+
+Tag `v0.3.0` built in about 7 minutes; the Pi came up on it at 09:15 with the `teach_answers` migration. The Jev key was copied on the Pi from X-Cache's secrets into Nocturne's settings (never printed); the key test answered all 36 mood questions on `jev-1.13.0`. Grader set to Jev, policy `p1`, reader `claude-sonnet-5-5`. An 8-film pre-flight under guide v2.2 gave 2.75 candidates per film (2, 2, 2, 2, 3, 3, 4, 4), so the whole library was re-read.
+
+| Full library, reprocess-all under v0.3.0 | Result |
+|---|---|
+| Films | 680 in 55 minutes, 0 errors, every decision `p1` |
+| AI candidates per film | mean 3.19: 0 on 3 films, 1 on 9, 2 on 117, 3 on 298, 4 on 236, 5 on 17 (v2 on Sonnet: 1.63) |
+| Applied per film at the shipped floors (0.70, 0.80 on six moods) | mean 1.16: none on 191 films, 1 on 256, 2 on 181, 3 on 39, 4 on 12, 5 on 1 |
+| Films with at least one tag | 489 of 680 |
+| Outcomes | applied 31, review 647, none 2; pending rows 652 (the owner's confirmation of the suggestions) |
+| Jev's two primary passes | agree on 596 films, disagree on 84 (those are unsure) |
+| Jev probability for the moods AI named | p25 0.38, p50 0.61, p75 0.81 over 2,165 moods |
+| Uniform floor replay from the stored answers | 0.50: 2.02 applied per film; 0.60: 1.66; 0.70: 1.30; 0.80: 0.85 |
+| Most applied moods | film-school-shelf 76, rainy-day-rewinds 66, horror-and-unease 58, modern-masterpieces 56, regional-gems 52, existential-core 41 |
+| Cost | Anthropic $11.20 ($0.0165 per film, prefix cached at 25,589 tokens), TypeSafe $1.15 ($0.0017 per film); month spend $19.91 against the $15 cap |
+
+The reader side of the owner's complaint is fixed: three or four moods named on most films, with evidence per mood. Spot checks read well on both sides of the floor. Jev holds back the moods AI named from memory (Anchorman as a modern masterpiece 0.06, 3 Idiots as existential 0.10, Whiplash visual-worship 0.07) and backs the ones the text supports (Heat: cat-and-mouse 0.92, crime-grit-style 0.89, film-school-shelf 0.82; Nayakan: regional-gems 0.96, crime-grit-style 0.95, antihero-study 0.77, based-on-vibes-true-story 0.74). It also finds moods AI did not name (Premam feel-good-romance 0.92, 3 Idiots coming-of-age 0.82, Nayakan film-school-shelf 0.81); only those above the 0.85 high line reach the tray.
+
+What the shipped floors cost: the six strict moods at 0.80 held back Jev-backed moods at 0.70 to 0.79 (Drishyam slow-burn-sharp-blade 0.70, Kaithi crime-grit-style 0.75, Zindagi Na Milegi Dobara regional-gems 0.77), and those floors came from the reader-only era, where the reader's own confidence sat at 0.70 to 0.90. Jev's probabilities spread lower (median 0.61 for a mood AI named), so the same number means something else. Decision taken on the owner's "take the wheel": every floor set to 0.60 in settings (the code defaults are unchanged), then a regrade of the whole library (Jev only, about $1.15, no Anthropic call). The Accuracy page suggests floors per mood once the owner has worked the tray; the eval ran on the pre-review data and is empty by construction (7 films, 0 confirmed moods, 12 rejected).
+
+The month is over its cap: manual runs warn and continue by design, scheduled and real-time tagging pause until the cap is raised or the month rolls over. Auto-tag on sync is on, so new films will wait.
+
+Per-film enrichment lookups fetch the full Jellyfin catalog through the admin proxy on every film (680 fetches in this run); it is the pre-existing path and did not slow the run, but it is on the backlog.
+
+### Floors at 0.60, the regrade, and v0.3.1 (10:15 to 10:35)
+
+The Jev-only regrade of all 680 films took 13.5 minutes and $1.15. With every floor at 0.60 the library carries 1.68 tags per film (none on 99 films, 1 on 203, 2 on 233, 3 on 111, 4 on 32, 5 on 2); 581 of 680 films have at least one mood, up from 489 at the shipped floors. Outcomes: applied 76, review 602, none 2; the grader was unsure on 173 (its two passes disagreed, or nothing cleared the floor). Pending rows 607, almost all second looks with one mood to drop across the whole set. Most applied moods: film-school-shelf 98, rainy-day-rewinds 91, bittersweet-aftermath 83, modern-masterpieces 70, horror-and-unease 62, existential-core 58. The two canon buckets together sit on a quarter of the library; whether 0.60 is too generous for them is the first thing the Accuracy page will say once the owner has reviewed. Month spend after everything: $21.06 against the $15 cap.
+
+v0.3.1 (`81db614`, tagged and on the Pi at 10:33): Teach lists the films the grader was unsure about plus the owner's disagreements, not every review row. Under p1 almost every film carries a suggestion below the floor, so the first version put 647 of 680 films on the page; it now shows 173 films on 105 boundaries.
+
+What the owner does next, in order: work the Review tray with the Watched scope (209 films; Approve takes AI's applied set, pills add or drop a mood); answer Teach boundaries and press Write rules after three answers; run the Accuracy page and use the suggested floors; Regrade from Settings to re-apply the floors across the library (Jev only, about $1.15). Scheduled and real-time tagging stay paused until the cap is raised or November starts.
