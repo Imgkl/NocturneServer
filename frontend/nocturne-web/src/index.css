@@ -1,84 +1,93 @@
 @import "tailwindcss";
 
 @theme {
-  /* Direction — Editorial Light (pure white, neutral greys) */
+  /* X-Cache Live's language: pure white page, soft grey fills, ink text, pills and 24px cards. */
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
   --color-bg: #ffffff;
-  --color-surface: #fafafa;
-  --color-border: #e5e5e5;
-  --color-border-hover: #d4d4d4;
-  --color-muted: #737373;
-  --color-text: #0a0a0a;
-  --color-text-dim: #404040;
+  --color-surface: #ffffff;
+  --color-canvas: #f3f3f3;
+  --color-canvas-2: #e9e9e9;
+  --color-ink: #111111;
+  --color-ink-2: #2b2b2b;
+  --color-mute: #6e6e6e;
+  --color-faint: #a1a1a1;
+  --color-line: #ededed;
+  --color-line-2: #dcdcdc;
+  --color-accent: #1f5eff;
+  --color-accent-soft: #eaf0ff;
+  --color-good: #0e8a4a;
+  --color-new: #16b364;
+  --color-bad: #c4320a;
 
-  /* Danger — muted oxblood. Reserved for destructive actions only so it keeps its weight. */
-  --color-danger: #991b1b;
+  /* Names the older screens still use, mapped onto the same palette. */
+  --color-border: #ededed;
+  --color-border-hover: #dcdcdc;
+  --color-muted: #6e6e6e;
+  --color-text: #111111;
+  --color-text-dim: #2b2b2b;
+  --color-danger: #c4320a;
 
-  --font-serif: "EB Garamond", Georgia, serif;
-  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
-
-  --radius-DEFAULT: 0px;
-  --radius-xs: 0px;
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-lg: 0px;
-  --radius-xl: 0px;
-  --radius-2xl: 0px;
-  --radius-3xl: 0px;
-
-  --tracking-wider: 0.12em;
-  --tracking-widest: 0.18em;
+  --shadow-card: 0 0 0 1px rgba(0, 0, 0, 0.055), 0 1px 2px rgba(0, 0, 0, 0.03), 0 12px 32px -20px rgba(0, 0, 0, 0.1);
+  --shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.05), 0 22px 48px -18px rgba(0, 0, 0, 0.22);
+  --shadow-pop: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 24px 60px -16px rgba(0, 0, 0, 0.25);
+  --shadow-modal: 0 40px 100px -24px rgba(0, 0, 0, 0.45);
+  --ease-out-soft: cubic-bezier(0.2, 0.75, 0.2, 1);
 }
 
-html, body, #root { height: 100%; }
+html, body, #root { min-height: 100%; background: #fff; }
 body {
   margin: 0;
-  background: var(--color-bg);
-  color: var(--color-text);
   font-family: var(--font-sans);
+  color: var(--color-ink);
+  font-feature-settings: "ss01";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
+::selection { background: #111; color: #fff; }
+:focus-visible { outline: 2px solid #111; outline-offset: 2px; }
+.no-ring:focus-visible { outline: none; }
+
+.display { letter-spacing: -0.035em; line-height: 1.02; font-weight: 640; }
+.heading { letter-spacing: -0.022em; }
 
 /* Utilities */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.rail-mask-end { -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 72px), transparent 100%); mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 72px), transparent 100%); }
+.rail-mask-start { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 72px, #000 100%); mask-image: linear-gradient(90deg, transparent 0, #000 72px, #000 100%); }
+.rail-mask-both { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 72px, #000 calc(100% - 72px), transparent 100%); mask-image: linear-gradient(90deg, transparent 0, #000 72px, #000 calc(100% - 72px), transparent 100%); }
 
-/* Horizontal scroll fade masks for chip rows */
-.fade-mask-x {
-  mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent);
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent);
-}
+/* Motion: one soft ease, short, and nothing under reduced motion. */
+@keyframes pop { from { opacity: 0; transform: scale(0.94) translateY(10px); } to { opacity: 1; transform: none; } }
+.pop-in { animation: pop 0.45s var(--ease-out-soft) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise 0.5s var(--ease-out-soft) both; }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.fade-in { animation: fade 0.2s ease both; }
+@keyframes modal { from { opacity: 0; transform: translateY(16px) scale(0.985); } to { opacity: 1; transform: none; } }
+.modal-in { animation: modal 0.32s var(--ease-out-soft) both; }
+@keyframes sheet-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes sheet-up { from { transform: translateY(32px); opacity: 0; } to { transform: none; opacity: 1; } }
+.sheet-in { animation: sheet-in 0.32s var(--ease-out-soft) both; }
+@media (max-width: 639px) { .sheet-in { animation-name: sheet-up; } }
+@keyframes row-out { to { opacity: 0; transform: translateX(24px); height: 0; margin: 0; padding-top: 0; padding-bottom: 0; } }
+.row-out { animation: row-out 0.28s var(--ease-out-soft) both; overflow: hidden; }
+@keyframes popmenu { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+.pop-menu { animation: popmenu 0.18s var(--ease-out-soft) both; transform-origin: top right; }
+@keyframes card-enter { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
+.card-enter { animation: card-enter 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+.indeterminate { animation: indeterminate 1.3s ease-in-out infinite; }
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+.skel { background: linear-gradient(90deg, #f1f1f1 25%, #f8f8f8 50%, #f1f1f1 75%); background-size: 200% 100%; animation: shimmer 1.4s ease infinite; border-radius: 16px; }
 
-/* Marching-ants dashes along the button perimeter on hover.
-   Four 1px background gradients — top, right, bottom, left — each tiling dashes along
-   its edge. Animating background-position shifts the dashes around the rectangle
-   clockwise (top → right → bottom → left) without touching the button's shape. */
-@keyframes btn-line-march {
-  to {
-    background-position: 12px 0, 100% 12px, -12px 100%, 0 -12px;
-  }
-}
-
-.btn-line-animated:hover:not(:disabled) {
-  border-color: transparent;
-  background-image:
-    linear-gradient(90deg, var(--color-text) 50%, transparent 50%),
-    linear-gradient(0deg, var(--color-text) 50%, transparent 50%),
-    linear-gradient(90deg, var(--color-text) 50%, transparent 50%),
-    linear-gradient(0deg, var(--color-text) 50%, transparent 50%);
-  background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px;
-  background-repeat: repeat-x, repeat-y, repeat-x, repeat-y;
-  background-position: 0 0, 100% 0, 0 100%, 0 0;
-  background-origin: border-box;
-  background-clip: border-box;
-  animation: btn-line-march 0.8s linear infinite;
-}
+/* Poster images fade in once loaded. */
+.img-fade { opacity: 0; transition: opacity 0.45s ease, transform 0.6s var(--ease-out-soft); }
+.img-fade.loaded { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
-  .btn-line-animated:hover:not(:disabled) {
-    animation: none;
-    border-color: var(--color-text);
-    border-style: dashed;
-    background-image: none;
-  }
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
