@@ -161,3 +161,17 @@ The Jev-only regrade of all 680 films took 13.5 minutes and $1.15. With every fl
 v0.3.1 (`81db614`, tagged and on the Pi at 10:33): Teach lists the films the grader was unsure about plus the owner's disagreements, not every review row. Under p1 almost every film carries a suggestion below the floor, so the first version put 647 of 680 films on the page; it now shows 173 films on 105 boundaries.
 
 What the owner does next, in order: work the Review tray with the Watched scope (209 films; Approve takes AI's applied set, pills add or drop a mood); answer Teach boundaries and press Write rules after three answers; run the Accuracy page and use the suggested floors; Regrade from Settings to re-apply the floors across the library (Jev only, about $1.15). Scheduled and real-time tagging stay paused until the cap is raised or November starts.
+
+## v0.3.2: the tray holds decisions, the spot check, and a free replay (2026-10-21, 11:00 to 12:50)
+
+The owner's reaction to the 604-row tray: it is basically all the movies, and they cannot start reviewing while they do not trust the tags. Breaking the 604 regrade rows down by what they needed: 430 needed nothing (the applied tags were on the film and the row only asked about moods below the floor), 99 had nothing applied, 74 had Jev's two passes disagreeing, 1 had a mood to drop. The rule was ported too literally from X-Cache's unsure mark.
+
+Three changes, tagged `v0.3.2` (`4c25d7e`):
+
+1. **A row waits for a human only when the film is unsure** (nothing applied, the grader's passes disagreed, or the story is unverified) or a regrade would drop a mood. A suggestion below the floor rides along on an auto-approved row, and the film sheet now shows every film's newest decision (`GET /admin/movies/:id/suggestion`), so "AI also considered" never disappears. On the local copy of the Pi database the tray went from 604 rows to 192.
+2. **Spot check** (`#check`, `GET /admin/verify/sample`, `POST /admin/verify`): thirty random tagged films in a seeded order, every mood as a pill with its evidence and Jev's probability, one tap marks a mood wrong, Save or Looks right, keys j k 1 to 5 Enter. A verdict removes the wrong moods, makes the kept ones the owner's, supersedes the film's open row and writes a user-resolved `verify` row: positives and negatives for the Accuracy page, a disagreement for Teach, a running precision on the page. Ten minutes of this is the first real measure of whether the tags are right.
+3. **Replay** (`POST /admin/auto-tag/replay`): the policy again over the stored AI and Jev answers, no call to anyone. The floors table offers "Apply to the library (free)" after a save, and the Accuracy page runs it after adopting suggested floors. Regrade stays for a changed guide or new rules, when Jev has to read again.
+
+Answer to the owner's cost question, recorded here: story sources are stored and were free; AI's answer per film is stored and is only re-read for a new film, Reprocess, "AI again" on a film sheet, or Write rules on Teach; Jev recurs only on Regrade ($1.15 for the library) and on accepting a rule (that boundary's films); a floor change is now free; the Accuracy page is free.
+
+Tests: 162 across 29 suites. The HumanLabel tests now build their pending row from a grader whose passes disagree, because applied tags with a suggestion no longer make one.
