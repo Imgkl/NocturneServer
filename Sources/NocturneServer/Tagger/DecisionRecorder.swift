@@ -51,10 +51,12 @@ final class DecisionRecorder: Sendable {
     struct Completion: Sendable {
         var enrichment: MovieEnrichment?
         var reader: ReaderResult?
+        var classifier: ClassifierAnswer? = nil
         var policy: PolicyDecision
         var outcome: PolicyDecision.Outcome
         var reasons: [String]
         var models: [String: String]
+        var policyVersion: String? = nil
     }
 
     /// Fills the row in, sums the cost of every call that carried its id, and makes it the film's
@@ -64,7 +66,12 @@ final class DecisionRecorder: Sendable {
         let db = fluent.db()
         decision.inputHash = completion.enrichment?.inputHash
         decision.enrichVersion = completion.enrichment?.enrichVersion ?? 0
-        decision.readerJson = completion.reader?.rawJson
+        if let reader = completion.reader { decision.readerJson = reader.rawJson }
+        if let classifier = completion.classifier {
+            decision.classifierJson = classifier.rawJson
+            decision.classifierProvider = classifier.provider
+        }
+        if let version = completion.policyVersion { decision.policyVersion = version }
         decision.appliedJson = Self.json(completion.policy.applied)
         decision.suggestedJson = Self.json(completion.policy.suggested)
         decision.unsure = completion.policy.unsure
@@ -73,6 +80,7 @@ final class DecisionRecorder: Sendable {
         var models = completion.models
         models["enrichment_source"] = completion.enrichment?.source ?? EnrichmentSource.none.rawValue
         if let reader = completion.reader { models["reader"] = reader.model }
+        if let classifier = completion.classifier { models["classifier"] = classifier.model }
         decision.modelsJson = Self.json(models)
         if let id = decision.id {
             let calls = try await ApiCall.query(on: db).filter(\.$decisionId == id).all()

@@ -66,6 +66,34 @@ final class ScriptedReader: Reading, @unchecked Sendable {
     }
 }
 
+final class ScriptedClassifier: DecisionClassifying, @unchecked Sendable {
+    let provider = "typesafe"
+    var answer: ClassifierAnswer
+    var error: Error? = nil
+    private let lock = NSLock()
+    private var received: [(textBlock: String, guide: String?)] = []
+
+    init(answer: ClassifierAnswer) {
+        self.answer = answer
+    }
+
+    var calls: Int { lock.withLock { received.count } }
+    var lastGuide: String?? { lock.withLock { received.last?.guide } }
+
+    func classify(textBlock: String, guide: String?, jellyfinId: String, apiKey: String, context: CallContext) async throws -> ClassifierAnswer {
+        lock.withLock { received.append((textBlock, guide)) }
+        if let error { throw error }
+        return answer
+    }
+}
+
+func classifierAnswer(_ probabilities: [String: Double], primary: String? = nil, secondPick: String? = nil) -> ClassifierAnswer {
+    let pick = primary ?? probabilities.max { $0.value < $1.value }?.key ?? "none"
+    let pass1 = ClassifierChoice(choice: pick, probabilities: probabilities, confidence: 0.9)
+    let pass2 = ClassifierChoice(choice: secondPick ?? pick, probabilities: probabilities, confidence: 0.9)
+    return ClassifierAnswer(provider: "typesafe", model: "jev-1.13.0", probabilities: probabilities, pass1: pass1, pass2: pass2, rawJson: "{\"answers\":{}}", inputTokens: 12_000)
+}
+
 /// A MovieService over the test database. Jellyfin is never reached by the tag paths.
 func makeMovieService(_ fluent: Fluent, config: NocturneConfiguration) -> MovieService {
     let jellyfin = JellyfinService(baseURL: "http://127.0.0.1:1", apiKey: "", userId: "", httpClient: HTTPClient.shared)
@@ -74,15 +102,19 @@ func makeMovieService(_ fluent: Fluent, config: NocturneConfiguration) -> MovieS
 
 func makePipeline(
     _ fluent: Fluent, config: NocturneConfiguration, enricher: ScriptedEnricher, reader: ScriptedReader,
-    apiKey: String? = "sk-test", budgetCap: String? = nil
+    apiKey: String? = "sk-test", budgetCap: String? = nil, classifier: ScriptedClassifier? = nil, jevKey: String? = "jev-test"
 ) async throws -> (pipeline: TaggerPipeline, movies: MovieService, settings: SettingsStore) {
     let settings = SettingsStore(db: fluent.db(), logger: Logger(label: "test"))
     try await settings.ensureTable()
     if let apiKey { try await settings.set(TaggerPipeline.apiKeySetting, apiKey) }
     if let budgetCap { try await settings.set(BudgetGuard.settingKey, budgetCap) }
+    if classifier != nil {
+        try await settings.set(PolicyConfig.providerSetting, "jev")
+        if let jevKey { try await settings.set(JevClient.apiKeySetting, jevKey) }
+    }
     let movies = makeMovieService(fluent, config: config)
     let pipeline = TaggerPipeline(
-        fluent: fluent, config: config, enrichment: enricher, reader: reader, movies: movies,
+        fluent: fluent, config: config, enrichment: enricher, reader: reader, classifier: classifier, movies: movies,
         budget: BudgetGuard(fluent: fluent, settings: settings), settings: settings,
         titles: { [:] }, logger: Logger(label: "test"))
     return (pipeline, movies, settings)

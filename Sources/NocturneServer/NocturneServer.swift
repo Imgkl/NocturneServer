@@ -110,8 +110,12 @@ struct NocturneServerApp {
             anthropic: anthropic, settings: settingsStore, buckets: appConfig.moodBuckets,
             rules: appConfig.autoTaggingPrompt, maxTags: appConfig.maxAutoTags)
         let budget = BudgetGuard(fluent: fluent, settings: settingsStore)
+        // The classifier of record (TypeSafe Jev). Whether it runs is the `classifier.provider` setting.
+        var jevClient = JevClient(outbound: outbound, buckets: appConfig.moodBuckets)
+        if let base = ProcessInfo.processInfo.environment["TYPESAFE_BASE"], !base.isEmpty { jevClient.baseURL = base }
+        if let model = try? await settingsStore.get(JevClient.modelSetting), !model.isEmpty { jevClient.model = model }
         let pipeline = TaggerPipeline(
-            fluent: fluent, config: appConfig, enrichment: enrichmentService, reader: readerService,
+            fluent: fluent, config: appConfig, enrichment: enrichmentService, reader: readerService, classifier: jevClient,
             movies: movieService, budget: budget, settings: settingsStore,
             titles: { [jellyfinService] in
                 var titles: [String: String] = [:]
@@ -124,7 +128,7 @@ struct NocturneServerApp {
         let reviewQueue = ReviewQueue(fluent: fluent, config: appConfig, movies: movieService, pipeline: pipeline)
         let backfillJob = BackfillJob(runService: runService, pipeline: pipeline, queue: reviewQueue, fluent: fluent, config: appConfig)
         let taggerRoutes = TaggerRoutes(movies: movieService, pipeline: pipeline, queue: reviewQueue, backfill: backfillJob)
-        let modelSettingsRoutes = ModelSettingsRoutes(settings: settingsStore, budget: budget, coverage: coverageJob)
+        let modelSettingsRoutes = ModelSettingsRoutes(settings: settingsStore, budget: budget, coverage: coverageJob, config: appConfig, classifier: jevClient)
 
         // One-time seed: the legacy ANTHROPIC_MODEL env var becomes the initial reader model setting.
         if let envModel = ProcessInfo.processInfo.environment["ANTHROPIC_MODEL"], !envModel.isEmpty,
@@ -408,7 +412,7 @@ struct JSONErrorMiddleware: MiddlewareProtocol {
             let status: HTTPResponse.Status
             switch tagger {
             case .missingAnthropicKey: status = .badRequest
-            case .notFound, .movieNotFound: status = .notFound
+            case .notFound, .movieNotFound, .noReaderAnswer: status = .notFound
             case .alreadyResolved: status = .conflict
             }
             let payload = ErrorResponse(error: "Tagger Error", message: tagger.description, status: Int(status.code))

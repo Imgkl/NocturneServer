@@ -9,8 +9,16 @@ final class BackfillJob: @unchecked Sendable {
     enum Mode: Sendable {
         case backfill
         case reprocessAll
+        /// Classifier-only pass over films that already carry a reader answer; no reader call.
+        case regrade
 
-        var kind: RunKind { self == .backfill ? .backfill : .reprocess }
+        var kind: RunKind {
+            switch self {
+            case .backfill: return .backfill
+            case .reprocessAll: return .reprocess
+            case .regrade: return .regrade
+            }
+        }
     }
 
     /// Which films a run covers. `watched` is the admin's baseline: films they have seen and can
@@ -51,7 +59,7 @@ final class BackfillJob: @unchecked Sendable {
         let run = try await runService.start(kind: mode.kind, trigger: trigger, total: ids.count, params: ["scope": scope.rawValue])
         let runId = try run.requireID()
         Task.detached { [self] in
-            await self.run(runId: runId, ids: ids, replaceExistingPending: true)
+            await self.run(runId: runId, ids: ids, replaceExistingPending: true, mode: mode)
         }
         return run
     }
@@ -85,23 +93,27 @@ final class BackfillJob: @unchecked Sendable {
                 try await old.save(on: db)
             }
             return jellyfinIds
+        case .regrade:
+            return all.filter { $0.currentDecisionId != nil }.map(\.jellyfinId)
         }
     }
 
     /// The loop. Calibration is built once per run. A credentials failure aborts the whole run;
     /// any other failure marks the film and continues.
-    func run(runId: UUID, ids: [String], replaceExistingPending: Bool) async {
+    func run(runId: UUID, ids: [String], replaceExistingPending: Bool, mode: Mode = .backfill) async {
         let titles = await pipeline.titles()
-        let calibration = (try? await buildCalibration(fluent: fluent, titles: titles, availableTags: config.moodBuckets)) ?? [:]
+        let calibration = mode == .regrade ? [:] : (try? await buildCalibration(fluent: fluent, titles: titles, availableTags: config.moodBuckets)) ?? [:]
         var processed = 0
         var stats: [String: Int] = ["applied": 0, "review": 0, "error": 0, "skipped": 0]
 
         for id in ids {
             if (try? await runService.isCancelled(runId)) ?? true { break }
             do {
-                let sugg = try await pipeline.tag(
-                    jellyfinId: id, trigger: .manual, replaceExistingPending: replaceExistingPending,
-                    calibration: calibration, runId: runId)
+                let sugg = mode == .regrade
+                    ? try await pipeline.regrade(jellyfinId: id, trigger: .manual, runId: runId)
+                    : try await pipeline.tag(
+                        jellyfinId: id, trigger: .manual, replaceExistingPending: replaceExistingPending,
+                        calibration: calibration, runId: runId)
                 stats[sugg.status == "pending" ? "review" : "applied", default: 0] += 1
             } catch let error as OutboundError where error.isAuthFailure {
                 logger.error("backfill: aborting on auth failure: \(error)")

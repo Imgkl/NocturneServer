@@ -90,6 +90,17 @@ struct TaggerRoutes: @unchecked Sendable {
             }
         }
 
+        // POST /admin/auto-tag/regrade: the classifier and the policy again over films with a stored reader answer.
+        admin.post("auto-tag/regrade") { request, context in
+            let scope = try await self.scope(from: request, context: context)
+            do {
+                _ = try await self.backfill.start(mode: .regrade, trigger: .manual, scope: scope)
+                return try jsonResponse(try await self.backfill.status())
+            } catch RunError.busy(let runningId, let kind) {
+                return try jsonResponse(BusyResponse(error: "a \(kind) run is already in progress", runningId: runningId), status: .conflict)
+            }
+        }
+
         admin.post("auto-tag/cancel") { _, _ in
             try jsonResponse(try await self.backfill.cancel())
         }

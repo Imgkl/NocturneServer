@@ -48,6 +48,9 @@ struct PriceTable: Sendable {
         // Web search is billed per search on top of tokens. Price not confirmed yet; recorded as
         // `searches` in units so it can be re-costed once the number is in.
         "anthropic/web_search": ModelPrice(perSearch: 0, checkedOn: "unverified"),
+        // TypeSafe Jev: input tokens only, published $0.042 per million (X-Cache's price table, 9 Oct 2026).
+        "typesafe/jev-1.13.0": ModelPrice(inputPerM: 0.042, checkedOn: "2026-10-09"),
+        "typesafe": ModelPrice(inputPerM: 0.042, checkedOn: "2026-10-09"),
         "wikimedia": ModelPrice(checkedOn: "2026-10-21"),
         "wikidata": ModelPrice(checkedOn: "2026-10-21"),
         "omdb": ModelPrice(checkedOn: "2026-10-21"),

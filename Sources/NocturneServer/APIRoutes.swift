@@ -499,6 +499,7 @@ final class APIRoutes: @unchecked Sendable {
     struct KeysPayload: Codable {
       let anthropic_api_key: String?
       let omdb_api_key: String?
+      let jev_api_key: String?
       let enable_auto_tagging: Bool?
     }
 
@@ -511,6 +512,7 @@ final class APIRoutes: @unchecked Sendable {
       try await store.ensureTable()
       try await store.set("anthropic_api_key", self.config.anthropicApiKey ?? "")
       try await store.set("omdb_api_key", self.config.omdbApiKey ?? "")
+      if let v = payload.jev_api_key { try await store.set(JevClient.apiKeySetting, v) }
       try await store.set("enable_auto_tagging", self.config.enableAutoTagging ? "true" : "false")
       return try jsonResponse(["success": true])
     }
@@ -606,6 +608,7 @@ final class APIRoutes: @unchecked Sendable {
       let jellyfin_username: String
       let anthropic_key_set: Bool
       let omdb_key_set: Bool
+      let jev_key_set: Bool
       let enable_auto_tagging: Bool
     }
     settings.get("info") { request, context in
@@ -624,6 +627,7 @@ final class APIRoutes: @unchecked Sendable {
         jellyfin_username: user,
         anthropic_key_set: !anth.isEmpty,
         omdb_key_set: !omdb.isEmpty,
+        jev_key_set: !((try await store.get(JevClient.apiKeySetting)) ?? "").isEmpty,
         enable_auto_tagging: self.config.enableAutoTagging
       )
       return try jsonResponse(info)

@@ -244,4 +244,79 @@ import Testing
             }
         }
     }
+
+    @Test func classifierOfRecordDecidesUnderP1AndIsStoredOnTheDecision() async throws {
+        try await withTestFluent { fluent in
+            try await Movie(jellyfinId: "jf-1").save(on: fluent.db())
+            let reader = ScriptedReader(answer: answer([candidate("cat-and-mouse", 0.95, evidence: "duel"), candidate("ha-ha-ha", 0.9, evidence: "gags")]))
+            let classifier = ScriptedClassifier(answer: classifierAnswer(["cat-and-mouse": 0.92, "ha-ha-ha": 0.4, "heist-energy": 0.9], primary: "cat-and-mouse"))
+            let (pipeline, _, _) = try await makePipeline(fluent, config: config, enricher: ScriptedEnricher(), reader: reader, classifier: classifier)
+            let sugg = try await pipeline.tag(jellyfinId: "jf-1", trigger: .manual)
+            #expect(classifier.calls == 1)
+            #expect(classifier.lastGuide??.contains("Rule 0") == true)
+            #expect(sugg.suggestedTags == ["cat-and-mouse"])
+            #expect(sugg.status == "pending")  // ha-ha-ha and heist-energy wait for a human
+            let items = try JSONDecoder().decode([SuggestionItem].self, from: Data(try #require(sugg.itemsJson).utf8))
+            #expect(items.map(\.slug) == ["cat-and-mouse", "heist-energy", "ha-ha-ha"])
+            #expect(items[1].reason == "classifier 0.9, reader silent")
+            #expect(try await tagSlugs(fluent, "jf-1") == ["cat-and-mouse:auto"])
+            let decision = try #require(try await Decision.query(on: fluent.db()).filter(\.$jellyfinId == "jf-1").first())
+            #expect(decision.policyVersion == "p1")
+            #expect(decision.classifierProvider == "typesafe")
+            #expect(decision.classifierJson == "{\"answers\":{}}")
+            let models = try JSONDecoder().decode([String: String].self, from: Data(decision.modelsJson.utf8))
+            #expect(models["classifier"] == "jev-1.13.0")
+        }
+    }
+
+    @Test func aFailedClassifierDegradesToTheReaderAndLeavesTheFilmUnsure() async throws {
+        try await withTestFluent { fluent in
+            try await Movie(jellyfinId: "jf-2").save(on: fluent.db())
+            let reader = ScriptedReader(answer: answer([candidate("cat-and-mouse", 0.95)]))
+            let classifier = ScriptedClassifier(answer: classifierAnswer(["cat-and-mouse": 0.9]))
+            classifier.error = OutboundError.exhausted(provider: "typesafe", lastStatus: 503)
+            let (pipeline, _, _) = try await makePipeline(fluent, config: config, enricher: ScriptedEnricher(), reader: reader, classifier: classifier)
+            let sugg = try await pipeline.tag(jellyfinId: "jf-2", trigger: .manual)
+            #expect(sugg.suggestedTags == ["cat-and-mouse"])  // legacy floors still apply the tag
+            #expect(sugg.status == "pending")  // but it waits for a human
+            #expect(try await tagSlugs(fluent, "jf-2") == ["cat-and-mouse:auto"])
+            let decision = try #require(try await Decision.query(on: fluent.db()).filter(\.$jellyfinId == "jf-2").first())
+            #expect(decision.policyVersion == "p-legacy")
+            #expect(decision.unsure)
+            #expect(decision.reasonsJson.contains("classifier unavailable"))
+
+            classifier.error = OutboundError.authFailure(provider: "typesafe", status: 401)
+            try await Movie(jellyfinId: "jf-3").save(on: fluent.db())
+            await #expect(throws: OutboundError.self) { try await pipeline.tag(jellyfinId: "jf-3", trigger: .manual) }
+        }
+    }
+
+    @Test func regradeReusesTheReaderAnswerAndReportsRemovals() async throws {
+        try await withTestFluent { fluent in
+            try await Movie(jellyfinId: "jf-4").save(on: fluent.db())
+            let reader = ScriptedReader(answer: answer([candidate("cat-and-mouse", 0.95), candidate("ha-ha-ha", 0.9)]))
+            let classifier = ScriptedClassifier(answer: classifierAnswer(["cat-and-mouse": 0.92, "ha-ha-ha": 0.9], primary: "cat-and-mouse"))
+            let (pipeline, _, _) = try await makePipeline(fluent, config: config, enricher: ScriptedEnricher(), reader: reader, classifier: classifier)
+            let first = try await pipeline.tag(jellyfinId: "jf-4", trigger: .manual)
+            #expect(first.status == "approved")
+            #expect(try await tagSlugs(fluent, "jf-4") == ["cat-and-mouse:auto", "ha-ha-ha:auto"])
+
+            // The classifier changes its mind about ha-ha-ha; the reader is not called again.
+            classifier.answer = classifierAnswer(["cat-and-mouse": 0.93, "ha-ha-ha": 0.3], primary: "cat-and-mouse")
+            let regraded = try await pipeline.regrade(jellyfinId: "jf-4", trigger: .manual)
+            #expect(reader.calls == 1)
+            #expect(classifier.calls == 2)
+            #expect(regraded.status == "pending")
+            #expect(try await tagSlugs(fluent, "jf-4") == ["cat-and-mouse:auto", "ha-ha-ha:auto"])  // nothing removed silently
+            let items = try JSONDecoder().decode([SuggestionItem].self, from: Data(try #require(regraded.itemsJson).utf8))
+            #expect(items.contains { $0.slug == "ha-ha-ha" && $0.kind == .remove })
+            #expect(first.status == "approved")
+            let decisions = try await Decision.query(on: fluent.db()).filter(\.$jellyfinId == "jf-4").all()
+            #expect(decisions.count == 2)
+            #expect(decisions.allSatisfy { $0.readerJson?.contains("cat-and-mouse") == true })
+            let regradeDecision = try #require(decisions.first { ($0.reasonsJson).contains("removal suggested") })
+            #expect(regradeDecision.modelsJson.contains("\"regrade\":\"true\""))
+            #expect(try await TagSuggestion.query(on: fluent.db()).filter(\.$jellyfinId == "jf-4").filter(\.$status == "pending").count() == 1)
+        }
+    }
 }
