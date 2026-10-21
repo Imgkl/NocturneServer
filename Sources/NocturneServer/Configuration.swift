@@ -64,24 +64,26 @@ final class NocturneConfiguration: @unchecked Sendable {
 
 struct MoodBucket: Codable, Sendable {
     let title: String
-    let description: String
-    let tags: [String]?
-    let anchorsFit: [String]?      // 3-5 canonical films that fit this tag (LLM-facing)
-    let anchorsMiss: [String]?     // close-but-no films with redirect to correct tag
-    let minConfidence: Double?     // per-tag confidence floor; nil → 0.72 default
+    let description: String        // the residue in one or two sentences; shown in the web UI and seeded into `tags`
+    let tags: [String]?            // v1 keywords; v2 buckets carry `cues` instead
+    let anchorsFit: [String]?      // films that fit, each with the reason (reader-facing)
+    let anchorsMiss: [String]?     // close-but-no films, each with the redirect (reader-facing)
+    let minConfidence: Double?     // per-tag confidence floor; nil falls back to the policy default
+    let qualifies: [String]?       // v2: conditions the film text has to meet, checked one by one (reader-facing)
+    let cues: [String]?            // v2: phrases that tend to appear in the text block when the bucket fits
 }
 
 extension MoodBucket {
     init(title: String, description: String) {
         self.init(
             title: title, description: description,
-            tags: nil, anchorsFit: nil, anchorsMiss: nil, minConfidence: nil)
+            tags: nil, anchorsFit: nil, anchorsMiss: nil, minConfidence: nil, qualifies: nil, cues: nil)
     }
 
     init(title: String, description: String, tags: [String]?) {
         self.init(
             title: title, description: description,
-            tags: tags, anchorsFit: nil, anchorsMiss: nil, minConfidence: nil)
+            tags: tags, anchorsFit: nil, anchorsMiss: nil, minConfidence: nil, qualifies: nil, cues: nil)
     }
 }
 

@@ -17,6 +17,12 @@ enum ReaderPrompt {
         for slug in buckets.keys.sorted() {
             guard let bucket = buckets[slug] else { continue }
             var entry = "\(slug): \(bucket.title)\n  Residue: \(bucket.description.trimmingCharacters(in: .whitespacesAndNewlines))"
+            if let qualifies = bucket.qualifies, !qualifies.isEmpty {
+                entry += "\n  Qualifies when:\n    - " + qualifies.joined(separator: "\n    - ")
+            }
+            if let cues = bucket.cues, !cues.isEmpty {
+                entry += "\n  Text cues: \(cues.joined(separator: "; "))"
+            }
             if let keywords = bucket.tags, !keywords.isEmpty {
                 entry += "\n  Keywords: \(keywords.joined(separator: ", "))"
             }
@@ -63,8 +69,9 @@ enum ReaderPrompt {
 
         out.append("## Task")
         out.append(
-            "State the residue in one sentence, then list 1 to \(maxTags) moods with an exact evidence phrase "
-                + "from the Film text for each, a confidence in [0, 1], and up to 3 alternates. "
+            "State the residue in one sentence, then list 1 to \(maxTags) moods you would defend, each with "
+                + "evidence (a short quote from the Film text, a colon, then the condition it satisfies), "
+                + "a confidence in [0, 1] on the Rule 6 scale, and up to 3 alternates you would not defend. "
                 + "Use only slugs from the available mood tags. Never mention events after the first act "
                 + "in the residue sentence.")
         return out.joined(separator: "\n")

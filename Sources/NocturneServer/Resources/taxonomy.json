@@ -2,856 +2,1326 @@
   "buckets" : {
     "antihero-study" : {
       "anchorsFit" : [
-        "There Will Be Blood — Daniel Plainview",
-        "Taxi Driver — Travis Bickle",
-        "The Social Network — Zuckerberg as antihero",
-        "Nightcrawler — Lou Bloom",
-        "Joker — Arthur Fleck",
-        "Whiplash — Fletcher as antihero antagonist"
+        "There Will Be Blood: Daniel Plainview, the film is his psychology",
+        "Taxi Driver: Travis Bickle, seen from inside",
+        "Nightcrawler: Lou Bloom",
+        "Joker (2019): Arthur Fleck",
+        "Nayakan: Velu Naicker, a don the film understands without excusing",
+        "Guru: a tycoon who bends every rule and is still the film's heart",
+        "Mahaan: a man who chooses the empire over the family"
       ],
       "anchorsMiss" : [
-        "The Godfather — family epic, prefer crime-grit-style",
-        "Breaking Bad (show) — out of scope"
+        "Sivaji: The Boss and other mass-hero films: the lead breaks rules for a cause the film endorses; not an antihero",
+        "Batman Begins / Kill Bill: heroes on a mission, not studies of a wrong-doer",
+        "The Godfather: a family epic, prefer crime-grit-style (both can apply when the study is central)",
+        "Vertigo: obsession is the subject, prefer psychological-pressure-cooker"
       ],
-      "description" : "You leave unsettled by INTIMACY with contradiction — magnetic, flawed leads bending morality until it breaks. Empathy and recoil in the same breath. Character study where the character is compelling AND troubling.",
-      "minConfidence" : 0.72,
-      "tags" : [
-        "moral-ambiguity",
-        "character-study",
-        "flawed-protagonist",
-        "charisma",
-        "downfall"
+      "cues" : [
+        "character study",
+        "morally ambiguous",
+        "descent",
+        "corruption of",
+        "unsympathetic protagonist",
+        "charismatic performance as a",
+        "rise and fall",
+        "the audience is made complicit"
+      ],
+      "description" : "You leave having understood someone you would not want to be. The film studies a magnetic lead who does real wrong, and makes you feel the pull and the recoil at once.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The protagonist commits real moral wrongs (not rule-breaking in a good cause), and the film stays inside their point of view instead of judging them from outside.",
+        "Character is the subject: the plot exists to reveal who this person is and what they become, and the ending measures the cost of being them.",
+        "The residue is empathy mixed with unease, not admiration. A hero with flaws, a vigilante the film cheers for, or a villain seen from the outside is not an antihero study."
       ],
       "title" : "Antihero Study"
     },
     "based-on-vibes-true-story" : {
       "anchorsFit" : [
-        "Once Upon a Time in Hollywood — fact-riff with vibe",
-        "Jackie — emotional biography",
-        "Licorice Pizza — 70s-era memory",
-        "Spencer — feeling as history",
-        "The Assassination of Jesse James… — myth-poetic biography"
+        "Once Upon a Time in Hollywood: 1969 as a memory, with a rewritten ending",
+        "Jackie: grief as biography",
+        "Spencer: a fable from a true life",
+        "The Assassination of Jesse James by the Coward Robert Ford: myth-poetic history",
+        "Guru: Dhirubhai Ambani's rise as a melodrama with the names changed"
       ],
       "anchorsMiss" : [
-        "Spotlight — journalistic-accurate, prefer slow-burn-sharp-blade",
-        "The Social Network — biographical but antihero-study leads"
+        "Spotlight / 127 Hours: accurate reconstructions, prefer slow-burn-sharp-blade or one-room-pressure-cooker",
+        "The Social Network: the character study leads, prefer antihero-study",
+        "Bombay: a real event inside a fictional love story; emotional-gut-punch leads"
       ],
-      "description" : "You leave feeling the TRUTH was emotional — fact-rooted but privileging tone, place, and lived texture over transcript accuracy. Liberty taken with chronology or specifics in service of mood.",
-      "minConfidence" : 0.72,
-      "tags" : [
-        "true-story",
-        "based-on-real-events",
-        "tone-forward",
+      "cues" : [
+        "based on the life of",
+        "loosely based",
+        "inspired by",
+        "fictionalised",
+        "takes liberties",
         "impressionistic",
-        "period-texture"
+        "a portrait of",
+        "alternate history",
+        "dramatisation"
+      ],
+      "description" : "You leave feeling the truth was emotional rather than literal. Rooted in real people or events, but the film cares more about tone, place and texture than about the record.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The text says the film is based on, inspired by, or a dramatisation of real people or events.",
+        "The text or the film's reputation says it takes liberties: a fictionalised, loosely based, impressionistic or mythic treatment, not a procedural reconstruction.",
+        "The residue is a feeling about an era or a person, not knowledge of what happened."
       ],
       "title" : "Based on Vibes (True Story)"
     },
     "bittersweet-aftermath" : {
       "anchorsFit" : [
-        "Casablanca — airport farewell leaves a graceful ache",
-        "In the Mood for Love — the whispered secret-in-the-wall residue",
-        "Before Sunset — wistful open-ended reunion",
-        "Her — final rooftop scene, loss held with acceptance",
-        "Past Lives — reunion and goodbye, 24 years braided into a night",
-        "Lost in Translation — parting whisper"
+        "Casablanca: the airport farewell",
+        "In the Mood for Love: the secret whispered into a wall",
+        "Before Sunset: the open ending",
+        "Past Lives: twenty-four years in one night",
+        "96: a reunion that ends at a door",
+        "Cast Away: the crossroads at the end",
+        "Thelma & Louise: defiance held in awe, so the residue is grace, not devastation"
       ],
       "anchorsMiss" : [
-        "The Shawshank Redemption — triumphant reunion, prefer rainy-day-rewinds",
-        "Hereditary — raw devastation, prefer emotional-gut-punch",
-        "It's a Wonderful Life — feel-good finale, prefer rainy-day-rewinds",
-        "Rocky — up-ending, prefer rainy-day-rewinds",
-        "Thelma & Louise — plot-tragic but residue is defiance-in-awe; CAN qualify (residue beats plot; may also carry antihero-study)"
+        "Manchester by the Sea / Hereditary: raw devastation, prefer emotional-gut-punch",
+        "The Shawshank Redemption / Rocky: the residue is hope and triumph, prefer rainy-day-rewinds",
+        "No Time to Die: one tragic ending inside a Bond film does not flip the register; prefer cat-and-mouse",
+        "Zindagi Na Milegi Dobara: warm and reflective, prefer rainy-day-rewinds"
       ],
-      "description" : "You leave quietly moved — awe braided with melancholy, NOT devastation and NOT joy. A soft ache lingers: \"that was beautiful, and sad.\" Plot endings can be tragic or ambiguous — what matters is the RESIDUE: graceful, reflective, hopeful-tinged loss. If you leave raw and wrecked, prefer emotional-gut-punch. If you leave smiling and warm, prefer feel-good-romance or rainy-day-rewinds.",
-      "minConfidence" : 0.82,
-      "tags" : [
-        "bittersweet",
+      "cues" : [
+        "farewell",
+        "they part",
+        "years later",
+        "never see each other again",
+        "poignant",
         "melancholy",
-        "closure",
-        "grace",
-        "acceptance",
-        "residue-ache"
+        "wistful",
+        "elegiac",
+        "tender",
+        "the final scene"
+      ],
+      "description" : "You leave with a soft ache and a kind of gratitude. Something was lost or left behind, and the film treats the loss with grace, so the sadness comes mixed with beauty.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The ending itself is a loss, a parting, a death accepted, or a road not taken, and the film treats it with grace rather than cruelty.",
+        "The residue is ache plus acceptance. If the ending wrecks you, use emotional-gut-punch; if it leaves you warm and smiling, use rainy-day-rewinds or feel-good-romance.",
+        "The ache is the dominant register of the whole film, not one sad scene inside a comedy, thriller or action film."
       ],
       "title" : "Bittersweet Aftermath"
     },
     "brainmelt-zone" : {
       "anchorsFit" : [
-        "Mulholland Drive — identity dissolves across layers",
-        "Memento — memory as architecture",
-        "Primer — time-loop logic as puzzle",
-        "Eternal Sunshine of the Spotless Mind — memory erasure",
-        "Enemy — doubles and dread without answers"
+        "Mulholland Drive: identities dissolve across two halves",
+        "Memento: memory as structure, no time mechanics",
+        "Eternal Sunshine of the Spotless Mind: erased memory from the inside",
+        "Coherence: realities swap over one dinner",
+        "Lucia: a pill that swaps dream and life",
+        "Persona: two psyches blur"
       ],
       "anchorsMiss" : [
-        "The Sixth Sense — one big reveal, prefer the-twist-is-the-plot",
-        "Fight Club — single twist + social critique, prefer the-twist-is-the-plot"
+        "The Sixth Sense / Fight Club / Shutter Island: one reveal reframes a stable film, prefer the-twist-is-the-plot",
+        "Rashomon: contradictory testimonies, but each is clear; prefer film-school-shelf and existential-core",
+        "Inception: the rules are explained; prefer heist-energy",
+        "Predestination: the time mechanics are the engine; prefer time-twists"
       ],
-      "description" : "You leave disoriented-then-delighted. Perception fractures — memory slips, unreliable frames, shifting truths — and the pleasure is in reassembly. Different from the-twist-is-the-plot: here uncertainty is SUSTAINED, not a single reveal.",
-      "minConfidence" : 0.72,
-      "tags" : [
-        "surreal",
-        "unreliable",
-        "identity-blur",
-        "puzzle-box",
-        "mind-bending"
+      "cues" : [
+        "unreliable narrator",
+        "dream",
+        "memory",
+        "ambiguous",
+        "open to interpretation",
+        "non-linear",
+        "doppelganger",
+        "identity",
+        "what is real",
+        "mind-bending",
+        "multiple interpretations"
+      ],
+      "description" : "You leave reassembling the film in your head. Reality, memory or identity stayed unstable all the way through, and the pleasure was working out what you saw.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The uncertainty is sustained across the film: unreliable memory, dream logic, doubles, shifting identities, contradictory realities. A single late reveal is the-twist-is-the-plot instead.",
+        "The plot summary itself is hard to state in order, or the text says the film is open to interpretation.",
+        "The residue is puzzlement that you enjoy, not fear (horror-and-unease) and not gentle wrongness (uncanny-vibes)."
       ],
       "title" : "Brainmelt Zone"
     },
     "cat-and-mouse" : {
       "anchorsFit" : [
-        "Heat — cop-vs-thief duel",
-        "The Silence of the Lambs — Clarice vs Lecter / Buffalo Bill",
-        "Catch Me If You Can — chase with charm",
-        "Prisoners — grief turns into hunt",
-        "No Country for Old Men — Chigurh vs sheriff"
+        "Heat: Hanna and McCauley",
+        "The Silence of the Lambs: Clarice and Lecter, Clarice and Buffalo Bill",
+        "Vikram Vedha: a cop and a gangster taking turns with stories and traps",
+        "Thani Oruvan: a cop versus a scientist-industrialist, each reading the other",
+        "Catch Me If You Can: a con man and the agent who chases him for years",
+        "Dial M for Murder and Strangers on a Train: the plan, then the counter-plan",
+        "The Terminator: hunter and prey across one city"
       ],
       "anchorsMiss" : [
-        "Die Hard — one-man-vs-villains but really action-thriller, can overlap",
-        "Drive — has chases but vibe-is-the-plot / men-with-vibes leads"
+        "Star Wars, Attack of the Clones, Return of the Jedi: adventure and war, not a duel",
+        "Kill Bill: a revenge list, not two opponents trading moves",
+        "Get Out / Rear Window: suspense built on one side watching, prefer horror-and-unease or psychological-pressure-cooker",
+        "Mass-hero cop films: qualifies only when the villain answers every move; a hero cleaning up a threat is not a duel"
       ],
-      "description" : "You leave remembering a DUEL — predator vs prey, near-misses, traps, reversals. Strategic momentum between two sides that adapt. Doesn't need big set pieces; the pleasure is escalation and counter-move.",
-      "minConfidence" : 0.72,
-      "tags" : [
-        "pursuit",
-        "duel",
-        "strategy",
-        "tension-swings",
-        "trap-laying"
+      "cues" : [
+        "hunts",
+        "tracks down",
+        "manhunt",
+        "outwits",
+        "one step ahead",
+        "traps",
+        "game of",
+        "pursues",
+        "the two men",
+        "rivalry",
+        "stalks"
+      ],
+      "description" : "You leave remembering a duel. Two named opponents who each know the other is coming, trading traps, escapes and reversals until one of them loses.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "There are two specific opponents (a cop and a thief, a detective and a killer, a victim and a stalker), and each one acts on what the other does: pursuit, trap, counter-trap, reversal.",
+        "The duel is the spine of the film from the setup to the climax, not a hero-versus-villain plot that resolves in one final fight.",
+        "Adventure, war, superhero and ensemble action films are not cat-and-mouse unless the text shows two opponents taking turns through the whole runtime."
       ],
       "title" : "Cat and Mouse"
     },
     "coming-of-age" : {
       "anchorsFit" : [
-        "Lady Bird — quintessential identity formation",
-        "Boyhood — literal years of becoming",
-        "Moonlight — three-stage identity arc",
-        "The 400 Blows — template for the genre",
-        "Call Me by Your Name — summer of first-love awakening"
+        "Lady Bird: senior year and leaving home",
+        "Boyhood: twelve years of becoming",
+        "Moonlight: three ages of one identity",
+        "Premam: three loves across one man's youth",
+        "Spirited Away: a child finds her courage in a strange world",
+        "The 400 Blows: the template",
+        "Call Me by Your Name: one summer that changes him"
       ],
       "anchorsMiss" : [
-        "Dead Poets Society — young men but the arc is tragedy, prefer emotional-gut-punch",
-        "Good Will Hunting — coming-of-age-ish but really about healing, prefer bittersweet-aftermath"
+        "O Kadhal Kanmani / Vinnaithaandi Varuvaayaa: adult romances, prefer feel-good-romance or bittersweet-aftermath",
+        "Batman Begins: an origin story, not an identity study",
+        "Dead Poets Society: the arc is a tragedy, prefer emotional-gut-punch",
+        "Pisaasu: a grieving adult and a ghost, prefer horror-and-unease"
       ],
-      "description" : "You leave having watched an IDENTITY form. The CENTRAL arc is becoming — a character crossing a threshold from one self to another through mistakes, firsts, and hard-earned perspective. A coming-of-age subplot inside a broader story does NOT qualify.",
-      "minConfidence" : 0.72,
-      "tags" : [
-        "youth",
-        "self-discovery",
-        "first-love",
-        "growing-pains",
-        "rites-of-passage"
+      "cues" : [
+        "coming-of-age",
+        "adolescence",
+        "teenage",
+        "school",
+        "first love",
+        "growing up",
+        "childhood",
+        "summer",
+        "graduation",
+        "youth"
+      ],
+      "description" : "You leave having watched someone become themselves. A child, teenager or young adult crosses the line into a new self through firsts, mistakes and hard-earned perspective.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The protagonist is young (childhood through early twenties) and the arc is their growth: first love, leaving home, a loss of innocence, finding a vocation, breaking from family.",
+        "The growth is the spine of the film. A youth subplot inside a drama, a romance between adults, or a hero's origin story does not qualify.",
+        "The ending leaves a changed person, not a solved plot."
       ],
       "title" : "Coming of Age"
     },
     "crime-grit-style" : {
       "anchorsFit" : [
-        "Heat — the most crime-grit-style movie ever made",
-        "Goodfellas / The Irishman — Scorsese's underworld",
-        "City of God — favela grit with kinetic style",
-        "Jackie Brown — tarantino grime + cool",
-        "Fargo — polite exterior, bloody interior"
+        "Heat: cops and thieves at the same level",
+        "Goodfellas: the life, then the cost",
+        "City of God: a favela's crime economy",
+        "Vada Chennai: North Chennai's gangs across decades",
+        "Fargo: a polite surface over a bloody scheme",
+        "Oldboy: a revenge story soaked in a criminal underworld",
+        "Kaithi: one night inside a drug syndicate's reach"
       ],
       "anchorsMiss" : [
-        "Casino Royale / No Time to Die — Bond-style action, NOT gritty underworld",
-        "Bullet Train — stylish action-comedy, prefer ha-ha-ha",
-        "F1 — not a crime film at all; misapplied on sport-competition",
-        "Die Hard — action, prefer cat-and-mouse"
+        "The Matrix / Get Out / The Terminator: no criminal world, prefer their own registers",
+        "James Bond, Batman, mission films: a hero versus criminals from outside, prefer cat-and-mouse",
+        "Bullet Train / 22 Jump Street: comedy wearing crime clothes, prefer ha-ha-ha",
+        "Strangers on a Train / Rear Window: suspense among ordinary people, prefer cat-and-mouse or psychological-pressure-cooker"
       ],
-      "description" : "You leave with the taste of a stylish underworld — bruised morality, slick craft, messy consequence. The world is seedy but the filmmaking is precise; cool surfaces clash with violence that lingers.",
-      "minConfidence" : 0.82,
-      "tags" : [
-        "crime",
-        "stylish",
-        "gritty",
+      "cues" : [
+        "gangster",
+        "mob",
         "underworld",
-        "moral-ambiguity"
+        "drug",
+        "cartel",
+        "hitman",
+        "corrupt",
+        "street",
+        "gang war",
+        "crime drama",
+        "crime thriller",
+        "neo-noir crime"
+      ],
+      "description" : "You leave with the taste of an underworld. The film lives among criminals, cops on the take and the people they ruin, and shows the violence with style and with consequences.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The film is set inside a criminal world (gangs, the mob, hustlers, hitmen, corrupt police, a city's crime economy) and spends most of its runtime there.",
+        "Violence has weight: it bruises, it costs, it is not cartoonish. The filmmaking is stylish and precise about the world's texture.",
+        "Films where a hero fights criminals from outside (spies, superheroes, soldiers, vigilantes), horror films and science fiction are not crime-grit-style, however much crime they contain."
       ],
       "title" : "Crime, Grit & Style"
     },
     "cult-chaos" : {
       "anchorsFit" : [
-        "The Big Lebowski — the canonical cult object",
-        "The Rocky Horror Picture Show — midnight movie template",
-        "The Room — so-bad-it's-cult",
-        "Donnie Darko — 1am cult",
-        "Evil Dead II — genre cult"
+        "The Big Lebowski: the canonical cult object",
+        "The Rocky Horror Picture Show: the midnight template",
+        "Donnie Darko: a flop that became a shrine",
+        "Monty Python and the Holy Grail: quoted for fifty years",
+        "Thamizh Padam: a Tamil spoof that became a cult object",
+        "Naduvula Konjam Pakkatha Kaanom: a small Tamil comedy with a devoted following",
+        "Soodhu Kavvum: a black comedy that grew a cult"
       ],
       "anchorsMiss" : [
-        "Fight Club — massive cult but major theatrical / Oscar-adjacent, can overlap with antihero-study",
-        "Parasite — mainstream-acclaimed, not cult"
+        "Fight Club: cult and canon; both can apply, but the text must say cult",
+        "Parasite / Everything Everywhere All at Once: acclaimed hits, prefer modern-masterpieces",
+        "10 Things I Hate About You: beloved, not cult"
       ],
-      "description" : "You leave QUOTING it and looking for a screening at midnight. Bizarre favorites that inspire obsession — imperfect by design, unforgettable by effect. Midnight-movie energy, scenes living rent-free.",
-      "minConfidence" : 0.72,
-      "tags" : [
-        "cult",
-        "midnight-movie",
+      "cues" : [
+        "cult following",
+        "cult classic",
+        "cult status",
+        "midnight",
+        "box-office failure but",
+        "fans",
         "quotable",
-        "weird-core",
-        "outsider-charm"
+        "so bad it's good",
+        "became a phenomenon on home video",
+        "screenings"
+      ],
+      "description" : "You leave quoting it, already planning a midnight screening. A film people know line by line and love partly for its rough edges.",
+      "minConfidence" : 0.85,
+      "qualifies" : [
+        "The reception or legacy text says it: cult following, cult classic, midnight screenings, fan rituals, a reputation that grew after a weak release.",
+        "The film is remembered for an irreplaceable weirdness, quotability or excess, not just for being popular.",
+        "A mainstream hit with a loyal fanbase is not cult unless the text calls it one."
       ],
       "title" : "Cult Chaos"
     },
     "dialogue-driven" : {
       "anchorsFit" : [
-        "Before Sunrise / Before Sunset — 90 minutes of walking and talking IS the movie",
-        "My Dinner with Andre — literally two men at a restaurant",
-        "12 Angry Men — verbal jury combat in one room",
-        "Glengarry Glen Ross — language as weapon"
+        "Before Sunrise / Before Sunset: the walk is the film",
+        "12 Angry Men: a jury argues",
+        "My Dinner with Andre: one dinner",
+        "Glengarry Glen Ross: language as a weapon",
+        "The Breakfast Club: one Saturday of talking",
+        "Vikram Vedha: stories told as traps, the Vikram and Betal frame"
       ],
       "anchorsMiss" : [
-        "Pulp Fiction — iconic dialogue but the film is ALSO crime-grit-style with set pieces; dialogue alone isn't the engine",
-        "The Social Network — fast talk but plot has deal-making / betrayal arcs, prefer antihero-study"
+        "Pulp Fiction: iconic talk, but set pieces drive it; prefer crime-grit-style and ensemble-mosaic",
+        "The Social Network: fast talk inside a plot of deals and betrayals, prefer antihero-study",
+        "Kadhal Desam and other college romances with songs: not dialogue-driven"
       ],
-      "description" : "You leave remembering what people SAID more than what they DID — specific lines, reversals inside conversations, subtext sharper than any set piece. Words are the primary engine of tension, humor, or revelation.",
-      "minConfidence" : 0.72,
-      "tags" : [
+      "cues" : [
+        "based on the play",
+        "stage play",
+        "conversation",
         "talky",
-        "verbal-sparring",
-        "subtext",
-        "theatrical",
-        "intimate",
-        "witty"
+        "dialogue",
+        "screenplay",
+        "verbal",
+        "two-hander",
+        "witty",
+        "monologue"
+      ],
+      "description" : "You leave remembering what people said. Conversations carry the tension, the comedy or the revelation, and the best scenes are two people talking.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "Most of the runtime is conversation: a walk-and-talk, a dinner, an argument, an interrogation, a debate. Adaptations of stage plays usually qualify.",
+        "The reception praises the dialogue, the screenplay or the verbal sparring specifically.",
+        "Films with great lines but a plot driven by action, chases or set pieces do not qualify."
       ],
       "title" : "Dialogue-Driven"
     },
     "emotional-gut-punch" : {
       "anchorsFit" : [
-        "Requiem for a Dream — pure devastation",
-        "Hereditary — grief weaponized",
-        "Mystic River — tragedy compounding",
-        "Manchester by the Sea — catatonic grief",
-        "Incendies — final reveal annihilates"
+        "Requiem for a Dream: no mercy",
+        "Manchester by the Sea: grief that never lifts",
+        "Grave of the Fireflies: the opening tells you, and it still destroys",
+        "Kannathil Muthamittal: a child's search for her mother ends in a war",
+        "Dil Se..: a love story that ends in an explosion",
+        "Night and Fog: thirty minutes of the camps",
+        "Incendies: the final reveal annihilates"
       ],
       "anchorsMiss" : [
-        "Past Lives — emotional but graceful, prefer bittersweet-aftermath",
-        "Her — ache with acceptance, prefer bittersweet-aftermath",
-        "Parasite — tragic but primary register is satire/thriller"
+        "Past Lives / Her / 96: ache with grace, prefer bittersweet-aftermath",
+        "Black Swan: the register is psychological dread, prefer psychological-pressure-cooker",
+        "Roja: a kidnapping with a happy ending, prefer feel-good-romance or regional-gems",
+        "Interstellar: the loss is redeemed, prefer existential-core"
       ],
-      "description" : "You leave RAW — devastated, wrecked, maybe in tears. The film does not handle you with grace; it delivers an emotional blow and leaves you to absorb it. Contrast bittersweet-aftermath (which is ache-with-grace, not devastation).",
-      "minConfidence" : 0.72,
-      "tags" : [
+      "cues" : [
         "devastating",
-        "emotional-impact",
-        "wrecking",
-        "unflinching"
+        "harrowing",
+        "heartbreaking",
+        "shattering",
+        "tragic",
+        "dies",
+        "killed",
+        "grief",
+        "unbearable",
+        "tearjerker"
+      ],
+      "description" : "You leave wrecked. The film delivers a blow it does not soften, and you sit with it long after the credits.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "A death, loss, betrayal or injustice lands late in the film and the film refuses to console you: no graceful coda, no earned peace.",
+        "The reception uses words like devastating, harrowing, heartbreaking, shattering, or the plot itself makes the blow plain.",
+        "If the ending is sad but graceful, use bittersweet-aftermath. If the pain is dread rather than grief, use horror-and-unease."
       ],
       "title" : "Emotional Gut Punch"
     },
     "ensemble-mosaic" : {
       "anchorsFit" : [
-        "Magnolia — weather of LA lives",
-        "Short Cuts — Altman's network template",
-        "Pulp Fiction — interlocking chapters",
-        "Babel — global cross-cut",
-        "Crash — ensemble reveal structure"
+        "Magnolia: one day across a city",
+        "Short Cuts: Altman's template",
+        "Pulp Fiction: chapters out of order",
+        "Babel: four countries, one gunshot",
+        "Aayitha Ezhuthu: three men on one bridge, three stories",
+        "Crash: strangers colliding"
       ],
       "anchorsMiss" : [
-        "Heat — large cast but Pacino + De Niro lead, prefer crime-grit-style",
-        "The Avengers — team movie but narrative is single-thread"
+        "Heat / Ocean's Eleven: large casts around leads, prefer crime-grit-style or heist-energy",
+        "Minsara Kanavu: a love triangle, prefer feel-good-romance",
+        "The Avengers: a team on one plot"
       ],
-      "description" : "You leave remembering a PATTERN, not a protagonist. Interlocking characters and perspectives form a larger picture; structure, rhythm, and cross-cut empathy carry the story. No single lead.",
-      "minConfidence" : 0.65,
-      "tags" : [
-        "ensemble",
-        "interwoven",
-        "multi-perspective",
-        "cross-cutting",
-        "choral"
+      "cues" : [
+        "interlocking",
+        "intersecting",
+        "multiple storylines",
+        "hyperlink",
+        "anthology",
+        "ensemble cast",
+        "chapters",
+        "three stories",
+        "vignettes",
+        "converge"
+      ],
+      "description" : "You leave remembering a pattern, not a protagonist. Several storylines and points of view interlock into one picture.",
+      "minConfidence" : 0.78,
+      "qualifies" : [
+        "The plot summary follows three or more separate storylines or lead characters with no single protagonist, and they cross, collide or rhyme.",
+        "The structure is the point: chapters, intercutting, a shared event seen from several sides.",
+        "A large cast around one or two leads (a heist crew, a superhero team, a war platoon) is not a mosaic."
       ],
       "title" : "Ensemble Mosaic"
     },
     "existential-core" : {
       "anchorsFit" : [
-        "Synecdoche, New York — life itself as unfinishable project",
-        "The Tree of Life — being vs nothingness",
-        "A Ghost Story — time, presence, and absence",
-        "Her — what is love, consciousness, loneliness",
-        "Past Lives — identity across decades and lives"
+        "Synecdoche, New York: a life as an unfinishable play",
+        "The Tree of Life: grace versus nature",
+        "2001: A Space Odyssey: evolution and the unknowable",
+        "Stalker: a room that grants your true wish",
+        "Her: what love and consciousness are",
+        "Everything Everywhere All at Once: nihilism answered with a bagel and a hug",
+        "The Truman Show: a man discovers his world is a set"
       ],
       "anchorsMiss" : [
-        "Inception — ideas of reality but the MACHINE is heist-energy / brainmelt-zone",
-        "The Matrix — existential themes but primary register is action/sci-fi"
+        "Inception / The Matrix: ideas of reality inside action films; prefer heist-energy, brainmelt-zone or cat-and-mouse",
+        "Dune: politics and prophecy, prefer quiet-epics",
+        "Samsaram Adhu Minsaram: a family drama, prefer rainy-day-rewinds"
       ],
-      "description" : "You leave wrestling with meaning, mortality, or identity. The film's central question isn't \"what happens?\" but \"why are we here / who am I?\" — characters confront purpose against an indifferent or absurd world.",
-      "minConfidence" : 0.72,
-      "tags" : [
-        "meaning-of-life",
-        "identity",
-        "mortality",
+      "cues" : [
+        "existential",
         "philosophical",
-        "alienation"
+        "meditation on",
+        "mortality",
+        "meaning of life",
+        "identity",
+        "free will",
+        "consciousness",
+        "God",
+        "the nature of",
+        "what it means to be human"
+      ],
+      "description" : "You leave asking what any of it is for. The film's real question is meaning, mortality, identity or free will, and it asks it on purpose.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "Characters or the film itself explicitly confront a big question: what is a life worth, what happens when we die, who am I, is anything real, is there a God.",
+        "The reception calls it philosophical, existential, metaphysical, a meditation on, or the plot is built around the question (a dying man, a created being, a loop that forces reflection).",
+        "Science fiction or fantasy with existential set dressing but an action register does not qualify."
       ],
       "title" : "Existential Core"
     },
     "experimental-cinema" : {
       "anchorsFit" : [
-        "Koyaanisqatsi — pure image-and-score",
-        "Stalker — slow-cinema form",
-        "Man with a Movie Camera — formal foundation",
-        "Last Year at Marienbad — narrative dissolution",
-        "Enter the Void — sensation as cinema"
+        "Koyaanisqatsi: image and score, no story",
+        "Man with a Movie Camera: the form as the subject",
+        "Last Year at Marienbad: narrative dissolved",
+        "Enter the Void: sensation as cinema",
+        "Stalker: slow cinema at its most austere (also existential-core)"
       ],
       "anchorsMiss" : [
-        "Mulholland Drive — weird but has narrative, prefer brainmelt-zone",
-        "2001: A Space Odyssey — experimental sections but primarily sci-fi canon, prefer visual-worship or film-school-shelf"
+        "Mulholland Drive: a narrative, however strange, prefer brainmelt-zone",
+        "2001: A Space Odyssey: experimental passages inside a narrative, prefer visual-worship and film-school-shelf",
+        "Holy Motors: provocation with episodes, prefer wtf-did-i-watch"
       ],
-      "description" : "You leave having experienced FORM directly — structure, sound, or image pushed into new shapes. Narrative is minimal or absent; discovery happens through sensation and pattern rather than story.",
-      "minConfidence" : 0.65,
-      "tags" : [
+      "cues" : [
+        "experimental",
         "avant-garde",
-        "form-forward",
         "non-narrative",
-        "sound-design",
-        "structure-play"
+        "essay film",
+        "structural",
+        "no dialogue",
+        "montage",
+        "abstract",
+        "formal",
+        "slow cinema"
+      ],
+      "description" : "You leave having experienced form directly. Structure, sound or image pushed into new shapes; story is minimal, absent or secondary.",
+      "minConfidence" : 0.85,
+      "qualifies" : [
+        "The text describes the film as experimental, avant-garde, non-narrative, an essay film, structural, or as rejecting conventional narrative.",
+        "A plot summary is hard to write because there is little plot: the film is images, rhythms, sound or a formal device.",
+        "Weird narrative films still have a story; they belong in brainmelt-zone, uncanny-vibes or wtf-did-i-watch."
       ],
       "title" : "Experimental Cinema"
     },
     "feel-good-romance" : {
       "anchorsFit" : [
-        "When Harry Met Sally — the template",
-        "About Time — love across time, finally uplifting",
-        "Amélie — whimsical joy",
-        "Crazy Rich Asians — feel-good romance at scale",
-        "Notting Hill — uplifting meet-cute arc"
+        "When Harry Met Sally: the template",
+        "About Time: time travel in service of a love",
+        "Amelie: joy as a method",
+        "Alaipayuthey: a secret marriage, a fight, a reunion",
+        "Siva Manasula Sakthi / Minnale: Tamil romantic comedies where the lovers win",
+        "Thiruchitrambalam: a friendship that turns into the right love",
+        "Notting Hill: a meet-cute that ends in a garden"
       ],
       "anchorsMiss" : [
-        "Casablanca — iconic but the romance ends in graceful loss, prefer bittersweet-aftermath",
-        "The Notebook — tragic framing, prefer bittersweet-aftermath",
-        "Blue Valentine — devastating, prefer emotional-gut-punch",
-        "Past Lives — ache, not joy, prefer bittersweet-aftermath"
+        "Casablanca / The Notebook / Past Lives: graceful loss, prefer bittersweet-aftermath",
+        "Vinnaithaandi Varuvaayaa / 96: the lovers do not end up together, prefer bittersweet-aftermath",
+        "Erin Brockovich / Attack of the Clones: a romance subplot inside another kind of film; not a romance",
+        "Blue Valentine: a marriage dying, prefer emotional-gut-punch"
       ],
-      "description" : "You leave WARMED — connection, earned joy, tenderness. Romance is the engine AND the arc is uplifting. Tragic, ambivalent, or bittersweet romances do NOT qualify — those go to bittersweet-aftermath or emotional-gut-punch.",
-      "minConfidence" : 0.72,
-      "tags" : [
-        "tender",
-        "uplifting",
+      "cues" : [
+        "romantic comedy",
+        "love story",
+        "falls in love",
+        "they marry",
+        "reunite",
+        "happily",
+        "charming",
         "chemistry",
-        "hopeful",
-        "heartwarming"
+        "heartwarming",
+        "wins her back"
+      ],
+      "description" : "You leave warmed. A love story is the spine, the lovers end up together or happy, and the film wants you to smile about it.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The love story is the main plot, not a subplot inside a drama, a legal case or an action film.",
+        "The ending unites the lovers or leaves them happy. Tragic, open or ambivalent endings go to bittersweet-aftermath or emotional-gut-punch.",
+        "The dominant register is tenderness, chemistry and joy, including Indian romances with comedy and songs when love is the engine."
       ],
       "title" : "Feel-Good Romance"
     },
     "film-school-shelf" : {
       "anchorsFit" : [
-        "Citizen Kane — the textbook",
-        "Seven Samurai — genre template",
-        "8½ — meta-auteur canon",
-        "Tokyo Story — narrative minimalism canon",
-        "Breathless — French New Wave primer",
-        "Persona — Bergman essential"
+        "Citizen Kane: the textbook",
+        "Rashomon: the structure every film school teaches",
+        "Seven Samurai: the template for the team-on-a-mission film",
+        "Psycho: the shower scene and the mid-film murder of the lead",
+        "12 Angry Men: the single-room drama",
+        "Persona: Bergman's essential",
+        "Pather Panchali: the founding work of Indian parallel cinema (also regional-gems)",
+        "Harakiri: the samurai film turned against its genre"
       ],
       "anchorsMiss" : [
-        "It's a Wonderful Life — popular + old but not form-defining canon, prefer rainy-day-rewinds",
-        "Rocky — iconic + old but not syllabus, prefer bittersweet-aftermath",
-        "Drunken Master — genre-canon for kung fu but not broad film-school shelf"
+        "It's a Wonderful Life / Home Alone / Rocky: beloved, but the text must speak of influence or canon, not only of popularity",
+        "Fargo / Pulp Fiction: 1990s canon with National Film Registry status; both can apply when the text says so",
+        "Thamizh Padam: a spoof of canon, not canon"
       ],
-      "description" : "You leave knowing you watched a FORM-DEFINING work. Historically pivotal: editing, performance, blocking, or genre grammar that every cinephile needs to have seen. \"Old and popular\" ≠ canon; this is the actual syllabus.",
-      "minConfidence" : 0.82,
-      "tags" : [
-        "canon",
-        "foundational",
-        "form-defining",
+      "cues" : [
+        "one of the greatest films",
+        "National Film Registry",
+        "Sight & Sound",
+        "Criterion",
         "influential",
-        "curriculum"
+        "pioneered",
+        "landmark",
+        "defined",
+        "widely studied",
+        "canon",
+        "revolutionised",
+        "the first film to"
+      ],
+      "description" : "You leave knowing you watched something the medium learned from. A form-defining work: the editing, the acting, the structure or the genre grammar that later films inherited.",
+      "minConfidence" : 0.85,
+      "qualifies" : [
+        "The text says it: one of the greatest films ever made, National Film Registry, Sight and Sound polls, Criterion, widely studied, influential, pioneered, defined the genre, a landmark of a movement (neorealism, New Wave, Golden Age Hollywood, Japanese classical cinema, Indian parallel cinema).",
+        "Usually released before 2000. Old and popular is not enough: the text must speak of influence or canon status, not just success.",
+        "For films from 2000 onward, prefer modern-masterpieces unless the text already treats the film as canon."
       ],
       "title" : "Film School Shelf"
     },
     "ha-ha-ha" : {
       "anchorsFit" : [
-        "Airplane! — pure joke machine",
-        "Anchorman — quotable across runtime",
-        "The Big Lebowski — shaggy comic register",
-        "Superbad — comedy engine throughout",
-        "Kung Fu Hustle — physical-comedy masterclass"
+        "Airplane! / The Naked Gun: joke machines",
+        "Monty Python and the Holy Grail: sketch logic as a feature",
+        "Superbad / 21 Jump Street: comedy engines throughout",
+        "Panchatanthiram / Thenali / Vasool Raja MBBS: Tamil comedies where the plot is the gag",
+        "Kolamavu Kokila: a dark comedy that stays a comedy",
+        "Kung Fu Hustle: physical comedy as a martial art"
       ],
       "anchorsMiss" : [
-        "Little Miss Sunshine — dramedy, mostly melancholic, prefer bittersweet-aftermath",
-        "City Lights — Chaplin's tramp is comic-tragic; primary register is tragicomedy, not pure comedy",
-        "Parasite — has humor but register is satire/thriller, prefer modern-masterpieces"
+        "Zindagi Na Milegi Dobara: a warm road movie with laughs, prefer rainy-day-rewinds",
+        "Little Miss Sunshine: a melancholy dramedy, prefer bittersweet-aftermath",
+        "A Fistful of Dollars / Singam 2 / Who Am I?: action with comic beats, not comedies",
+        "The Lobster: deadpan satire, prefer uncanny-vibes (comedy can be a second tag only when reviews call it funny)",
+        "Parasite: a satire that turns bloody, prefer modern-masterpieces"
       ],
-      "description" : "You leave having LAUGHED. Comedy is the PRIMARY delivery mechanism across the whole runtime — not a dramedy with funny beats, not a tragedy with one-liners. Timing, chemistry, rhythm land on the beat. If you cried more than you laughed, this tag does NOT fit.",
-      "minConfidence" : 0.82,
-      "tags" : [
+      "cues" : [
         "comedy",
-        "wit",
-        "banter",
+        "hilarious",
+        "laughs",
+        "gags",
+        "spoof",
+        "parody",
+        "slapstick",
+        "farce",
+        "satire",
         "screwball",
-        "physical-comedy"
+        "funniest"
+      ],
+      "description" : "You leave having laughed, a lot. Comedy was the delivery mechanism from start to finish, not a seasoning on something else.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The film is a comedy by genre and by reception: the plot summary reads as gags, misunderstandings, spoofs or comic set pieces, and reviews talk about laughs.",
+        "Comedy is the dominant register of the whole runtime. A dramedy, a road movie with laughs, an action film with a comic sidekick, a horror comedy or a masala film with a comedy track does not qualify.",
+        "If you cried more than you laughed, or the ending turns tragic, this is not the tag."
       ],
       "title" : "Ha Ha Ha"
     },
     "heist-energy" : {
       "anchorsFit" : [
-        "Ocean's Eleven — the modern template",
-        "Inside Man — bank heist as chess",
-        "The Italian Job — plan + twists",
-        "Reservoir Dogs — post-heist aftermath",
-        "Dog Day Afternoon — heist-gone-wrong",
-        "Baby Driver — heist with rhythm",
-        "Logan Lucky — redneck heist",
-        "Inception — literal dream-heist"
+        "Ocean's Eleven: the modern template",
+        "Inception: a heist run inside dreams",
+        "The Handmaiden: a con that keeps changing owners",
+        "Mankatha: a cricket-betting robbery and its betrayals",
+        "Dog Day Afternoon: a robbery going wrong in real time",
+        "Reservoir Dogs: the aftermath of a job",
+        "Baby Driver: getaway driving as rhythm"
       ],
       "anchorsMiss" : [
-        "Rogue One — mission movie but register is war tragedy, not heist",
-        "Money Heist (show, not film) — TV, out of scope"
+        "North by Northwest / The Hangover: no planned job, prefer cat-and-mouse or ha-ha-ha",
+        "Thani Oruvan: a cop's investigation, prefer cat-and-mouse",
+        "Rogue One: a mission inside a war film"
       ],
-      "description" : "You leave buzzing with PLAN-MEETS-CHAOS — a clever setup, a team with roles, a ticking clock, double-crosses. The pleasure is MECHANISM: the plan's elegance and the moment it meets reality.",
-      "minConfidence" : 0.65,
-      "tags" : [
-        "caper",
-        "planning",
-        "team-dynamics",
-        "setpiece-machinery",
-        "betrayal"
+      "cues" : [
+        "heist",
+        "robbery",
+        "con",
+        "scheme",
+        "the plan",
+        "crew",
+        "break into",
+        "steal",
+        "vault",
+        "double-cross",
+        "elaborate",
+        "sting"
+      ],
+      "description" : "You leave buzzing on the plan. A job with roles, a clock and a scheme, and the pleasure of watching it meet reality.",
+      "minConfidence" : 0.78,
+      "qualifies" : [
+        "The plot is built around a planned job: a robbery, a con, a break-in, an escape, a kidnapping for money, a sting.",
+        "There is a plan with parts (a crew with roles, a timetable, a gadget, a double-cross), and the film spends real time on the mechanism.",
+        "A single robbery scene inside another kind of film, or a hero chasing thieves, is not heist energy."
       ],
       "title" : "Heist Energy"
     },
     "horror-and-unease" : {
       "anchorsFit" : [
-        "Hereditary — grief + dread",
-        "The Shining — hotel as monster",
-        "The Witch — slow religious dread",
-        "It Follows — inescapable menace",
-        "Get Out — social horror"
+        "Hereditary: grief weaponised",
+        "The Shining: a hotel as a monster",
+        "Rosemary's Baby: paranoia that turns out to be right",
+        "The Witch: slow religious dread",
+        "Get Out: social horror",
+        "Demonte Colony / Pisaasu: Tamil ghost stories built on dread",
+        "Bramayugam: a folk-horror chamber piece"
       ],
       "anchorsMiss" : [
-        "The Lobster — uncanny, not scary, prefer uncanny-vibes",
-        "Memories of Murder — procedural unease, prefer slow-burn-sharp-blade"
+        "Asuran / Drishyam 2 / Uriyadi: violent dramas and thrillers, not horror",
+        "Rear Window / Strangers on a Train: suspense, prefer cat-and-mouse or psychological-pressure-cooker",
+        "The Lobster: strange, not scary, prefer uncanny-vibes",
+        "The Terminator: a chase with a monster; cat-and-mouse leads, horror can be a second tag"
       ],
-      "description" : "You leave SCARED or DREAD-SATURATED. Menace in tone, image, or implication; scares can be quiet or loud, but anxiety rides beside you to the credits. Not merely unsettling (uncanny-vibes) — actively dread-forward.",
-      "minConfidence" : 0.72,
-      "tags" : [
+      "cues" : [
+        "horror",
+        "terrifying",
+        "frightening",
+        "scary",
+        "haunted",
+        "ghost",
+        "possession",
+        "supernatural",
+        "slasher",
         "dread",
-        "terror",
-        "suspense",
-        "atmospheric",
-        "disturbing",
-        "fear"
+        "nightmare",
+        "creature"
+      ],
+      "description" : "You leave scared, or with dread still sitting beside you. Menace drives the film, whether it screams or whispers.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The film is a horror film by genre, or its dominant mode is sustained dread: supernatural threat, a slasher, body horror, folk horror, a monster, an inescapable menace.",
+        "Reception talks about fear: terrifying, scary, frightening, unsettling, nightmarish.",
+        "Violent dramas, revenge films, crime thrillers and suspense films with a sane threat are not horror unless the text frames them as horror."
       ],
       "title" : "Horror & Unease"
     },
     "late-night-mind-rattle" : {
       "anchorsFit" : [
-        "Donnie Darko — 1am energy incarnate",
-        "Under the Skin — eerie-thoughtful unease",
-        "The Lighthouse — isolated mind-rattle",
-        "Coherence — philosophical creep",
-        "A Ghost Story — grief as liminal space"
+        "Donnie Darko: a rabbit, a countdown, a bedroom",
+        "Coherence: one dinner party and a comet",
+        "Under the Skin: an alien learns what skin is for",
+        "The Lighthouse: two men and a lamp",
+        "A Ghost Story: a sheet with eyes, waiting",
+        "Enemy: a double and a spider",
+        "Primer: a garage and a box"
       ],
       "anchorsMiss" : [
-        "Hereditary — pure horror, not rattle",
-        "Solaris — existential but more meditative than rattle-inducing, prefer existential-core"
+        "Hereditary: wants you scared, prefer horror-and-unease",
+        "Solaris / Stalker: argue the question at length, prefer existential-core",
+        "Shutter Island: resolves its mystery, prefer the-twist-is-the-plot"
       ],
-      "description" : "You leave UNABLE TO SLEEP — ideas rattling, thoughts lingering, not quite horror but not quite peaceful. Eerie-thoughtful films that sit in the uncanny middle space between intellectual and spooky. Great at 1:47am.",
-      "minConfidence" : 0.65,
-      "tags" : [
+      "cues" : [
+        "ambiguous ending",
         "haunting",
-        "liminal",
-        "restless-thoughts",
-        "uneasy-calm",
-        "philosophical-chill"
+        "lingers",
+        "eerie",
+        "unsettling",
+        "open to interpretation",
+        "low-budget",
+        "high-concept",
+        "quiet",
+        "enigmatic",
+        "dreamlike"
+      ],
+      "description" : "You leave unable to sleep, not from fear but from an idea you cannot put down. Hushed, strange, unresolved films that are best at one in the morning.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "A small, strange premise (a loop, a visitor, a signal, a door, a double) treated quietly, with a small cast and little spectacle.",
+        "The ending is ambiguous or unresolved and the text says the film lingers, haunts or invites interpretation.",
+        "The tone is eerie-thoughtful, between horror-and-unease (which wants you scared) and existential-core (which argues its question out loud)."
       ],
       "title" : "Late-Night Mind Rattle"
     },
     "men-with-vibes" : {
       "anchorsFit" : [
-        "Le Samouraï — the archetype",
-        "Drive — cool-as-ice driver",
-        "No Country for Old Men — Chigurh's silent menace",
-        "The Good, the Bad and the Ugly — Eastwood's squint",
-        "Ghost Dog: The Way of the Samurai — stoic code"
+        "Le Samourai: the archetype",
+        "Drive: a driver who barely speaks",
+        "No Country for Old Men: Chigurh's silence",
+        "A Fistful of Dollars: the squint",
+        "Kaithi: an ex-convict driving a lorry through one night, saying almost nothing",
+        "Ghost Dog: The Way of the Samurai: a code as a life"
       ],
       "anchorsMiss" : [
-        "John Wick — vibes + guns but primary register is kinetic action; can overlap with crime-grit-style",
-        "Taxi Driver — stoic but the MIND unravels, prefer psychological-pressure-cooker"
+        "Kaththi / Ghilli / Thuppakki: mass-hero films with speeches and songs, prefer cat-and-mouse or rainy-day-rewinds",
+        "John Wick: kinetic action first; can be a second tag",
+        "Taxi Driver: the mind unravels, prefer psychological-pressure-cooker or antihero-study",
+        "Tenet: plot over presence, prefer time-twists"
       ],
-      "description" : "You leave remembering HOW the lead held themselves — posture, glances, quiet competence, coiled menace. Minimal dialogue, maximum charisma; tension lives in silence and ritual punctuated by sudden violence.",
-      "minConfidence" : 0.72,
-      "tags" : [
+      "cues" : [
         "stoic",
-        "cool-factor",
-        "aura",
-        "competence",
-        "menace",
-        "iconic"
+        "laconic",
+        "few words",
+        "silent",
+        "taciturn",
+        "cool",
+        "code",
+        "professional",
+        "minimal dialogue",
+        "presence"
+      ],
+      "description" : "You leave remembering how the lead carried himself. Few words, total competence, a coiled stillness that the film treats as the whole point.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The lead is laconic by design: the text or reviews mention few lines, stoicism, silence, a code, or presence over dialogue.",
+        "The film builds scenes around posture, ritual and waiting, punctuated by sudden violence; the style is cool and controlled.",
+        "Commercial mass-hero films with punch dialogues, songs and crowd scenes are the opposite of this register, however stylish the hero."
       ],
       "title" : "Men With Vibes (and Guns)"
     },
     "modern-masterpieces" : {
       "anchorsFit" : [
-        "Parasite — Palme d'Or + Best Picture",
-        "Everything Everywhere All at Once — Best Picture + cultural landmark",
-        "No Country for Old Men — Best Picture + critical consensus",
-        "Moonlight — Best Picture + formal landmark",
-        "There Will Be Blood — near-universal landmark",
-        "In the Mood for Love — 21st-century canon"
+        "Parasite: Palme d'Or and Best Picture",
+        "No Country for Old Men: Best Picture and consensus",
+        "In the Mood for Love: top of the century lists",
+        "Everything Everywhere All at Once: Best Picture and a cultural landmark",
+        "There Will Be Blood: near-universal landmark status",
+        "Oldboy: Grand Prix at Cannes and a global reputation",
+        "Spirited Away: the Oscar and the Berlin Golden Bear"
       ],
       "anchorsMiss" : [
-        "The Dark Knight — popular + acclaimed but more of a cultural event than critical landmark",
-        "Inception — popular but not masterpiece-tier critical weight; prefer brainmelt-zone",
-        "Pre-2000 films — use film-school-shelf instead"
+        "Star Wars, Rear Window, Fargo, Titanic, North by Northwest: before 2000, use film-school-shelf",
+        "The Dark Knight / Inception / Skyfall: huge and admired, but the text must call them landmarks, not just hits",
+        "One Battle After Another and other new releases: acclaim on release is not yet standing; qualify only on major prizes or the strongest consensus language"
       ],
-      "description" : "You leave feeling you watched a 2000s+ film that SETS A BAR. Craft, ambition, resonance align. Must have actual critical weight (Oscar, Palme d'Or, Cannes/Venice/Berlin prize, near-universal critical consensus, or widely acknowledged landmark status). Popular-and-recent ≠ masterpiece.",
-      "minConfidence" : 0.72,
-      "tags" : [
-        "contemporary-classic",
-        "acclaimed",
-        "ambitious",
-        "landmark"
+      "cues" : [
+        "Academy Award for Best Picture",
+        "Palme d'Or",
+        "Golden Lion",
+        "Golden Bear",
+        "universal acclaim",
+        "best films of the 21st century",
+        "best of the decade",
+        "masterpiece",
+        "landmark",
+        "widely regarded as one of the best films of"
+      ],
+      "description" : "You leave feeling the bar moved. A film from 2000 onward whose craft, ambition and reputation all line up, and whose standing the record confirms.",
+      "minConfidence" : 0.85,
+      "qualifies" : [
+        "Released in 2000 or later (check the year in Identity). Earlier films never qualify here; use film-school-shelf.",
+        "The text confirms the standing: Best Picture won or nominated, Palme d'Or, Golden Lion, Golden Bear, Grand Prix, universal acclaim, best-of-decade or best-of-century lists, a landmark of its national cinema.",
+        "Popular and well reviewed is not enough; blockbusters and franchise entries qualify only if the text itself calls them landmarks."
       ],
       "title" : "Modern Masterpieces"
     },
     "obsidian-noir" : {
       "anchorsFit" : [
-        "Drive — neon-noir elegy",
-        "Chinatown — the modern noir template",
-        "Blue Velvet — suburban moral fog",
-        "Blade Runner — rain-and-shadow fatalism",
-        "Nightcrawler — LA as noir decay"
+        "Chinatown: the modern noir template",
+        "Drive: neon noir as elegy",
+        "Blade Runner: rain, shadow and a dying replicant",
+        "Following: a Nolan noir shot on weekends",
+        "Blue Velvet: suburban moral fog",
+        "Nightcrawler: Los Angeles as decay",
+        "Vertigo: obsession in noir clothing (secondary)"
       ],
       "anchorsMiss" : [
-        "Sin City — noir pastiche but primary register is crime-grit-style",
-        "LA Confidential — also fits crime-grit-style; either can win"
+        "Sin City: pastiche with crime-grit energy, prefer crime-grit-style",
+        "Vada Chennai / Heat: bruised and kinetic, prefer crime-grit-style",
+        "LA Confidential: both apply; let the text decide"
       ],
-      "description" : "You leave feeling the world is morally sleek, fatalistic, and slippery with desire. Modern noir — inky contrast, shadows, cynicism, a downward spiral dressed in style. Separate from crime-grit-style by TONE: noir is fatalistic and sexy-sad; crime-grit is kinetic and bruised.",
-      "minConfidence" : 0.65,
-      "tags" : [
+      "cues" : [
         "noir",
+        "neo-noir",
+        "femme fatale",
+        "private detective",
+        "fatalistic",
         "shadows",
-        "fatalism",
-        "moral-fog",
-        "hardboiled"
+        "doomed",
+        "hardboiled",
+        "black-and-white",
+        "double-cross",
+        "voice-over"
+      ],
+      "description" : "You leave in a fatalistic mood. Shadows, desire, a doomed protagonist and a world where every choice tightens the trap.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The text calls the film noir or neo-noir, or the elements are all there: a detective or a drifter, a femme fatale or a fatal desire, a scheme, betrayal, a downward spiral, night and shadow.",
+        "The tone is fatalistic and sensual rather than kinetic and bruised; crime-grit-style is the louder cousin.",
+        "A crime film with a hopeful or heroic ending is not noir."
       ],
       "title" : "Obsidian Noir"
     },
     "one-room-pressure-cooker" : {
       "anchorsFit" : [
-        "12 Angry Men — jury room",
-        "Rope — Hitchcock in one apartment",
-        "Locke — one man in a car for 85 minutes",
-        "Buried — coffin, underground, real-time",
-        "Reservoir Dogs — warehouse aftermath"
+        "12 Angry Men: a jury room",
+        "Rope: one apartment, one party",
+        "Phone Booth: one booth, one sniper",
+        "127 Hours: one canyon",
+        "Locke: one car",
+        "The Breakfast Club: one Saturday in one library",
+        "Oththa Seruppu Size 7: one man in one interrogation room",
+        "Coherence: one house during a comet"
       ],
       "anchorsMiss" : [
-        "The Shining — hotel is huge; prefer horror-and-unease",
-        "Misery — minds unravel too; can also carry psychological-pressure-cooker"
+        "The Shining: a hotel is huge, prefer horror-and-unease",
+        "I (2015) / Demonte Colony: scenes in a house inside a bigger film; not confined",
+        "Samsaram Adhu Minsaram: one household, but the film moves freely; prefer rainy-day-rewinds"
       ],
-      "description" : "You leave remembering a PLACE — the room, the table, the confined space where everything happened. SPACE does the squeezing: logistics, blocking, and power dynamics inside four walls. If the mind unravels more than the space confines, prefer psychological-pressure-cooker.",
-      "minConfidence" : 0.72,
-      "tags" : [
-        "single-location",
-        "claustrophobia",
-        "logistical-tension",
-        "containment"
+      "cues" : [
+        "single location",
+        "real time",
+        "confined",
+        "trapped",
+        "one room",
+        "one night",
+        "claustrophobic",
+        "set entirely in",
+        "takes place in",
+        "chamber piece"
+      ],
+      "description" : "You leave remembering the room. One confined space held the whole film, and the walls did the squeezing.",
+      "minConfidence" : 0.78,
+      "qualifies" : [
+        "The plot keeps the characters in one location for most of the runtime (a room, a house, a car, a phone booth, a lifeboat, a canyon, a jury room), and the text says so or the summary never leaves it.",
+        "The confinement creates the tension: logistics, power dynamics, running out of time or air.",
+        "If the protagonist's mind unravels more than the space confines, prefer psychological-pressure-cooker; both can apply."
       ],
       "title" : "One-Room Pressure Cooker"
     },
     "psychological-pressure-cooker" : {
       "anchorsFit" : [
-        "Repulsion — inner world collapsing",
-        "Black Swan — identity vs obsession",
-        "Persona — two psyches blurring",
-        "Shutter Island — unreliable reality",
-        "Taxi Driver — mind under siege"
+        "Black Swan: a dancer splits in two",
+        "Repulsion: a flat and a mind both rotting",
+        "Vertigo: obsession rebuilt in a woman's clothes",
+        "Shutter Island: an investigation into the investigator",
+        "Taxi Driver: a mind under siege",
+        "Anniyan: three personalities, one body",
+        "Persona: two women blur"
       ],
       "anchorsMiss" : [
-        "12 Angry Men — spatial squeeze, prefer one-room-pressure-cooker",
-        "Cube — geometric horror, prefer horror-and-unease"
+        "Pisaasu / Insidious: hauntings with sane protagonists, prefer horror-and-unease",
+        "In the Mood for Love: restraint, not unravelling, prefer bittersweet-aftermath",
+        "Ghajini: memory loss as a plot device inside a revenge film, prefer cat-and-mouse",
+        "12 Angry Men: the space squeezes, prefer one-room-pressure-cooker"
       ],
-      "description" : "You leave feeling the MIND was the battlefield. Paranoia, obsession, gaslighting — dread comes from perception unraveling, not walls closing in. If a single room is the engine of tension, prefer one-room-pressure-cooker.",
-      "minConfidence" : 0.72,
-      "tags" : [
+      "cues" : [
+        "psychological thriller",
         "paranoia",
         "obsession",
-        "gaslighting",
-        "mental-unraveling",
-        "anxiety"
+        "hallucination",
+        "descent into madness",
+        "unravel",
+        "breakdown",
+        "delusion",
+        "gaslight",
+        "identity"
+      ],
+      "description" : "You leave feeling the mind was the battlefield. Paranoia, obsession, delusion or gaslighting, seen from inside the person coming apart.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The protagonist's perception or sanity unravels across the film: hallucinations, obsession, paranoia, a double, gaslighting, a breakdown, and the film stays close to that mind.",
+        "The threat is at least partly internal. A ghost, a killer or a kidnapping with a sane protagonist is horror-and-unease or cat-and-mouse.",
+        "The reception calls it psychological, a descent, a study of madness or obsession."
       ],
       "title" : "Psychological Pressure-Cooker"
     },
     "quiet-epics" : {
       "anchorsFit" : [
-        "Pather Panchali — rural epic intimate",
-        "Days of Heaven — landscape as character",
-        "Roma — childhood at empire-scale",
-        "The New World — historical quiet",
-        "Kadaisi Vivasayi — last farmer as quiet epic"
+        "Pather Panchali: a village childhood as an epic",
+        "Days of Heaven: wheat, fire and a love triangle",
+        "Roma: one year, one household, one city",
+        "The New World: history as a whisper",
+        "Kadaisi Vivasayi: the last farmer",
+        "Tokyo Story: a family crossing a country"
       ],
       "anchorsMiss" : [
-        "Lawrence of Arabia — fits scale but register is grand, not quiet",
-        "Interstellar — ambitious but loud, prefer time-twists or modern-masterpieces"
+        "Dune / Dune: Part Two / Lawrence of Arabia: loud and grand, prefer existential-core, visual-worship or modern-masterpieces",
+        "Interstellar: ambitious and loud, prefer time-twists or existential-core",
+        "Meiyazhagan / Kumki: small-scale dramas, prefer rainy-day-rewinds or bittersweet-aftermath"
       ],
-      "description" : "You leave having felt IMMENSITY without bombast. Large stakes — time, landscape, history, family generations — rendered with restraint and intimacy. Scope is epic; delivery is patient.",
-      "minConfidence" : 0.72,
-      "tags" : [
-        "sweeping-intimacy",
+      "cues" : [
+        "sweeping",
+        "generations",
+        "meditative",
+        "lyrical",
+        "patient",
+        "intimate",
         "landscape",
-        "measured",
-        "austere",
-        "contemplative"
+        "rural",
+        "years pass",
+        "unhurried"
+      ],
+      "description" : "You leave having felt immensity without noise. Years, landscapes, generations or history rendered with patience and intimacy.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The scope is large (decades, a region, a war, a family across generations) and the delivery is restrained: long takes, little action, attention to land, work and weather.",
+        "The reception uses words like meditative, patient, intimate, lyrical, unhurried, sweeping yet quiet.",
+        "Loud epics (battles, spectacle, a driving score) are not quiet epics, however big."
       ],
       "title" : "Quiet Epics"
     },
     "rain-neon-aesthetic" : {
       "anchorsFit" : [
-        "Blade Runner / Blade Runner 2049 — the canonical template",
-        "Drive — neon-pink noir",
-        "Chungking Express — Hong Kong neon melancholy",
-        "Only God Forgives — neon as bloodstain",
-        "Enter the Void — neon as hallucination"
+        "Blade Runner / Blade Runner 2049: the canonical template",
+        "Drive: pink neon and a scorpion jacket",
+        "Chungking Express: Hong Kong neon melancholy",
+        "Only God Forgives: neon as bloodstain",
+        "Enter the Void: neon as hallucination"
       ],
       "anchorsMiss" : [
-        "The Matrix — green-code aesthetic, not rain/neon",
-        "Collateral — night LA but not rain/neon-forward"
+        "The Matrix: green code, not rain and neon",
+        "Collateral: night Los Angeles, but digital grey, not neon",
+        "Vada Chennai: a gritty palette, prefer crime-grit-style"
       ],
-      "description" : "You leave carrying an IMAGE: wet streets, reflective signage, synth glow, urban melancholy. The city hums as mood board. Narrow and precise — not every neon-lit film qualifies; the aesthetic must be the primary signature.",
-      "minConfidence" : 0.65,
-      "tags" : [
+      "cues" : [
         "neon",
-        "rain-sheen",
-        "urban-melancholy",
+        "rain-soaked",
+        "night",
+        "cityscape",
         "synth",
-        "nightscape"
+        "cyberpunk",
+        "Hong Kong",
+        "lights",
+        "nocturnal",
+        "colour palette",
+        "visual style"
+      ],
+      "description" : "You leave carrying an image: wet streets, neon signs, synth glow, a city at night humming with melancholy.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The text describes the film's look: neon, rain-soaked streets, night cityscapes, a synth score, cyberpunk or Hong-Kong-at-night texture, and the look is a signature critics mention.",
+        "The aesthetic is primary: the film is remembered for the city at night more than for its plot.",
+        "A film with a few neon-lit scenes does not qualify; the signature has to be the whole surface."
       ],
       "title" : "Rain & Neon Aesthetic"
     },
     "rainy-day-rewinds" : {
       "anchorsFit" : [
-        "You've Got Mail — the platonic comfort watch",
-        "The Princess Bride — quotable, warm",
-        "Paddington 2 — joy distilled",
-        "School of Rock — feel-good loop",
-        "Chef — eating-and-driving therapy"
+        "The Shawshank Redemption: hope as a method",
+        "Rocky / The Karate Kid: underdogs you cheer for every time",
+        "3 Idiots: laughs, friendship and a happy ending",
+        "Boss Engira Baskaran / Siva Manasula Sakthi: Tamil comfort films",
+        "Paddington 2: joy distilled",
+        "The Princess Bride: quotable warmth",
+        "Zindagi Na Milegi Dobara: three friends, a road and a warm goodbye"
       ],
       "anchorsMiss" : [
-        "The Shawshank Redemption — rewatchable but HEAVY, prefer bittersweet-aftermath or modern-masterpieces",
-        "Little Miss Sunshine — warm but the ending carries ache; may also fit bittersweet-aftermath"
+        "Hereditary / Requiem for a Dream: rewatched by some, never comforting",
+        "Manchester by the Sea: warmth is not the residue, prefer emotional-gut-punch",
+        "Little Miss Sunshine: warm with an ache; may carry bittersweet-aftermath too",
+        "Singam: an action masala, not a comfort film unless reviews call it one"
       ],
-      "description" : "You leave SMILING — cozy, warm, wanting to watch it again. Low stakes, friendly rhythm, lines you love saying with the characters. Comfort cinema, rewatchable by design. Heavy/disturbing/tragic films do NOT qualify.",
-      "minConfidence" : 0.72,
-      "tags" : [
-        "cozy",
-        "nostalgic",
-        "warmth",
-        "comfort-watch",
-        "low-stakes",
-        "rewatchable"
+      "cues" : [
+        "feel-good",
+        "heartwarming",
+        "crowd-pleaser",
+        "charming",
+        "beloved",
+        "comfort",
+        "rewatch",
+        "uplifting",
+        "underdog",
+        "family film",
+        "inspirational"
+      ],
+      "description" : "You leave smiling and already wanting to watch it again. Warmth, hope or comfort is what stays, whether the film is a cosy comedy or an underdog story with real stakes.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The residue is warmth, hope or triumph, and the film is known as a rewatchable comfort film: reviews say feel-good, crowd-pleaser, heartwarming, charming, beloved, or the film is a famous rewatch.",
+        "Stakes can be real (prison, poverty, a boxing match) as long as the film is remembered for its warmth and its ending lifts you.",
+        "Films remembered for pain, dread or disturbance never qualify, even when they are rewatched."
       ],
       "title" : "Rainy Day Rewinds"
     },
     "regional-gems" : {
       "anchorsFit" : [
-        "Pather Panchali — Satyajit Ray landmark",
-        "Nayakan — Mani Ratnam / IFFI canon",
-        "Thanneer Thanneer — political-realism standout",
-        "The Lunchbox — international-festival breakout",
-        "Anbe Sivam — Tamil cult-canon",
-        "Drishyam — genre-defining Malayalam thriller"
+        "Nayakan: in TIME's all-time 100 list",
+        "Pather Panchali: the founding work of Indian parallel cinema",
+        "Roja / Bombay / Kannathil Muthamittal: National Film Awards and a changed Tamil cinema",
+        "Asuran: a National Film Award for Dhanush and a Tamil landmark",
+        "Vada Chennai: a landmark Tamil gangster saga by reputation",
+        "Premam: a Malayalam phenomenon",
+        "Drishyam: the thriller every industry remade",
+        "Thamizh Padam / Soodhu Kavvum: Tamil cult classics with the record to show it"
       ],
       "anchorsMiss" : [
-        "A random Tamil/Hindi masala film — regional origin alone is NOT enough",
-        "Non-Indian regional cinema (Korean, Iranian, etc.) — this tag is Indian-cinema specific"
+        "Rashomon / Oldboy / Parasite: not Indian, use film-school-shelf, modern-masterpieces or underseen-treasures",
+        "A Tamil masala film with no acclaim in the text: Indian origin alone is not enough",
+        "Thug Life / Jana Nayagan and other recent releases: wait for the record"
       ],
-      "description" : "You leave having watched a STANDOUT Indian-cinema film (Tamil, Hindi, Malayalam, Bengali, Kannada, Telugu, etc.). Not every Indian film — must have a standout signal: award winner, festival standout, genre landmark, or widely acknowledged critical/cultural significance. Regional origin ALONE is not enough.",
-      "minConfidence" : 0.82,
-      "tags" : [
-        "indian-cinema",
-        "award-winner",
-        "cultural-landmark",
-        "regional-standout"
+      "cues" : [
+        "National Film Award",
+        "Filmfare",
+        "Cannes",
+        "India's official entry",
+        "one of the best Tamil films",
+        "landmark",
+        "cult classic",
+        "critically acclaimed",
+        "Indian cinema",
+        "Tamil-language",
+        "Malayalam-language",
+        "Hindi-language"
+      ],
+      "description" : "You leave having watched a standout of Indian cinema. Tamil, Malayalam, Hindi, Bengali, Kannada, Telugu or any other Indian language, with the record to prove its standing.",
+      "minConfidence" : 0.85,
+      "qualifies" : [
+        "The film is Indian: an Indian language, an Indian production, Indian cast and crew (check the Lead and the names). Korean, Iranian, Japanese or other world cinema never qualifies here; use underseen-treasures or film-school-shelf.",
+        "The text confirms a standout signal: National Film Award, Filmfare win, Cannes, Berlin, Venice, Toronto or Rotterdam selection, India's Oscar submission, a cult classic, a landmark of its language's cinema, widely regarded as one of the best Tamil or Indian films, a film that changed its industry.",
+        "Indian origin alone is not enough. A commercial hit with no acclaim language in the text does not qualify."
       ],
       "title" : "Regional Gems"
     },
     "slow-burn-sharp-blade" : {
       "anchorsFit" : [
-        "No Country for Old Men — tension as craft",
-        "There Will Be Blood — 160 minutes of slow-crawl to \"I'M FINISHED\"",
-        "A Separation — domestic slow-burn to moral reckoning",
-        "The Lives of Others — surveillance as slow ignition",
-        "Drive — stillness broken by blade"
+        "No Country for Old Men: tension as craft",
+        "There Will Be Blood: 160 minutes to I'm finished",
+        "High and Low: a kidnapping, then a manhunt in slow focus",
+        "Harakiri: a story told in a courtyard until the blades come out",
+        "Drishyam: a family's cover story tightening",
+        "A Separation: domestic tension to a moral reckoning",
+        "Chithha: a search that grips harder every minute"
       ],
       "anchorsMiss" : [
-        "Jaws — faster-paced thriller with set pieces, not slow-burn",
-        "Heat — ensemble crime epic, prefer crime-grit-style",
-        "A Most Violent Year — fits, but so does crime-grit-style"
+        "Phone Booth / Jaws: real-time or set-piece thrillers, prefer one-room-pressure-cooker or cat-and-mouse",
+        "Heat: an ensemble crime epic, prefer crime-grit-style",
+        "Stalker: slow without the blade, prefer existential-core or experimental-cinema"
       ],
-      "description" : "You leave feeling the PAYOFF was earned by patience. Quiet stakes accumulate; tension builds in stillness; then a precise surgical release. The pleasure is in simmering discipline — the film trusts you to wait.",
-      "minConfidence" : 0.82,
-      "tags" : [
+      "cues" : [
+        "slow-burn",
+        "simmering",
+        "methodical",
         "patient",
-        "tension-build",
-        "minimalism",
-        "precision",
-        "escalation"
+        "restrained",
+        "taut",
+        "builds",
+        "deliberate pacing",
+        "culminates",
+        "explodes"
+      ],
+      "description" : "You leave feeling the payoff was earned by patience. Tension accumulated in stillness, then one precise release.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The film is deliberately paced for most of its runtime, with tension building through observation, procedure or restraint rather than set pieces.",
+        "There is a decisive release: a confrontation, a reveal, a violent act, a reckoning, usually late.",
+        "The reception uses words like slow-burn, simmering, methodical, patient, taut, restrained. Kinetic thrillers and real-time pressure films are not slow burns."
       ],
       "title" : "Slow Burn, Sharp Blade"
     },
     "the-twist-is-the-plot" : {
       "anchorsFit" : [
-        "The Sixth Sense — the canonical third-act reveal",
-        "The Usual Suspects — the last five minutes rewrite the first 100",
-        "Gone Girl — mid-film pivot flips everything",
-        "Fight Club — identity reveal reshapes the film",
-        "Predestination — twist on twist"
+        "The Sixth Sense: the canonical reveal",
+        "The Usual Suspects: the last five minutes",
+        "Psycho: the mother",
+        "Shutter Island: the investigator is the patient",
+        "Gone Girl: a mid-film pivot",
+        "Pizza (2012): the ghost story that was something else",
+        "Following: who was using whom"
       ],
       "anchorsMiss" : [
-        "Mulholland Drive — perception fractures throughout, prefer brainmelt-zone",
-        "Memento — fractured throughout, not a single reveal"
+        "Mulholland Drive / Memento: unstable throughout, prefer brainmelt-zone",
+        "Predestination: the twist is the time loop, prefer time-twists (both can apply)",
+        "Spectre / Interstellar: reveals inside action films, not twist films"
       ],
-      "description" : "You leave replaying the whole film to see what you missed. A single engineered reveal reframes everything — clues, misdirection, and set-ups are the architecture. One trapdoor opens, and the story you thought you were watching was a different story.",
-      "minConfidence" : 0.72,
-      "tags" : [
+      "cues" : [
         "twist",
-        "reveal-driven",
+        "reveal",
+        "revealed to be",
+        "plot twist",
+        "the ending",
+        "surprise ending",
+        "twist ending",
+        "second viewing",
         "misdirection",
-        "recontextualization"
+        "was dead all along"
+      ],
+      "description" : "You leave replaying the whole film to find what you missed. One engineered reveal reframes everything before it.",
+      "minConfidence" : 0.78,
+      "qualifies" : [
+        "There is a single late reveal (an identity, a death, a lie, the true nature of the setting) that the plot summary names, and it rewrites the meaning of earlier scenes.",
+        "The film plants clues and misdirection on purpose; the reception talks about the twist, the ending, or watching it twice.",
+        "Sustained unreality throughout is brainmelt-zone; a time mechanic is time-twists; an ordinary surprising ending is not a twist film."
       ],
       "title" : "The Twist Is the Plot"
     },
     "time-twists" : {
       "anchorsFit" : [
-        "Primer — time-travel logic as lab puzzle",
-        "Predestination — loops within loops",
-        "Groundhog Day — the canonical loop",
-        "Looper — causality as ballistic",
-        "Back to the Future — the template",
-        "Tenet — inversion as mechanic",
-        "Arrival — non-linear time as perception",
-        "Source Code — repeated eight-minute loops",
-        "Edge of Tomorrow — die, rinse, repeat",
-        "Palm Springs — loop comedy",
-        "Donnie Darko — time as cosmic architecture",
-        "About Time — quiet personal time-travel"
+        "Groundhog Day: the canonical loop",
+        "Primer: a garage and a paradox",
+        "Predestination: loops within loops",
+        "Back to the Future: the template",
+        "Tenet: inversion as a mechanic",
+        "The Terminator / Terminator 2: a war fought through time travel",
+        "Interstellar: time dilation and a message through a bookshelf",
+        "Oh My Kadavule: a second-chance ticket that rewinds a life"
       ],
       "anchorsMiss" : [
-        "Memento — non-linear editing only, prefer brainmelt-zone",
-        "Pulp Fiction — non-linear, no time mechanics, prefer crime-grit-style"
+        "Om Shanti Om: reincarnation, not time travel",
+        "Memento / Pulp Fiction: non-linear editing only, prefer brainmelt-zone or crime-grit-style",
+        "Everything Everywhere All at Once: a multiverse, not time; prefer existential-core and modern-masterpieces",
+        "Michael Madana Kama Rajan / Tamizh Padam 2: no mechanic at all"
       ],
-      "description" : "You leave having PLAYED with time as a toy. The film uses explicit temporal mechanics — loops, travel, branching timelines, resets, paradoxes — as its primary engine. Non-linear editing alone does NOT qualify; there must be literal temporal mechanics.",
-      "minConfidence" : 0.65,
-      "tags" : [
-        "time-loop",
-        "time-travel",
+      "cues" : [
+        "time travel",
+        "time loop",
+        "travels back",
+        "reliving",
+        "the same day",
         "paradox",
-        "alternate-timelines",
-        "chronological-puzzle"
+        "timeline",
+        "sent back",
+        "inverted",
+        "wormhole",
+        "future"
+      ],
+      "description" : "You leave having played with time. Loops, travel, resets, inversion or paradoxes drive the plot.",
+      "minConfidence" : 0.78,
+      "qualifies" : [
+        "The plot summary names a literal time mechanic: time travel, a time loop, a reset, time dilation, inversion, messages across time, branching timelines created by travel.",
+        "The mechanic drives the plot, not just a prologue (a time-travel setup that becomes an ordinary chase still qualifies when the summary keeps returning to it).",
+        "Reincarnation, flashbacks, non-linear editing, parallel universes without time travel, and dreams are not time twists."
       ],
       "title" : "Time Twists"
     },
     "uncanny-vibes" : {
       "anchorsFit" : [
-        "The Lobster — off-reality as comedy",
-        "Dogtooth — ritual family strangeness",
-        "Yorgos Lanthimos filmography broadly",
-        "Upstream Color — dreamlike logic",
-        "Under the Skin — alien-yet-intimate"
+        "The Lobster: single people become animals",
+        "Dogtooth: a family's invented language",
+        "Upstream Color: dream logic as plot",
+        "Under the Skin: an alien in Glasgow",
+        "Being John Malkovich: a door on the seventh-and-a-half floor",
+        "The Truman Show: a town that is a set (secondary)"
       ],
       "anchorsMiss" : [
-        "Midsommar — crosses into horror, prefer horror-and-unease",
-        "Mulholland Drive — fractures perception, prefer brainmelt-zone"
+        "Midsommar / The Shining: crosses into horror, prefer horror-and-unease",
+        "Mulholland Drive: fractures perception, prefer brainmelt-zone",
+        "Spirited Away: a fantasy world with its own clear rules, prefer coming-of-age",
+        "Pizza / Insidious: ghost stories, prefer horror-and-unease"
       ],
-      "description" : "You leave with déjà vu that won't shake — reality slightly off, dreamlike cadence, ritual behavior, familiar-yet-wrong settings. Strangeness is GENTLE but persistent. Not primarily scary; that's horror-and-unease.",
-      "minConfidence" : 0.72,
-      "tags" : [
-        "uncanny",
-        "liminal",
-        "dreamlike",
+      "cues" : [
+        "surreal",
+        "absurdist",
+        "deadpan",
         "off-kilter",
-        "eeriness"
+        "dreamlike",
+        "strange",
+        "Kafkaesque",
+        "unsettling",
+        "bizarre premise",
+        "dystopian"
+      ],
+      "description" : "You leave with a deja vu that will not shake. Reality was slightly off the whole time: rituals, deadpan rules, familiar places gone strange.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The film's world runs on strange rules presented as normal: a dystopia with absurd laws, a family with invented words, a town that behaves wrongly, a deadpan surreal premise.",
+        "The strangeness is gentle and persistent rather than scary (horror-and-unease), puzzling (brainmelt-zone) or shocking (wtf-did-i-watch).",
+        "Reception uses words like surreal, deadpan, absurdist, off-kilter, dreamlike, strange, Kafkaesque, Lynchian."
       ],
       "title" : "Uncanny Vibes"
     },
     "underseen-treasures" : {
       "anchorsFit" : [
-        "The Fall — visual-maximalist obscurity",
-        "Coherence — sub-million-budget gem",
-        "A Ghost Story — indie unseen by most",
-        "Timecrimes — Spanish time-travel gem",
-        "The Brand New Testament — Belgian oddity"
+        "The Fall: visual maximalism almost nobody saw",
+        "Coherence: a micro-budget gem",
+        "Timecrimes: a Spanish time-travel find",
+        "After Hours: a Scorsese flop that became a favourite",
+        "The Brand New Testament: a Belgian oddity",
+        "A Ghost Story: an indie most people missed"
       ],
       "anchorsMiss" : [
-        "Parasite — not underseen, prefer modern-masterpieces",
-        "Any major Indian film — prefer regional-gems"
+        "Parasite / Oldboy: world cinema with global fame, prefer modern-masterpieces",
+        "Soodhu Kavvum / Naduvula Konjam Pakkatha Kaanom: Indian, prefer regional-gems",
+        "Donnie Darko: a flop that became a cult object, prefer cult-chaos"
       ],
-      "description" : "You leave feeling you RESCUED something — a globally overlooked gem that reward discovery. Low mainstream visibility + high artistic payoff. Championing expands the canon. Separate from regional-gems (that's Indian-specific); this is anywhere globally.",
-      "minConfidence" : 0.65,
-      "tags" : [
-        "hidden-gem",
+      "cues" : [
+        "box-office bomb",
+        "box-office failure",
+        "overlooked",
         "underrated",
-        "festival-darling",
-        "niche",
-        "word-of-mouth"
+        "underseen",
+        "little-seen",
+        "sleeper",
+        "limited release",
+        "rediscovered",
+        "reappraised",
+        "hidden gem",
+        "deserved a wider audience"
+      ],
+      "description" : "You leave feeling you found something. A film that few people saw and more people should have: low visibility, high payoff.",
+      "minConfidence" : 0.85,
+      "qualifies" : [
+        "The text says the film was overlooked: a box-office failure, a limited release, underrated, underseen, little-seen, a sleeper, rediscovered, reappraised, a festival film that never found an audience.",
+        "The payoff is real: the same text praises it, or it later gained a reputation.",
+        "Famous films, big hits and mainstream award winners never qualify. Indian films with acclaim go to regional-gems instead."
       ],
       "title" : "Underseen Treasures"
     },
     "vibe-is-the-plot" : {
       "anchorsFit" : [
-        "Lost in Translation — the mood IS the plot",
-        "Chungking Express — vibes over narrative",
-        "Only God Forgives — atmosphere as story",
-        "A Ghost Story — time and grief as texture"
+        "Lost in Translation: a week in a hotel",
+        "Chungking Express: two stories that barely happen",
+        "Only God Forgives: a corridor and a song",
+        "A Ghost Story: time passing under a sheet",
+        "Columbus: buildings and two people",
+        "Paterson: a week of a bus driver's poems"
       ],
       "anchorsMiss" : [
-        "Drive — strong mood but a clear crime-plot; prefer obsidian-noir or men-with-vibes",
-        "The Tree of Life — form-forward, prefer experimental-cinema"
+        "Drive: a crime plot, prefer obsidian-noir or men-with-vibes",
+        "The Tree of Life: form-forward, prefer experimental-cinema or existential-core",
+        "Backrooms: dread with a thin plot, prefer horror-and-unease"
       ],
-      "description" : "You leave having FELT something, not having followed a story. Plot beats recede, mood/texture/rhythm lead — music, color, and pacing carry momentum more than conflict. If you could describe the plot in one sentence and the vibe fills a page, this tag fits.",
-      "minConfidence" : 0.72,
-      "tags" : [
-        "ambient",
-        "mood-first",
-        "dreamy",
+      "cues" : [
+        "atmosphere",
+        "mood",
+        "tone poem",
         "hypnotic",
-        "tone-poem"
+        "dreamy",
+        "meandering",
+        "plotless",
+        "languid",
+        "sensory",
+        "little happens",
+        "vibe"
+      ],
+      "description" : "You leave having felt something rather than followed something. Mood, music, colour and pacing carried the film; the plot fits in a sentence.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The plot summary is thin or episodic: people drift, meet, wander, wait. Little conflict drives the story.",
+        "The reception talks about atmosphere, mood, texture, music or feeling more than about story, and often calls the film a tone poem, hypnotic, dreamy or atmospheric.",
+        "A clear genre plot with strong style (a crime story, a thriller, a heist) is not vibe-is-the-plot; tag the genre bucket and add visual-worship if the look dominates."
       ],
       "title" : "Vibe Is the Plot"
     },
     "visual-worship" : {
       "anchorsFit" : [
-        "2001: A Space Odyssey — image as metaphysics",
-        "In the Mood for Love — every frame framed",
-        "Blade Runner 2049 — Deakins painting in motion",
-        "The Fall — visual maximalism",
-        "Portrait of a Lady on Fire — painterly restraint"
+        "2001: A Space Odyssey: image as metaphysics",
+        "In the Mood for Love: Christopher Doyle's frames",
+        "Blade Runner 2049: Deakins painting with light",
+        "The Fall: visual maximalism",
+        "Portrait of a Lady on Fire: painterly restraint",
+        "The Handmaiden: every room a composition",
+        "Kill Bill: Vol. 1: the House of Blue Leaves as choreography and colour",
+        "Stalker: the Zone as a sequence of paintings"
       ],
       "anchorsMiss" : [
-        "Drive — strong visuals but obsidian-noir / vibe-is-the-plot leads",
-        "The Grand Budapest Hotel — visual but primary register is ha-ha-ha"
+        "Drive: obsidian-noir and men-with-vibes lead",
+        "The Grand Budapest Hotel: visual, but the register is ha-ha-ha",
+        "Backrooms: found-footage dread, prefer horror-and-unease"
       ],
-      "description" : "You leave remembering IMAGES, not lines. Frames are composed like paintings or posters; camera, color, and light do the storytelling. Even with a strong story, the EYE is the primary organ engaged.",
-      "minConfidence" : 0.72,
-      "tags" : [
+      "cues" : [
+        "cinematography",
+        "Best Cinematography",
+        "visually stunning",
         "painterly",
-        "auteur-visuals",
-        "composed-frames",
-        "cinematography-first"
+        "compositions",
+        "every frame",
+        "production design",
+        "colour palette",
+        "shot by",
+        "breathtaking visuals"
+      ],
+      "description" : "You leave remembering images. Frames composed like paintings, light and colour doing the storytelling, the eye engaged before anything else.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The reception praises the cinematography, the compositions, the production design or the colour specifically: a Best Cinematography win or nomination, a named cinematographer singled out, visually stunning, every frame a painting.",
+        "The look is central to the film's reputation, not an incidental compliment in a review that is about something else.",
+        "Good-looking films with a stronger primary register get that register first; add this tag only when the images are what the text keeps returning to."
       ],
       "title" : "Visual Worship"
     },
     "wtf-did-i-watch" : {
       "anchorsFit" : [
-        "Holy Motors — the archetype",
-        "Titane — body-horror transgression",
-        "Enemy — inexplicable ending",
-        "mother! — allegorical provocation",
-        "The Substance — body-horror maximalism"
+        "Holy Motors: the archetype",
+        "Titane: body horror as love story",
+        "The Substance: body-horror maximalism",
+        "Possession: a divorce as demonic opera",
+        "mother!: allegory as assault",
+        "Enemy: an ending nobody expects"
       ],
       "anchorsMiss" : [
-        "Mulholland Drive — weird but intentional, prefer brainmelt-zone",
-        "Everything Everywhere All at Once — chaotic but coherent, prefer modern-masterpieces"
+        "Mulholland Drive: strange with intent, prefer brainmelt-zone",
+        "Everything Everywhere All at Once: chaos that resolves warmly, prefer modern-masterpieces",
+        "Saint Maud: dread, prefer horror-and-unease",
+        "The Lobster: deadpan rather than confrontational, prefer uncanny-vibes"
       ],
-      "description" : "You leave STUNNED and confused in the best way — transgressive, absurd, or confrontational cinema that broke decorum and dared you to keep up. Might regret, won't forget.",
-      "minConfidence" : 0.72,
-      "tags" : [
+      "cues" : [
+        "body horror",
         "transgressive",
-        "absurd",
-        "shock",
         "provocative",
-        "boundary-pushing"
+        "grotesque",
+        "divisive",
+        "walkouts",
+        "shocking",
+        "extreme",
+        "outrageous",
+        "controversial",
+        "disturbing imagery"
+      ],
+      "description" : "You leave stunned and a little delighted at the nerve of it. Transgressive, absurd or confrontational cinema that broke decorum on purpose.",
+      "minConfidence" : 0.8,
+      "qualifies" : [
+        "The text describes shock, transgression or provocation: body horror, graphic excess, taboo subjects, walkouts, divisive reactions, a notorious scene.",
+        "The film is remembered for daring you to keep watching, not for a puzzle (brainmelt-zone) or for gentle strangeness (uncanny-vibes).",
+        "Reception uses words like transgressive, provocative, grotesque, outrageous, divisive, confrontational, extreme."
       ],
       "title" : "WTF Did I Watch"
     }
   },
-  "version" : 1
+  "version" : 2
 }

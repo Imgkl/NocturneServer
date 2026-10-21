@@ -13,16 +13,19 @@ import Testing
         #expect(!a.contains("Min confidence"))
         #expect(!a.contains("Recent user decisions"))
         #expect(!a.contains("Rule 8"))
-        #expect(a.contains("Rule 7 — Honor user calibration"))
-        #expect(a.contains("Rule 0 — Residue-first"))
+        #expect(a.contains("Rule 7: Valid slugs and the admin's calibration"))
+        #expect(a.contains("Rule 0: Residue first"))
         #expect(a.contains("antihero-study: Antihero Study"))
+        #expect(a.contains("  Qualifies when:\n    - "))
+        #expect(a.contains("  Text cues: "))
         #expect(a.contains("Does NOT fit:"))
+        #expect(!a.contains("Keywords:"))
         // Sorted by slug: the first entry after the rules is the alphabetically first bucket.
         let firstEntry = a.range(of: "Available mood tags:\n\n").map { a[$0.upperBound...].prefix(40) }
         #expect(firstEntry?.hasPrefix("antihero-study:") == true)
         // Roughly the size the spec expects for the cached prefix.
         let words = a.split(whereSeparator: { $0.isWhitespace }).count
-        #expect(words > 4_000 && words < 9_000)
+        #expect(words > 6_000 && words < 12_000)
     }
 
     @Test func rulesNoLongerMentionMinConfidence() {
@@ -37,6 +40,8 @@ import Testing
             "quiet-epics": TagCalibration(),
         ]
         let turn = ReaderPrompt.userTurn(learnedRules: "Topic beats kind.", calibration: calibration, textBlock: "# Identity\nTitle: Heat (1995)", maxTags: 5)
+        #expect(turn.contains("a short quote from the Film text, a colon, then the condition it satisfies"))
+        #expect(turn.contains("up to 3 alternates you would not defend"))
         let learned = turn.range(of: "## Learned from you\nTopic beats kind.")!
         let decisions = turn.range(of: "## Your recent decisions")!
         let film = turn.range(of: "## Film\n# Identity")!
