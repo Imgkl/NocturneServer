@@ -53,7 +53,7 @@ import Testing
         #expect(turn.contains("ha-ha-ha: confirmed on A, B, C, D, E; rejected on X, Y, Z"))
         #expect(!turn.contains("F, G"))
         #expect(!turn.contains("quiet-epics"))
-        #expect(turn.contains("1 to 5 moods"))
+        #expect(turn.contains("every mood whose checklist the film meets (1 to 5)"))
         #expect(turn.contains("Never mention events after the first act"))
     }
 

@@ -77,9 +77,13 @@ Rule 6: Confidence means something
 - 0.65 to 0.79: the residue fits but one condition is uncertain, or a neighbouring bucket could win.
   Prefer to put these in `alternates`.
 - Below 0.65: do not list it as a candidate.
-Candidates are moods you would defend to the admin. Alternates are the maybes: up to 3 slugs, no
-evidence needed. Return 1 to 5 candidates, fewer when unsure; one well-justified tag beats five loose
-ones. If nothing reaches 0.65, return the single best fit with its honest confidence.
+Candidates are moods you would defend to the admin. List every mood whose checklist the film meets,
+each with its own evidence: two or three is typical for a film that fits well, one is fine when only
+one fits, never more than 5. A film can be a comedy, a cult object and a canon film at once; list all
+three when each checklist holds. Do not park a mood in alternates when every condition holds; a
+candidate below its floor only goes to review, which costs nothing. Alternates are the maybes: up to
+3 slugs where one condition is uncertain, no evidence needed. If nothing reaches 0.65, return the
+single best fit with its honest confidence.
 
 Rule 7: Valid slugs and the admin's calibration
 Tags MUST be slugs from the provided list. The server discards invented slugs, so a made-up tag earns

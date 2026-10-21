@@ -69,7 +69,7 @@ enum ReaderPrompt {
 
         out.append("## Task")
         out.append(
-            "State the residue in one sentence, then list 1 to \(maxTags) moods you would defend, each with "
+            "State the residue in one sentence, then list every mood whose checklist the film meets (1 to \(maxTags)), each with "
                 + "evidence (a short quote from the Film text, a colon, then the condition it satisfies), "
                 + "a confidence in [0, 1] on the Rule 6 scale, and up to 3 alternates you would not defend. "
                 + "Use only slugs from the available mood tags. Never mention events after the first act "
