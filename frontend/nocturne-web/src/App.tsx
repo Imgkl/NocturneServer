@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FolderSearch, QrCode, RefreshCw, Settings as SettingsIcon, Sparkles } from 'lucide-react';
-import { api, ApiError, fetchVersion as fetchVersionApi } from './lib/api';
+import { FolderSearch, ListChecks, QrCode, RefreshCw, Settings as SettingsIcon, Sparkles } from 'lucide-react';
+import { api, ApiError, fetchVersion as fetchVersionApi, posterUrl } from './lib/api';
 import { timeAgo } from './lib/enrichment';
 import { goTo, useHashPage } from './lib/useHashPage';
 import type {
@@ -15,12 +15,13 @@ import type {
   OnboardingStatus,
   TagSuggestionApi,
 } from './lib/types';
-import { AppHeader, type MenuItem } from './components/Header';
+import { AppHeader, PageTabs, type MenuItem } from './components/Header';
 import { CommandPalette } from './components/CommandPalette';
-import { FilmModal } from './components/FilmModal';
+import { FilmSheet } from './components/FilmSheet';
 import { LinkAppPanel } from './components/LinkAppPanel';
+import { MoodChips, bandMoods } from './components/MoodBand';
+import { ReviewTray } from './components/ReviewTray';
 import { LibraryPage, type LibraryFilter, type LibrarySort } from './views/LibraryPage';
-import { ReviewPage } from './views/ReviewPage';
 import { SettingsPage } from './views/SettingsPage';
 import { OnboardingView } from './views/onboarding/OnboardingView';
 import { Dialog } from './ui/Dialog';
@@ -58,6 +59,10 @@ export default function App() {
   const [modelSettings, setModelSettings] = useState<ModelSettingsApi | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
+  const [tray, setTray] = useState(false);
+  // The film sheet was opened from the tray: bring the tray back when it closes.
+  const trayReturn = useRef(false);
+  const [condensed, setCondensed] = useState(false);
   const [openFilm, setOpenFilm] = useState<{ id: string; list: string[] } | null>(null);
 
   // ---- data ------------------------------------------------------------------------------
@@ -89,14 +94,14 @@ export default function App() {
     }
   }, []);
 
-  async function fetchPendingSuggestions() {
+  const fetchPendingSuggestions = useCallback(async () => {
     try {
       const resp = await api.suggestions.listPending();
       setPendingSuggestions(resp.items);
     } catch (e) {
       console.error('Failed to fetch pending suggestions:', e);
     }
-  }
+  }, []);
 
   async function fetchSettingsInfo() {
     try {
@@ -163,7 +168,7 @@ export default function App() {
       void fetchSettingsInfo();
       void fetchModelSettings();
     }
-    if (page === 'review') void fetchPendingSuggestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
   // ---- sync ------------------------------------------------------------------------------
@@ -339,9 +344,9 @@ export default function App() {
     try {
       await api.movies.autoTag(movie.jellyfinId);
       await Promise.all([fetchAllMovies(), fetchPendingSuggestions()]);
-      say(`The reader has an answer for ${movie.title}`);
+      say(`AI suggested moods for ${movie.title}`);
     } catch (e) {
-      say(e instanceof Error ? e.message : 'The reader failed', 'error');
+      say(e instanceof Error ? e.message : 'AI could not read this film', 'error');
     }
   }
 
@@ -464,6 +469,28 @@ export default function App() {
   const moviesWithTitles = useMemo(() => movies.map((m) => ({ ...m, tags: (m.tags || []).map((t) => ({ slug: t.slug, title: moods[t.slug]?.title || t.slug })) })), [movies, moods]);
   const lookup = useCallback((id: string) => moviesById.get(id), [moviesById]);
 
+  // The band: every mood with a film, biggest first, three poster covers each.
+  const { band, total, moodCovers } = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const covers: Record<string, string[]> = {};
+    for (const m of moviesWithTitles) {
+      for (const t of m.tags || []) {
+        counts[t.slug] = (counts[t.slug] || 0) + 1;
+        const list = (covers[t.slug] ||= []);
+        if (list.length < 3) list.push(posterUrl(m.jellyfinId, 'thumb'));
+      }
+    }
+    const band = bandMoods(moods, counts, covers);
+    let allCovers = band.slice(0, 3).map((b) => b.covers[0]).filter((c): c is string => !!c);
+    if (allCovers.length < 3) {
+      const watched = moviesWithTitles.filter((m) => m.played);
+      allCovers = (watched.length >= 3 ? watched : moviesWithTitles).slice(0, 3).map((m) => posterUrl(m.jellyfinId, 'thumb'));
+    }
+    const firsts: Record<string, string | undefined> = {};
+    for (const slug of Object.keys(covers)) firsts[slug] = covers[slug][0];
+    return { band, total: { count: moviesWithTitles.length, covers: allCovers }, moodCovers: firsts };
+  }, [moviesWithTitles, moods]);
+
   const running = syncActive || backfillStatus?.running === true || coverageStatus?.running === true;
   const syncLabel = syncActive
     ? 'Syncing'
@@ -477,6 +504,7 @@ export default function App() {
 
   const menu: MenuItem[] = [
     { icon: <RefreshCw size={15} />, label: 'Sync library', disabled: running, reason: 'A run is in progress', onClick: syncAll },
+    { icon: <ListChecks size={15} />, label: 'Review', hint: pendingSuggestions.length ? String(pendingSuggestions.length) : 'empty', onClick: () => setTray(true) },
     { icon: <FolderSearch size={15} />, label: 'Run coverage', hint: 'free', disabled: running, reason: 'A run is in progress', onClick: () => void startCoverage().catch(() => {}) },
     { icon: <Sparkles size={15} />, label: 'Start auto-tag…', disabled: !anthKeySet, reason: 'Needs an Anthropic key', onClick: () => goTo('settings') },
     { icon: <QrCode size={15} />, label: 'Link Nocturne app', onClick: () => setLinkOpen(true) },
@@ -490,6 +518,20 @@ export default function App() {
     if (!openFilm || filmIndex < 0) return;
     const next = openFilm.list[filmIndex + dir];
     if (next) setOpenFilm({ id: next, list: openFilm.list });
+  };
+  const closeFilm = () => {
+    setOpenFilm(null);
+    if (trayReturn.current) {
+      trayReturn.current = false;
+      setTray(true);
+    }
+  };
+  const pickMood = (slug: string) => setSelectedMood((cur) => (cur === slug ? '' : slug));
+  const home = () => {
+    goTo('');
+    setSelectedMood('');
+    setFilters([]);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // ---- render ---------------------------------------------------------------------------------
@@ -506,33 +548,47 @@ export default function App() {
     return <OnboardingView onFinished={() => void bootstrap()} />;
   }
 
+  const showChips = page === '' && condensed;
+
   return (
     <div className="min-h-screen bg-white text-ink">
-      <AppHeader page={page} syncLabel={syncLabel} running={running} onSync={syncAll} menu={menu} reviewCount={pendingSuggestions.length} onSearch={() => setPaletteOpen(true)} />
+      <AppHeader
+        syncLabel={syncLabel}
+        running={running}
+        onSync={syncAll}
+        menu={menu}
+        onSearch={() => setPaletteOpen(true)}
+        onHome={home}
+        lined={showChips}
+        below={
+          <div className={`grid transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(.2,.75,.2,1)] ${showChips ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+            <div className="overflow-hidden">
+              <div className="flex items-center gap-3 px-4 pb-3 sm:px-8">{showChips && <MoodChips moods={band} total={total} selected={selectedMood} onPick={pickMood} onAll={() => setSelectedMood('')} />}</div>
+            </div>
+          </div>
+        }
+      />
+      <PageTabs page={page} />
 
       {page === '' && (
         <LibraryPage
           movies={moviesWithTitles}
           moods={moods}
+          band={band}
+          total={total}
           selectedMood={selectedMood}
-          onMoodChange={(slug) => setSelectedMood((cur) => (cur === slug ? '' : slug))}
+          onPickMood={pickMood}
+          onAllMoods={() => setSelectedMood('')}
           filters={filters}
           onFiltersChange={setFilters}
           sort={sort}
           onSortChange={setSort}
+          toReview={pendingSuggestions.length}
+          onReview={() => setTray(true)}
           onOpenMovie={openMovieIn}
+          onCondensed={setCondensed}
+          jellyfinUrl={jellyfinUrl}
           loading={loading}
-        />
-      )}
-      {page === 'review' && (
-        <ReviewPage
-          suggestions={pendingSuggestions}
-          movieLookup={lookup}
-          moods={moods}
-          onApprove={approveSuggestion}
-          onReject={rejectSuggestion}
-          onOpenMovie={(m) => openMovieIn(m, pendingSuggestions.map((s) => moviesById.get(s.jellyfinId)).filter((x): x is Movie => !!x))}
-          onRefresh={fetchPendingSuggestions}
         />
       )}
       {page === 'settings' && (
@@ -585,13 +641,31 @@ export default function App() {
         }}
       />
 
-      <FilmModal
+      <ReviewTray
+        open={tray}
+        onClose={() => setTray(false)}
+        suggestions={pendingSuggestions}
+        movieLookup={lookup}
+        moods={moods}
+        covers={moodCovers}
+        onApprove={approveSuggestion}
+        onReject={rejectSuggestion}
+        onOpenMovie={(m) => {
+          setTray(false);
+          trayReturn.current = true;
+          openMovieIn(m, pendingSuggestions.map((s) => moviesById.get(s.jellyfinId)).filter((x): x is Movie => !!x));
+        }}
+        onRefresh={fetchPendingSuggestions}
+      />
+
+      <FilmSheet
         movie={film}
         moods={moods}
+        covers={moodCovers}
         position={film ? { index: Math.max(0, filmIndex), total: openFilm?.list.length ?? 1 } : undefined}
         suggestion={film ? pendingSuggestions.find((s) => s.jellyfinId === film.jellyfinId) : undefined}
         jellyfinUrl={jellyfinUrl}
-        onClose={() => setOpenFilm(null)}
+        onClose={closeFilm}
         onPrev={filmIndex > 0 ? () => step(-1) : undefined}
         onNext={openFilm && filmIndex >= 0 && filmIndex < openFilm.list.length - 1 ? () => step(1) : undefined}
         onSaveTags={saveTags}

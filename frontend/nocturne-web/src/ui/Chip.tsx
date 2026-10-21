@@ -1,28 +1,33 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import { Plus, X } from 'lucide-react';
 import { cn } from '../lib/cn';
 
-interface ChipProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  active?: boolean;
-  // A count in faint tabular numerals after the label.
-  count?: number | string;
-  // A 20px round thumbnail before the label (the collapsed mood band uses it).
-  thumb?: ReactNode;
+interface ChipProps {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+  count?: number;
+  title?: string;
 }
 
-export function Chip({ active = false, count, thumb, className = '', children, ...props }: ChipProps) {
+// X-Cache's refine chip: a plus to add, a cross to remove, the count in faint numerals.
+export function Chip({ active, onClick, children, count, title }: ChipProps) {
   return (
     <button
       type="button"
-      {...props}
+      onClick={onClick}
+      aria-pressed={active}
+      title={title}
       className={cn(
-        'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full h-9 px-3.5 text-[13px] font-medium transition cursor-pointer select-none',
-        active ? 'bg-ink text-white' : 'bg-canvas text-ink hover:bg-canvas-2',
-        className,
+        'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full text-[13.5px] font-medium tracking-[-0.005em] transition duration-150 cursor-pointer',
+        active ? 'bg-ink pl-3.5 pr-2.5 text-white' : 'bg-[#f3f3f3] pl-3 pr-3.5 text-ink hover:bg-[#e9e9e9]',
+        !active && count === 0 && 'text-faint',
       )}
     >
-      {thumb}
+      {!active && <Plus size={14} strokeWidth={2.4} className="-mr-0.5 text-ink/70" />}
       {children}
-      {count != null && <span className={cn('tabular-nums', active ? 'text-white/55' : 'text-faint')}>{count}</span>}
+      {count != null && <span className={cn('tabular-nums', active ? 'text-white/60' : 'text-faint')}>{count}</span>}
+      {active && <X size={14} strokeWidth={2.4} className="ml-0.5 text-white/80" />}
     </button>
   );
 }

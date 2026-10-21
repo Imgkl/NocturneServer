@@ -23,7 +23,7 @@ export function SearchPill({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="hidden h-11 w-full items-center gap-3 rounded-full bg-canvas px-4 text-left text-[14.5px] text-faint transition hover:bg-[#ececec] sm:flex cursor-pointer"
+      className="hidden h-11 w-full items-center gap-3 rounded-full bg-[#f3f3f3] px-4 text-left text-[14.5px] text-faint transition hover:bg-[#ececec] sm:flex cursor-pointer"
     >
       <Search size={17} strokeWidth={2.2} className="text-mute" />
       <span className="flex-1 truncate">Search films, moods</span>
@@ -35,20 +35,23 @@ export function SearchPill({ onClick }: { onClick: () => void }) {
 }
 
 interface AppHeaderProps {
-  page: Page;
   // The label beside Sync when idle ("Synced 2 h ago") and the stage text while a run is on.
   syncLabel: string;
   running: boolean;
   onSync: () => void;
   syncDisabledReason?: string | null;
   menu: MenuItem[];
-  reviewCount: number;
   onSearch: () => void;
+  onHome: () => void;
+  // The condensed mood chips, folded in under the header once the band has scrolled away.
+  below?: ReactNode;
+  // Draw the hairline even before the page scrolls (the condensed row is showing).
+  lined?: boolean;
 }
 
-// One header on every page: wordmark, the search pill, Sync with its menu, the Review pill;
-// a thin progress line while a run is on; the centred page tabs.
-export function AppHeader({ page, syncLabel, running, onSync, syncDisabledReason, menu, reviewCount, onSearch }: AppHeaderProps) {
+// X-Cache's header, the one every page shares. Row 1 (sticky): wordmark, centred search, Sync with
+// its menu. A thin progress line while a run is on. Then whatever the page folds in below.
+export function AppHeader({ syncLabel, running, onSync, syncDisabledReason, menu, onSearch, onHome, below, lined }: AppHeaderProps) {
   const scrolled = useScrolled();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -75,27 +78,26 @@ export function AppHeader({ page, syncLabel, running, onSync, syncDisabledReason
 
   return (
     <header
-      className={cn('sticky top-0 z-40 bg-white/[.92] backdrop-blur-xl backdrop-saturate-150 transition-shadow duration-300', scrolled && 'shadow-[0_1px_0_#ededed]')}
-      style={{ top: 'env(safe-area-inset-top, 0px)' }}
+      style={{ viewTransitionName: 'header' }}
+      className={cn('sticky top-0 z-40 bg-white/[.92] backdrop-blur-xl backdrop-saturate-150 transition-shadow duration-300', (lined ?? scrolled) && 'shadow-[0_1px_0_#ededed]')}
     >
       <div className="grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 sm:gap-6 sm:px-8 md:grid-cols-[minmax(0,1fr)_minmax(0,560px)_minmax(0,1fr)]">
         <a
           href="#"
           onClick={(e) => {
             e.preventDefault();
-            goTo('');
-            window.scrollTo({ top: 0 });
+            onHome();
           }}
           aria-label="Nocturne home"
-          className="justify-self-start"
+          className="flex shrink-0 items-center gap-2.5 justify-self-start"
         >
           <Wordmark />
         </a>
         <div className="min-w-0">
           <SearchPill onClick={onSearch} />
         </div>
-        <div className="flex items-center justify-end gap-1 justify-self-end">
-          <button type="button" onClick={onSearch} aria-label="Search" className="grid h-10 w-10 place-items-center rounded-full text-ink transition hover:bg-canvas sm:hidden cursor-pointer">
+        <div className="flex shrink-0 items-center justify-end gap-1 justify-self-end">
+          <button type="button" onClick={onSearch} aria-label="Search" className="grid h-10 w-10 place-items-center rounded-full text-ink transition hover:bg-[#f3f3f3] sm:hidden cursor-pointer">
             <Search size={18} strokeWidth={2.2} />
           </button>
           <div ref={ref} className="relative flex items-center">
@@ -104,7 +106,7 @@ export function AppHeader({ page, syncLabel, running, onSync, syncDisabledReason
               onClick={onSync}
               disabled={running || !!syncDisabledReason}
               title={syncDisabledReason ?? 'Sync the library from Jellyfin'}
-              className="inline-flex h-10 items-center gap-2 rounded-l-full pl-3 pr-2 text-[13.5px] font-medium text-ink transition hover:bg-canvas disabled:cursor-default disabled:hover:bg-transparent cursor-pointer"
+              className="inline-flex h-10 items-center gap-2 rounded-l-full pl-3 pr-2 text-[13.5px] font-medium text-ink transition hover:bg-[#f3f3f3] disabled:cursor-default disabled:hover:bg-transparent cursor-pointer"
             >
               <RefreshCw size={16} strokeWidth={2.2} className={cn(running && 'animate-spin [animation-duration:1.1s]')} />
               <span className="hidden lg:inline">Sync</span>
@@ -115,12 +117,12 @@ export function AppHeader({ page, syncLabel, running, onSync, syncDisabledReason
               onClick={() => setOpen((v) => !v)}
               aria-label="Sync menu"
               aria-expanded={open}
-              className="grid h-10 w-8 place-items-center rounded-r-full text-mute transition hover:bg-canvas hover:text-ink cursor-pointer"
+              className="grid h-10 w-8 place-items-center rounded-r-full text-mute transition hover:bg-[#f3f3f3] hover:text-ink cursor-pointer"
             >
               <ChevronDown size={15} />
             </button>
             {open && (
-              <div className="pop-menu absolute right-0 top-12 z-50 w-64 rounded-2xl bg-white p-1.5 shadow-pop">
+              <div className="pop-menu absolute right-0 top-12 z-50 w-64 rounded-2xl bg-white p-1.5 shadow-[0_0_0_1px_rgba(0,0,0,.06),0_24px_60px_-16px_rgba(0,0,0,.25)]">
                 <div className="px-3 pb-2 pt-1.5 text-[12px] text-faint">{syncLabel}</div>
                 {menu.map((m) => (
                   <button
@@ -145,21 +147,10 @@ export function AppHeader({ page, syncLabel, running, onSync, syncDisabledReason
               </div>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => goTo('review')}
-            className={cn(
-              'ml-1.5 inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[13.5px] font-medium transition cursor-pointer',
-              reviewCount > 0 ? 'bg-ink text-white hover:bg-black' : 'bg-canvas text-mute hover:bg-canvas-2',
-            )}
-          >
-            Review
-            <span className={cn('tabular-nums', reviewCount > 0 ? 'text-white/55' : 'text-faint')}>{reviewCount}</span>
-          </button>
         </div>
       </div>
       <ProgressLine active={running} />
-      <PageTabs page={page} />
+      {below}
     </header>
   );
 }
@@ -174,21 +165,24 @@ export function ProgressLine({ active }: { active: boolean }) {
 
 const TABS: { id: Page; label: string }[] = [
   { id: '', label: 'Library' },
-  { id: 'review', label: 'Review' },
   { id: 'settings', label: 'Settings' },
 ];
 
-// The page tabs, centred, one underline that slides to the current tab.
+// Where the underline was on the previous page, so the bar starts there and slides.
+let lastBar: { x: number; w: number } | null = null;
+
+// The page tabs: one centred row under the header on every page. One underline slides to the current tab.
 export function PageTabs({ page }: { page: Page }) {
   const inner = useRef<HTMLDivElement>(null);
-  const [bar, setBar] = useState<{ x: number; w: number } | null>(null);
+  const [bar, setBar] = useState<{ x: number; w: number } | null>(lastBar);
   useEffect(() => {
     const measure = () => {
-      const a = inner.current?.querySelector<HTMLElement>('[aria-current="page"]');
+      const a = inner.current?.querySelector<HTMLElement>('[aria-current="page"] [data-label]');
       if (!a || !inner.current) return;
       const base = inner.current.getBoundingClientRect().left;
       const r = a.getBoundingClientRect();
-      setBar({ x: r.left - base + 12, w: r.width - 24 });
+      lastBar = { x: r.left - base, w: r.width };
+      setBar(lastBar);
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -197,7 +191,7 @@ export function PageTabs({ page }: { page: Page }) {
     return () => ro.disconnect();
   }, [page]);
   return (
-    <nav aria-label="Pages" className="px-2 sm:px-8">
+    <nav aria-label="Pages" className="px-2 sm:px-8" style={{ viewTransitionName: 'tabs' }}>
       <div className="no-scrollbar flex overflow-x-auto">
         <div ref={inner} className="relative mx-auto flex w-max items-center sm:gap-1.5">
           {TABS.map((t) => {
@@ -211,9 +205,9 @@ export function PageTabs({ page }: { page: Page }) {
                   goTo(t.id);
                 }}
                 aria-current={active ? 'page' : undefined}
-                className={cn('relative inline-flex h-11 items-center whitespace-nowrap px-3 text-[14px] font-medium tracking-[-0.01em] transition-colors duration-200', active ? 'text-ink' : 'text-mute hover:text-ink')}
+                className={cn('relative inline-flex h-11 items-center gap-1.5 whitespace-nowrap px-2.5 text-[14px] font-medium tracking-[-0.01em] transition-colors duration-200 sm:px-3', active ? 'text-ink' : 'text-mute hover:text-ink')}
               >
-                {t.label}
+                <span data-label>{t.label}</span>
               </a>
             );
           })}

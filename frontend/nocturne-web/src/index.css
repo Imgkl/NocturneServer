@@ -81,6 +81,14 @@ body {
 .card-enter { animation: card-enter 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 @keyframes indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
 .indeterminate { animation: indeterminate 1.3s ease-in-out infinite; }
+@keyframes count-pop { 0% { transform: translateY(0); } 30% { transform: translateY(-3px); color: #16b364; } 100% { transform: translateY(0); } }
+.count-pop { display: inline-block; animation: count-pop 620ms var(--ease-out-soft); }
+/* Page changes cross-fade with a small rise; the header and the tab row stay put (their underline slides). */
+@keyframes vt-out { to { opacity: 0; transform: translateY(-6px); } }
+@keyframes vt-in { from { opacity: 0; transform: translateY(10px); } }
+::view-transition-old(root) { animation: vt-out 160ms ease both; }
+::view-transition-new(root) { animation: vt-in 300ms var(--ease-out-soft) 60ms both; }
+::view-transition-group(header), ::view-transition-group(tabs) { animation-duration: 0s; }
 @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
 .skel { background: linear-gradient(90deg, #f1f1f1 25%, #f8f8f8 50%, #f1f1f1 75%); background-size: 200% 100%; animation: shimmer 1.4s ease infinite; border-radius: 16px; }
 
@@ -90,4 +98,5 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
 }

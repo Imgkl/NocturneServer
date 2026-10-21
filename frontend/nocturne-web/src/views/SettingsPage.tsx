@@ -205,7 +205,7 @@ export function SettingsPage(props: SettingsPageProps) {
         </div>
       ),
     },
-    { id: 'about', title: 'About', summary: version ? `NocturneServer ${version}` : 'NocturneServer', body: <p className="text-[13.5px] text-mute">The mood layer for Jellyfin. Story sources from Wikipedia, moods from a cached reader, your decisions as the ground truth.</p> },
+    { id: 'about', title: 'About', summary: version ? `NocturneServer ${version}` : 'NocturneServer', body: <p className="text-[13.5px] text-mute">The mood layer for Jellyfin. Story sources from Wikipedia, moods from AI, your decisions as the ground truth.</p> },
   ];
 
   return (

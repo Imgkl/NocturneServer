@@ -63,8 +63,8 @@ export function ModelSettings({ settings, onSave }: ModelSettingsProps) {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <Field label="Reader model" hint="Reads the story block and proposes moods. About $0.001 per film with the cached prefix.">
-          <Select value={reader} onChange={setReader} label="Reader model" block options={withCurrent(current.reader_models, reader).map((m) => [m, m])} />
+        <Field label="AI model" hint="Reads the story and proposes moods. About $0.001 per film with the cached prefix.">
+          <Select value={reader} onChange={setReader} label="AI model" block options={withCurrent(current.reader_models, reader).map((m) => [m, m])} />
         </Field>
         <Field label="Strong model" hint="Writes a spoiler synopsis with web search when no plot exists anywhere. About $0.05 to $0.10 per film.">
           <Select value={strong} onChange={setStrong} label="Strong model" block options={withCurrent(current.strong_models, strong).map((m) => [m, m])} />
