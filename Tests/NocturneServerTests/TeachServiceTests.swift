@@ -74,7 +74,7 @@ import Testing
             let queue = ReviewQueue(fluent: fluent, config: config, movies: movies, pipeline: pipeline)
             let runs = RunService(fluent: fluent)
             let backfill = BackfillJob(runService: runs, pipeline: pipeline, queue: queue, fluent: fluent, config: config)
-            let anthropic = AnthropicClient(outbound: OutboundClient(transport: FakeTransport(), fluent: fluent))
+            let anthropic = AnthropicClient(outbound: OutboundClient(transport: FakeTransport([]), fluent: fluent))
             let teach = TeachService(fluent: fluent, config: config, settings: settings, anthropic: anthropic, backfill: backfill, logger: Logger(label: "test"))
 
             await #expect(throws: TeachError.self) { try await teach.answer(jellyfinId: "jf-1", boundaryKey: "ha-ha-ha|rainy-day-rewinds", answer: "cult-chaos") }
