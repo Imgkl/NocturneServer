@@ -36,6 +36,7 @@ struct CreateTaggerV2Tables: AsyncMigration {
             .field("overview_text", .string)
             .field("plot_text", .string)
             .field("reception_text", .string)
+            .field("lead_text", .string)
             .field("awards_json", .string)
             .field("omdb_awards", .string)
             .field("text_block", .string)
@@ -211,6 +212,17 @@ struct SeedMissingMoodTags: AsyncMigration {
                 .components(separatedBy: ". ").first.map { $0.hasSuffix(".") ? $0 : $0 + "." } ?? bucket.title
             try await Tag(slug: slug, title: bucket.title, description: shortDescription, usageCount: 0).save(on: database)
         }
+    }
+
+    func revert(on database: Database) async throws {}
+}
+
+/// The Wikipedia lead paragraph joined the text block in version 2. Rows keep their plot and
+/// reception; the next coverage run refetches the page and fills the column.
+struct AddLeadTextToEnrichment: AsyncMigration {
+    func prepare(on database: Database) async throws {
+        guard let sql = database as? SQLDatabase else { return }
+        try await sqliteAddColumnIfMissing(sql, table: MovieEnrichment.schema, column: "lead_text", definition: "TEXT")
     }
 
     func revert(on database: Database) async throws {}

@@ -180,6 +180,7 @@ private final class LegacyTagSuggestion: Model, @unchecked Sendable {
 
             #expect(try await sqliteColumnExists(sql, table: "tag_suggestions", column: "items_json"))
             #expect(try await sqliteColumnExists(sql, table: "movies", column: "current_decision_id"))
+            #expect(try await sqliteColumnExists(sql, table: "movie_enrichment", column: "lead_text"))
         }
     }
 

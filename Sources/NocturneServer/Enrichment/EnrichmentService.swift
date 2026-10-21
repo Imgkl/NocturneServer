@@ -141,6 +141,7 @@ final class EnrichmentService: Sendable {
             row.wikiTitle = built.pageTitle
             row.plotText = built.plot
             row.receptionText = built.reception
+            row.leadText = built.lead
             row.awardsJson = Self.json(built.awards)
             row.omdbAwards = built.omdbAwards
             row.source = built.source.rawValue
@@ -149,7 +150,7 @@ final class EnrichmentService: Sendable {
             let input = TextBlockInput(
                 title: identity.title, originalTitle: identity.originalTitle, year: identity.year,
                 director: identity.director, runtimeMinutes: identity.runtimeMinutes, genres: identity.genres,
-                cast: identity.cast, overview: identity.overview, plot: built.plot, reception: built.reception,
+                cast: identity.cast, overview: identity.overview, lead: built.lead, plot: built.plot, reception: built.reception,
                 awards: built.awards, omdbAwards: built.omdbAwards, pageTitle: built.pageTitle, pageSite: built.site,
                 fetchedOn: Self.dayString(now()), source: built.source, unverified: built.unverified)
             let (block, hash) = TextBlockBuilder.build(input)
@@ -185,6 +186,7 @@ final class EnrichmentService: Sendable {
         var pageTitle: String?
         var plot: String?
         var reception: String?
+        var lead: String?
         var awards: [Award] = []
         var omdbAwards: String?
         var source: EnrichmentSource = .none
@@ -203,7 +205,7 @@ final class EnrichmentService: Sendable {
         let input = TextBlockInput(
             title: identity.title, originalTitle: identity.originalTitle, year: identity.year,
             director: identity.director, runtimeMinutes: identity.runtimeMinutes, genres: identity.genres,
-            cast: identity.cast, overview: identity.overview, plot: row.plotText, reception: row.receptionText,
+            cast: identity.cast, overview: identity.overview, lead: row.leadText, plot: row.plotText, reception: row.receptionText,
             awards: awards, omdbAwards: row.omdbAwards, pageTitle: nil, pageSite: nil,
             fetchedOn: Self.dayString(now()), source: .model, unverified: true)
         let (block, hash) = TextBlockBuilder.build(input)
@@ -251,6 +253,7 @@ final class EnrichmentService: Sendable {
                 built.pageTitle = article.title
                 built.plot = plot
                 built.reception = SectionParser.reception(from: parsed, language: language)
+                built.lead = SectionParser.lead(from: parsed)
                 built.source = candidate.site == "enwiki" ? .wikipedia : .wikipediaOtherLang
                 break
             }
@@ -260,6 +263,7 @@ final class EnrichmentService: Sendable {
             built.site = first.site
             built.pageTitle = first.article.title
             built.reception = SectionParser.reception(from: first.parsed, language: language)
+            built.lead = SectionParser.lead(from: first.parsed)
             // A page without a story section is not a story source; the block says `(none)`.
             built.source = .none
         }

@@ -19,6 +19,9 @@ enum SectionParser {
     static let plotHeadWords = 1_500
     static let plotTailWords = 1_000
     static let receptionCapWords = 800
+    /// The lead keeps the country, language and standing sentences; those sit in its first
+    /// two or three paragraphs on every film page, so a head-only cap keeps them.
+    static let leadCapWords = 250
     static let cutMarker = "[...]"
 
     /// English heading forms for the story. Anchored at the start of the heading.
@@ -109,6 +112,15 @@ enum SectionParser {
         let text = parts.joined(separator: "\n\n")
         guard !text.isEmpty else { return nil }
         return capped(text, maxWords: capWords, head: plotHeadWords, tail: plotTailWords)
+    }
+
+    /// The text before the first heading, capped head-only to `leadCapWords`. Nil for
+    /// disambiguation pages and empty leads.
+    static func lead(from article: ParsedArticle, capWords: Int = leadCapWords) -> String? {
+        guard !article.isDisambiguation else { return nil }
+        let text = article.lead.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        return capped(text, maxWords: capWords, head: capWords, tail: 0)
     }
 
     /// Every reception, acclaim, awards and release section in document order, capped to

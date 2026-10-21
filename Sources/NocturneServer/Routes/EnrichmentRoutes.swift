@@ -37,6 +37,7 @@ struct EnrichmentRoutes: Sendable {
         let plotFound: Bool
         let plotText: String?
         let receptionText: String?
+        let leadText: String?
         let awardsJson: String?
         let omdbAwards: String?
         let inputHash: String?
@@ -58,6 +59,7 @@ struct EnrichmentRoutes: Sendable {
             plotFound = row.plotFound
             plotText = includeText ? row.plotText : nil
             receptionText = includeText ? row.receptionText : nil
+            leadText = includeText ? row.leadText : nil
             awardsJson = row.awardsJson
             omdbAwards = row.omdbAwards
             inputHash = row.inputHash

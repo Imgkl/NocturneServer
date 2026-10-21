@@ -69,6 +69,17 @@ import Testing
         #expect(!plot.contains(" w1700 "))
     }
 
+    @Test func leadIsCappedHeadOnlyAndSkipsDisambiguation() throws {
+        let words = (1...400).map { "w\($0)" }
+        let article = ParsedArticle(lead: words.joined(separator: " "), sections: [], isDisambiguation: false)
+        let lead = try #require(SectionParser.lead(from: article, capWords: 250))
+        #expect(lead.hasPrefix("w1 w2"))
+        #expect(lead.hasSuffix("w250"))
+        #expect(!lead.contains(SectionParser.cutMarker))
+        #expect(SectionParser.lead(from: ParsedArticle(lead: "  \n", sections: [], isDisambiguation: false)) == nil)
+        #expect(SectionParser.lead(from: ParsedArticle(lead: "Heat may refer to:", sections: [], isDisambiguation: true)) == nil)
+    }
+
     @Test func shortPlotIsNotCut() {
         let article = ParsedArticle(lead: "", sections: [.init(level: 2, heading: "Synopsis", body: "Short story.")], isDisambiguation: false)
         #expect(SectionParser.plot(from: article) == "Short story.")

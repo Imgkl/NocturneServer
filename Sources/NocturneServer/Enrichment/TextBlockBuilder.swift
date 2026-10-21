@@ -11,6 +11,7 @@ struct TextBlockInput: Sendable, Equatable {
     var genres: [String] = []
     var cast: [String] = []
     var overview: String? = nil
+    var lead: String? = nil
     var plot: String? = nil
     var reception: String? = nil
     var awards: [Award] = []
@@ -28,7 +29,8 @@ struct TextBlockInput: Sendable, Equatable {
 /// re-classification.
 enum TextBlockBuilder {
     /// Bump when the block format changes; every row with an older version is rebuilt.
-    static let version = 1
+    /// 2: the Wikipedia lead (country, language, standing) sits between Identity and Overview.
+    static let version = 2
     static let castLimit = 5
     static let none = "(none)"
 
@@ -49,6 +51,10 @@ enum TextBlockBuilder {
         out.append(facts.isEmpty ? none : facts.joined(separator: " · "))
         let cast = input.cast.prefix(castLimit)
         out.append("Cast: \(cast.isEmpty ? none : cast.joined(separator: ", "))")
+
+        out.append("")
+        out.append("# Lead (Wikipedia: country, language, standing)")
+        out.append(section(input.lead))
 
         out.append("")
         out.append("# Overview (Jellyfin, spoiler-free)")

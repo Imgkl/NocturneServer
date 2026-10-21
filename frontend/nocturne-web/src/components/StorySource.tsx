@@ -151,6 +151,13 @@ export function StorySource({ jellyfinId, title, year }: StorySourceProps) {
 
           {spoilersOpen && row?.plotText && (
             <div className="mt-3 max-h-56 overflow-y-auto overscroll-contain rounded-2xl bg-canvas px-4 py-3">
+              {row.leadText && (
+                <>
+                  <div className="mb-1 text-[12px] font-semibold text-mute">Lead</div>
+                  <pre className="whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed text-ink-2">{row.leadText}</pre>
+                  <div className="mb-1 mt-4 text-[12px] font-semibold text-mute">Plot</div>
+                </>
+              )}
               <pre className="whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed text-ink-2">{row.plotText}</pre>
               {row.receptionText && (
                 <>

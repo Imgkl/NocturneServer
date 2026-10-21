@@ -89,6 +89,7 @@ export type EnrichmentRow = {
   // Only the per-film route returns the texts.
   plotText?: string;
   receptionText?: string;
+  leadText?: string;
   awardsJson?: string;
   omdbAwards?: string;
   inputHash?: string;

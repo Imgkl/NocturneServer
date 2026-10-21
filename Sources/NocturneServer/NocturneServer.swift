@@ -221,6 +221,7 @@ let taggerV2Migrations: [any AsyncMigration] = [
     AddCurrentDecisionToMovies(),
     SeedMissingMoodTags(),
     AddPlayedToMovies(),
+    AddLeadTextToEnrichment(),
 ]
 
 func runMigrations(fluent: Fluent, logger: Logger) async throws {

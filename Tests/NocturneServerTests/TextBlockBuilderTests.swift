@@ -11,6 +11,7 @@ import Testing
             genres: ["Crime", "Drama", "Thriller"],
             cast: ["Al Pacino", "Robert De Niro", "Val Kilmer", "Jon Voight", "Tom Sizemore", "Diane Venora"],
             overview: "Obsessive master thief Neil McCauley leads a top-notch crew.",
+            lead: "Heat is a 1995 American epic crime drama film written and directed by Michael Mann.",
             plot: "Neil McCauley robs an armored car. ... Hanna takes McCauley's hand as he dies of his wounds.",
             reception: "Critics praised the shootout.",
             awards: [Award(name: "Saturn Award", kind: .nominated, year: 1996)],
@@ -25,6 +26,9 @@ import Testing
         Title: Heat (1995)
         Director: Michael Mann · Runtime: 170 min · Genres: Crime, Drama, Thriller
         Cast: Al Pacino, Robert De Niro, Val Kilmer, Jon Voight, Tom Sizemore
+
+        # Lead (Wikipedia: country, language, standing)
+        Heat is a 1995 American epic crime drama film written and directed by Michael Mann.
 
         # Overview (Jellyfin, spoiler-free)
         Obsessive master thief Neil McCauley leads a top-notch crew.
@@ -50,6 +54,7 @@ import Testing
     @Test func missingSectionsRenderAsNoneAndSourceLineVaries() {
         var input = TextBlockInput(title: "Obscure", fetchedOn: "2026-10-21")
         let (none, _) = TextBlockBuilder.build(input)
+        #expect(none.contains("# Lead (Wikipedia: country, language, standing)\n(none)"))
         #expect(none.contains("# Overview (Jellyfin, spoiler-free)\n(none)"))
         #expect(none.contains("# Plot (Wikipedia, full, contains spoilers)\n(none)"))
         #expect(none.contains("Won: (none)\nNominated: (none)\nOMDb: (none)"))

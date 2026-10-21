@@ -62,6 +62,7 @@ final class MovieEnrichment: Model, @unchecked Sendable {
     @OptionalField(key: "overview_text") var overviewText: String?
     @OptionalField(key: "plot_text") var plotText: String?
     @OptionalField(key: "reception_text") var receptionText: String?
+    @OptionalField(key: "lead_text") var leadText: String?
     @OptionalField(key: "awards_json") var awardsJson: String?
     @OptionalField(key: "omdb_awards") var omdbAwards: String?
     @OptionalField(key: "text_block") var textBlock: String?
