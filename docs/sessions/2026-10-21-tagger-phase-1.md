@@ -37,7 +37,9 @@ Deployed as `v0.1.1` (the `v0.1.0` tag has no image: the Docker context lacked `
 
 Clean slate executed on v0.1.1: auto-tag on sync off, Clear local films, Sync (680 films, 209 watched), then the coverage run over all 680 from the web UI: 671 English plots, 1 other-language plot, 3 no plot, 2 unresolved, 3 errors, about 16 minutes at two Wikimedia requests a second. Two of the errors were a race in the awards label cache (three workers inserting the same `wikidata_labels` row), fixed by an upsert and tagged as `v0.1.3` together with the queue fix for pending rows of removed films (`v0.1.2`) and the api key no longer logged by the realtime listener. The Jellyfin realtime socket connected on first try; the three client routes the iOS app uses (`clients/tags/batch`, `clients/home`, `clients/omdb/ratings`, the last one now storing OMDb awards) answered on the Pi.
 
-Stopped before the reader check and the watched backfill: this Mac dropped off the home network onto a phone hotspot (172.20.10.x), so the Pi became unreachable from here. v0.1.3 is built on GHCR but not pulled yet; the Pi still runs v0.1.1. Remaining, in order, once the Mac is back on the LAN: pull v0.1.3, retry the three error rows, tag two watched films and confirm the cache hit in `api_calls`, Start auto-tag with scope watched (209 films, about $0.30), turn auto-tag on sync back on, click through the queue.
+A hotspot drop paused the run for half an hour (the Mac fell off the LAN; the Pi was fine). Then, on v0.1.3: the three error rows refetched (674 English plots, zero errors), the reader check on two watched films passed (structured output parsed, the second call read 14,990 cached tokens for $0.00075), and the watched backfill ran over 209 films in 10 minutes for $0.13: 13 auto-applied, 196 to review, 2 films with no story source tagged on the blurb, 0 errors, 210 of 211 calls served from the prompt cache. The queue holds 197 films, watched first; 159 of the 209 watched films carry at least one applied mood (cat-and-mouse 25, ha-ha-ha 23, feel-good-romance 18 lead). Auto-tag on sync is back on. One warning seen: the reader once proposed an unknown slug (`body-horror-placeholder`), dropped as designed.
+
+The next step is the owner's: review the 197 watched films in the queue, then Start auto-tag with scope unwatched.
 
 ## Not verified yet (owner touchpoints)
 
@@ -59,7 +61,7 @@ Stopped before the reader check and the watched backfill: this Mac dropped off t
 
 | Step | Value |
 |---|---|
-| Films total / English plot / other language / model synopsis / no plot / unresolved / errors | |
-| Coverage wall-clock | |
-| Reader cost per film (50-film run), cache hit rate | |
-| Budget pause: skipped decision id | |
+| Films total / English plot / other language / model synopsis / no plot / unresolved / errors | 680 / 674 / 1 / 0 / 3 / 2 / 0 |
+| Coverage wall-clock | about 16 min (3 workers, 2 req/s) |
+| Reader cost per film (209-film run), cache hit rate | $0.00063 average, 210 of 211 calls cached |
+| Budget pause: skipped decision id | not exercised yet (spend $0.14 of $15) |
