@@ -1,6 +1,6 @@
 # Spec: NocturneServer web UI restyle after X-Cache Live
 
-> Status: **implemented 2026-10-21 on branch `gkl_web_ui_restyle`** (commits `2d1ae0b` foundation, `dc27407` every screen) with choice A for both open questions (a Review page, a centred film modal); the owner's pick on those two is still open, and the branch is not deployed yet. Direction approved by the owner ("follow that design structure"). Replaces the Editorial Light look (EB Garamond, uppercase tracked labels, square corners, hairlines) in `frontend/nocturne-web`. Server routes do not change.
+> Status: **implemented 2026-10-21 on branch `gkl_web_ui_restyle`** (commits `2d1ae0b` foundation, `dc27407` every screen, then the B/B pass) with choice B for both open questions (Review as a tray over the library, the film panel as a right-hand sheet), every surface on X-Cache Live's exact classes, checked locally against a copy of the Pi database with real posters. Not deployed yet (goes out with taxonomy v2 as v0.2.0). Direction approved by the owner ("follow that design structure"). Replaces the Editorial Light look (EB Garamond, uppercase tracked labels, square corners, hairlines) in `frontend/nocturne-web`. Server routes do not change.
 
 ## Why
 
@@ -82,21 +82,20 @@ Replaces the current title block, floating chips and poster grid.
 
 ## Review
 
-The review queue becomes a page (the tray pattern is the alternative, see Choices). Rows follow X-Cache's `TrayRow`:
+The review queue is X-Cache's To sort tray (`ReviewTray`): a 460px right-hand sheet over the library, a bottom sheet on phones, opened from the white "Review · N" pill (green dot) at the head of the refine row and from the Sync menu. Rows follow X-Cache's `TrayRow`:
 
-- Left: the poster (80px tall, rounded-2xl). Right: title + year + "Watched" badge, the residue sentence in 13px, then "Why: " with the first reason.
+- Left: the poster (80px square, rounded-2xl, as X-Cache crops). Right: title + year + "Watched", the residue sentence in 13px, then "Why: " with the first reason.
 - **Mood pills**: the reader's candidates in probability order, each pill "Mood 93%"; applied ones solid ink, held-back proposals grey; tapping toggles. "Other…" opens the mood picker (searchable, like `FolderPicker`). The evidence phrase for each pill shows on hover and in the expanded row.
 - Right-aligned actions: **Approve** (ink) and Reject (outline). An approved or rejected row slides out (`row-out`).
-- Top of the page: the count, a Watched-first segmented control (Watched · Unwatched · All), an "unverified source" explanation when any row carries it, and a "Retry errors" card when decisions failed, exactly as X-Cache does.
+- Head: "Review" and the count; under it a Watched-first segmented control (Watched · Unwatched · All) and a "Retry" row when decisions failed, exactly as X-Cache does. AI's top mood is pre-selected when the policy applied nothing. A film opened from the tray brings the tray back when its sheet closes.
 - Keyboard: ↑↓ move, A approve, R reject, 1 to 5 toggle the nth pill.
 
 ## Film panel
 
-X-Cache's `DetailModal` layout, portalled, rounded-24, Esc to close, Previous/Next in the footer that walks the current grid or queue:
+The film panel is a right-hand sheet (`FilmSheet`, 480px, the tray's shell) with X-Cache's `DetailModal` column inside it, portalled, Esc to close, Previous/Next in the footer that walks the current grid or queue:
 
-- Left stage: the poster on a near-black rounded stage (backdrop behind it when Jellyfin has one).
-- Right column: "12 of 680" position, Share (copies the Jellyfin deep link) and **Open in Jellyfin** (ink pill); title 18px + year + runtime + genres in mute; the Jellyfin overview in 14px.
-- **Moods**: the current tags as pills with ×, "+ Add" opening the picker; the five-tag cap shown as "3 of 5".
+- Top bar: "12 of 680" position left, close right. Then the title at 24px in full width (long titles wrap, never truncate), the meta line (year · Watched · in review) with **Open in Jellyfin** (ink pill) at its right end, then the poster on a #f6f6f6 rounded stage.
+- **Moods**: the current tags as ink pills with ×, "Other mood…" opening the picker (search field in a grey pill, rows with small covers); the five-tag cap shown as "3 of 5"; "Ask AI" when the film has none. The UI never says "reader"; it says AI.
 - **Story source** card: badge (verified / unverified source / no plot), "Heat (1995 film) · en.wikipedia", fetched time, awards line; actions as small outline pills: Change page, Refresh, Generate synopsis; **Show spoilers** as a round switch revealing the plot in a mono block, as picked earlier today.
 - **Why these moods?** collapsible row: the decision's items with probabilities and evidence (the `EvidenceList` content).
 - Footer: Previous / Next and the key hints.
@@ -133,12 +132,12 @@ Serif everything, uppercase tracked labels, square corners, the marching-ants ho
 
 1. Tokens and fonts: `index.css` theme, Geist, lucide; delete the Garamond and framer-motion imports.
 2. `src/ui/`: `Btn`, `Card`, `Chip`, `Field`+`inputCls`, `Segmented`, `Select`, `Dialog`, `Toast`, `Page`, `Stat`, `Empty`, `Bar`, `Badge`, `Toggle`, `Dot`. Old components are rewritten in place so imports keep working.
-3. Shell: `Header` (wordmark, search pill, Sync menu, Review pill, progress line), `PageTabs`, hash routing for the three pages.
-4. Library: `MoodBand` (collage tiles + collapsed chips), heading, chip row, `PosterCard` grid, `Empty`.
-5. Review page with `ReviewRow`, the mood picker, keyboard handling.
-6. Film panel: `FilmModal` with the story source card and the evidence row.
+3. Shell: `Header` (wordmark, search pill, Sync menu, progress line, the condensed mood chips folded in below), `PageTabs` (Library · Settings), hash routing for the two pages.
+4. Library: `MoodBand` (collage tiles) and `MoodChips`, heading, `RefineRow` (Review pill, Unsure pill, chips, Clear, sort menu), `PosterCard` grid (posters only: an amber dot for review, a dark Watched badge, hover chrome), `Empty`.
+5. `ReviewTray` with the tray rows, the mood picker, keyboard handling.
+6. `FilmSheet` with the story source card and the evidence list.
 7. Settings page with sections; onboarding restyle.
-8. Build, click through every surface on the Pi, then this spec's status line flips to shipped.
+8. Build, click through every surface against a copy of the Pi database (done 2026-10-21), then on the Pi after the v0.2.0 deploy.
 
 Routes stay as they are; `lib/api.ts` only gains what the command palette and the position footer need (nothing yet).
 
