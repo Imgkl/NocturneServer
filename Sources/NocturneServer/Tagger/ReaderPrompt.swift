@@ -84,21 +84,32 @@ enum ReaderPrompt {
         "additionalProperties": false,
         "required": ["residue", "candidates", "alternates"],
         "properties": [
-            "residue": ["type": "string"],
+            "residue": [
+                "type": "string",
+                "description": "One sentence: the feeling the viewer carries home. No events after the first act.",
+            ],
             "candidates": [
                 "type": "array",
+                "description": "Moods you would defend to the admin, 1 to 5, strongest first.",
                 "items": [
                     "type": "object",
                     "additionalProperties": false,
                     "required": ["slug", "evidence", "confidence"],
                     "properties": [
-                        "slug": ["type": "string"],
-                        "evidence": ["type": "string"],
-                        "confidence": ["type": "number"],
+                        "slug": ["type": "string", "description": "A slug from the available mood tags, nothing invented."],
+                        "evidence": [
+                            "type": "string",
+                            "description": "A short quote from the Film text, a colon, then the Qualifies-when condition it satisfies. Under 30 words. A plot event on its own is not evidence.",
+                        ],
+                        "confidence": ["type": "number", "description": "0 to 1 on the guide's Rule 6 scale: 0.80 and above only when every condition of the bucket holds."],
                     ],
                 ],
             ],
-            "alternates": ["type": "array", "items": ["type": "string"]],
+            "alternates": [
+                "type": "array",
+                "description": "Up to 3 slugs you considered but would not defend.",
+                "items": ["type": "string"],
+            ],
         ],
         ]
     }

@@ -18,6 +18,10 @@ Rule 1: Hard gates come from the text, never from memory
   the claim IN the text: a prize, a list, "cult following", "box-office failure", "one of the
   greatest films". If the text does not say it, you do not know it. Do not supply it from memory.
 - The Genres line is a hint, not a tag. "Comedy" in the genres does not make a film ha-ha-ha.
+- Thin text: when the Reception section is "(none)" or under 60 words, the register buckets
+  (ha-ha-ha, rainy-day-rewinds, bittersweet-aftermath, emotional-gut-punch, men-with-vibes,
+  visual-worship, vibe-is-the-plot) and every canon bucket have no support. Keep them to
+  alternates unless the plot alone settles the register. One scene is never the register.
 
 Rule 2: Dominant register, not flavour notes
 Most films contain moments of humour, romance, warmth or violence that are not the primary register.
