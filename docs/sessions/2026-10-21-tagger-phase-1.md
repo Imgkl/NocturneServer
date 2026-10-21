@@ -81,3 +81,50 @@ Three things landed on `gkl_web_ui_restyle` after the watched-scope run, all unc
 Deploy order for v0.2.0 (needs the owner's go): tag, pull on the Pi, **run coverage first** (rebuilds the blocks with the lead), then re-run the watched scope under v2 (about $0.13 on Haiku; about $2 to $5 on Sonnet for the one-time baseline), then the owner reviews. Approvals already made survive as user labels. Under p-legacy the unwatched 470 will also land almost entirely in review; that is phase 1 by design.
 
 Owner's question answered in chat: is this the right approach? The shape (checklists, a reader, the owner's review as ground truth, calibration examples per mood, eval-derived floors) is right for one person's library; no single prompt is. Two follow-ons proposed: a Sonnet pass for the one-time baseline, and a nearest-neighbour classifier over the owner's confirmed films for phase 2 instead of a second LLM pass.
+
+## v0.2.0 rollout (2026-10-21, 07:04 to 07:49)
+
+Tag `v0.2.0` built in 7 minutes; `docker compose pull` on the Pi brought it up at 07:12 with the `lead_text` migration. Order: coverage first (680 films in 17 minutes, 674 English plots, 1 other language, 3 no plot, 2 unresolved, 0 errors; every block rebuilt at text block version 2 with the lead), then a one-film Sonnet pre-flight (Kushi: feel-good-romance 0.82, evidence in the quote-colon form, cache write 24,647 tokens), then the watched scope re-run on `claude-sonnet-5-5`, then the reader back to Haiku for arrivals. The Mac rebooted mid-run; the Pi carried on and a resume script finished the rollout.
+
+| Watched re-run | v1 (Haiku, 2026-10-21 05:32) | v2 (Sonnet, 07:37) |
+|---|---|---|
+| Films | 209 | 209 |
+| Applied / review / error | 13 / 196 / 0 | 70 / 139 / 0 |
+| Candidates per film | about 3 | 1.63 (plus 2.95 alternates) |
+| Candidate confidence p50 / p75 / p90 | 0.70 / 0.80 / 0.85 | 0.80 / 0.85 / 0.90 |
+| antihero-study applied + suggested | 13 + 31 | 4 + 4 |
+| cat-and-mouse applied + suggested | 25 + 26 | 7 + 17 |
+| bittersweet-aftermath applied + suggested | 5 + 43 | 7 + 4 |
+| regional-gems applied + suggested | 1 + 15 | 6 + 15 |
+| film-school-shelf applied + suggested | 1 + 11 | 14 + 10 |
+| Wall clock | 10 min | 12 min |
+| Cost | $0.13 | $3.16 ($0.0151 per film; 5.15M cached tokens read, 0 non-200 calls) |
+
+Pending rows after the run: 144 (v1 left 197). Watched films with at least one tag: 145 of 209. Month spend $3.37 of $15. Spot checks from the samples: Rosemary's Baby horror 0.90 plus film-school-shelf 0.88 on the National Film Registry sentence; Premam coming-of-age 0.84 plus regional-gems 0.80 (just under the 0.85 floor, so review); The Handmaiden modern-masterpieces 0.88 and visual-worship 0.82; Asuran regional-gems 0.90 on the National Film Award; Singam only cat-and-mouse 0.66 (review); The Dark Knight Rises only rainy-day-rewinds 0.66 (review). rainy-day-rewinds is the most suggested-below-floor mood (30): crowd-pleasers land at 0.66 to 0.72 and go to review, which is the conservative side.
+
+A mid-run decision row reads `error` with reason `opened` until the pipeline completes it; it is the film in flight, not a failure.
+
+Next: the owner reviews the 144 rows in the tray (watched first). Then Start auto-tag with scope unwatched (470 films, about $0.30 on Haiku, or about $7 on Sonnet).
+
+## v0.2.1: alternates as maybe pills, and the one-tag problem (2026-10-21, morning)
+
+The owner asked whether the tagger was tagging one mood per film. It was: half the watched films got a single candidate, 1.63 on average, because the v2 guide asked for moods the reader "would defend" and every few-shot carried one tag. v0.2.1 (`17d1ef1`, `aa58f68`) surfaced the reader's alternates in the tray as outline "maybe" pills (one tap adds them; never applied by the policy) and loosened the guide. The Sonnet re-run still produced 1.62 candidates per film, so the unwatched run was cancelled at 48 of 471 (month spend $7.34) rather than spend $7 on under-named answers.
+
+Guide v2.2 fixed the cause rather than the symptom: candidates are every mood whose checklist holds at 0.60 or more (two to four is typical, the cap is five), alternates are the moods considered and set aside, twelve of the examples now carry several moods of different kinds, and the schema field descriptions and the task line say the same thing. Nothing was re-run under v2.2 before v0.3.0; the first full pass under it is the v0.3.0 rollout below.
+
+The owner's verdict on the phased delivery: stop shipping phase 1 and phase 2, build the full thing. v0.3.0 is that.
+
+## v0.3.0: the full system (2026-10-21, built in one pass)
+
+Server, on `gkl_web_ui_restyle` (`1a9d8d9` grader and policy, `72fa484` eval, `8231e1e` teach, `6856462` web and review semantics):
+
+- **Jev is the classifier of record.** `JevClient` sends one `noul` question per mood plus two primary passes over the 36 slugs and `none`, the second pass in a seeded shuffle, to TypeSafe's `POST /v1/systemone` (`jev-1.13.0`, $0.042 per million input tokens, metered in `api_calls` as `typesafe`). The answer is stored on the decision as `classifier_json`. Missing or failed classifier: the film degrades to `p-legacy` and is marked unsure; an auth failure aborts the run.
+- **Policy versions.** `p1` (default): a mood is applied when AI named it and Jev's probability clears the mood's floor; AI's moods below the floor are suggested; a mood AI never named but Jev puts above the high line is suggested; the two primary passes disagreeing marks the film unsure. `p0` is Jev alone, `p-legacy` is AI's confidence against the floors (the old behaviour), `pr` applies nothing. Floors default to 0.70 (0.80 for the six strict moods), high to 0.85; all three live in settings and in the UI.
+- **Regrade run.** Jev and the policy again over films with a stored AI answer, no Anthropic call. Its rows are `kind = regrade`: the new decision's adds, the moods it would drop as `remove` items, and the adds it put on the film marked so a reject can take them off. Approve drops the removals and promotes the rest; reject puts the film back as it was; an edited approval keeps the owner's own earlier tags (the old override replaced every tag on the film, including the owner's).
+- **Eval.** The owner's decisions replayed through every policy over the stored answers, no model call: positives are user-labelled tags, negatives are moods proposed in a row the owner resolved and did not take. Per mood: precision, recall, the Wilson 95% lower bound and the Brier score of Jev's probability, on a floor grid from 0.50 to 0.90; the suggested floor is the lowest with Wilson lower at or above the target (0.85) and at least five applied films. One call writes the suggested floors into the policy.
+- **Guide and Teach.** The guide is editable (`guide.manual`, the bundled text until edited) and carries learned rules (`guide.learned`) that both AI and Jev read; every change bumps `guide.version`. Teach groups the films where the owner and the system disagree, or the system was unsure, by the two moods in question (Rule 5 pairs first, else the top two by probability); one tap answers left, right or neither; after three answers the strong model drafts up to three rules, and accepting them regrades the films on that boundary.
+- Tests: 160 across 28 suites.
+
+Web UI, X-Cache's classes throughout: a Teach page (boundary chips, cards with poster, AI's one-line read, who picked what, Jev's two probabilities, keys j k 1 2 0, Write rules dialog with editable drafts), an Accuracy page (your decisions replayed, next steps, policies side by side, floors per mood with the suggested column and one button to use them), and Settings rows for the grader, the policy, the Jev model, the TypeSafe key with a test, Regrade, the floors table and the guide editor. The Review tray shows second-look rows with the moods AI would drop as strike-through pills. Checked locally against a copy of the Pi database with a watched-scope regrade run.
+
+Known limits: the eval needs the owner's decisions (the Pi had no user-labelled tag and two rejections when v0.3.0 shipped, so the first report is empty until the tray is worked); leave-one-out evaluation with fresh model calls, an OpenAI Decisions provider and a `scores` field in the client payload were left out.

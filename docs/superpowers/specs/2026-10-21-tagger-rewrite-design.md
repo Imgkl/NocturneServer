@@ -309,3 +309,7 @@ Per film at phase 2, estimates: Wikipedia and Wikidata free; reader on `claude-h
 5. Batch API for the reader during backfill (50% cheaper, asynchronous) versus the simpler sequential loop.
 6. Whether `scores` should ship to the client in phase 2 or wait for the Tonight work that will consume it.
 7. The exact plot and reception word caps, once the coverage run shows the real distribution.
+
+## As built in v0.3.0 (2026-10-21)
+
+The classifier of record is TypeSafe Jev only (one `noul` question per mood, two primary passes, the second shuffled); the OpenAI Decisions provider in the design was not built. The policy versions are `p1` (AI proposes, Jev grades), `p0`, `p-legacy` and `pr`, with per-mood floors and a high line in settings. The eval is a replay over stored answers (no fresh calls, no leave-one-out) with Wilson-lower floors at a 0.85 target and five applied films minimum. Teach boundaries come from the guide's disambiguation pairs, else the top two moods by probability; rules are drafted by the strong model and accepted into `guide.learned`, which both prompts carry. The client payload is unchanged (no `scores` field). Session log: `docs/sessions/2026-10-21-tagger-phase-1.md`.
