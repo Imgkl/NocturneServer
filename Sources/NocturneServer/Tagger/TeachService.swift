@@ -161,8 +161,9 @@ final class TeachService: @unchecked Sendable {
             let applied = ((try? JSONDecoder().decode([PolicyDecision.Applied].self, from: Data(decision.appliedJson.utf8))) ?? []).map(\.slug)
             let admin = adminMoods[movie.jellyfinId] ?? []
             let disagree = !admin.isEmpty && admin != Set(applied)
-            let unsettled = decision.outcome == PolicyDecision.Outcome.review.rawValue || decision.unsure
-            guard disagree || unsettled else { continue }
+            // Unsure means the grader's two passes disagreed or nothing was applied. A film with a
+            // suggestion below the floor is only a review row; the tray already covers it.
+            guard disagree || decision.unsure else { continue }
 
             var reader: [String: Double] = [:]
             var residue: String? = nil

@@ -28,9 +28,9 @@ interface TeachPageProps {
 
 type Flat = { group: TeachGroup; film: TeachFilm };
 
-// X-Cache's Teach page, for films: every film where you and AI disagree, grouped by the two
-// moods in question, one tap each. Three answers on a boundary let the strong model write rules
-// into the guide; accepting them regrades the films on that boundary.
+// X-Cache's Teach page, for films: every film where you and AI disagree or the grader was unsure,
+// grouped by the two moods in question, one tap each. Three answers on a boundary let the strong
+// model write rules into the guide; accepting them regrades the films on that boundary.
 export function TeachPage({ moods, movieLookup, onOpenMovie, say, onWaiting, onRegradeStarted }: TeachPageProps) {
   const [groups, setGroups] = useState<TeachGroup[] | null>(null);
   const [guideVersion, setGuideVersion] = useState<number | null>(null);
@@ -152,7 +152,7 @@ export function TeachPage({ moods, movieLookup, onOpenMovie, say, onWaiting, onR
       'Loading…'
     ) : waiting ? (
       <>
-        <b className="font-semibold text-ink">{waiting}</b> film{waiting === 1 ? '' : 's'} where you and AI disagree, on {groups.length} boundar{groups.length === 1 ? 'y' : 'ies'}. Pick the mood you would look under. Three answers on a boundary let AI write a rule from them.
+        <b className="font-semibold text-ink">{waiting}</b> film{waiting === 1 ? '' : 's'} where you and AI disagree or AI was unsure, on {groups.length} boundar{groups.length === 1 ? 'y' : 'ies'}. Pick the mood you would look under. Three answers on a boundary let AI write a rule from them.
       </>
     ) : flat.length ? (
       <>All {flat.length} answered. Write rules below, then run the Accuracy page again.</>
@@ -204,7 +204,7 @@ export function TeachPage({ moods, movieLookup, onOpenMovie, say, onWaiting, onR
         )}
         {groups && groups.length === 0 && (
           <Card>
-            <Empty icon={<ListChecks size={20} />} title="Nothing to teach" sub="When you add a mood AI did not pick, or keep one it held back, the film lands here with the two moods in question. Review a few films first." />
+            <Empty icon={<ListChecks size={20} />} title="Nothing to teach" sub="When you add a mood AI did not pick, keep one it held back, or AI's two grader passes disagree, the film lands here with the two moods in question. Review a few films first." />
           </Card>
         )}
 
