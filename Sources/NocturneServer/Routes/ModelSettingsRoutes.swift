@@ -112,7 +112,7 @@ struct ModelSettingsRoutes: Sendable {
             }
             let block = "# Identity\nTitle: Test Film (2001)\n\n# Plot (Wikipedia, full, contains spoilers)\nA man wakes in the same day over and over until he learns to be kind.\n"
             do {
-                let answer = try await classifier.classify(textBlock: block, guide: nil, jellyfinId: "settings-test", apiKey: key, context: .none)
+                let answer = try await classifier.classify(textBlock: block, guide: nil, moodRules: [:], jellyfinId: "settings-test", apiKey: key, context: .none)
                 return try jsonResponse(TestResult(ok: true, model: answer.model, answered: answer.probabilities.count, error: nil))
             } catch {
                 return try jsonResponse(TestResult(ok: false, model: nil, answered: nil, error: String(describing: error)))

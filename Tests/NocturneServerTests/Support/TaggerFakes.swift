@@ -80,7 +80,10 @@ final class ScriptedClassifier: DecisionClassifying, @unchecked Sendable {
     var calls: Int { lock.withLock { received.count } }
     var lastGuide: String?? { lock.withLock { received.last?.guide } }
 
-    func classify(textBlock: String, guide: String?, jellyfinId: String, apiKey: String, context: CallContext) async throws -> ClassifierAnswer {
+    private(set) var lastMoodRules: [String: [String]] = [:]
+
+    func classify(textBlock: String, guide: String?, moodRules: [String: [String]], jellyfinId: String, apiKey: String, context: CallContext) async throws -> ClassifierAnswer {
+        lock.withLock { lastMoodRules = moodRules }
         lock.withLock { received.append((textBlock, guide)) }
         if let error { throw error }
         return answer

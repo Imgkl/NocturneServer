@@ -42,6 +42,33 @@ import Testing
         #expect(first.lowerBound < second.lowerBound)
     }
 
+    /// A learned rule lands inside the question of the mood it names, after that mood's own
+    /// conditions and marked as overriding them; other moods do not carry it.
+    @Test func learnedRulesLandInTheirOwnMoodQuestion() throws {
+        let rules = [
+            GuideStore.LearnedRule(boundary: "rainy-day-rewinds|regional-gems", text: "A loved mainstream Indian hit counts as regional-gems.", acceptedAt: Date()),
+            GuideStore.LearnedRule(boundary: "ha-ha-ha|rainy-day-rewinds", text: "Comedy as a main draw is enough.", acceptedAt: Date()),
+        ]
+        let byMood = GuideStore.rulesByMood(rules)
+        #expect(byMood["regional-gems"] == ["A loved mainstream Indian hit counts as regional-gems."])
+        #expect(byMood["rainy-day-rewinds"] == ["Comedy as a main draw is enough."])  // names neither slug: filed under both
+        #expect(byMood["ha-ha-ha"] == ["Comedy as a main draw is enough."])
+        #expect(GuideStore.readerText(rules)?.contains("- regional-gems: A loved mainstream Indian hit") == true)
+
+        let built = JevClient.body(buckets: config.moodBuckets, model: "jev-1.13.0", textBlock: "x", guide: nil, moodRules: byMood, jellyfinId: "jf")
+        let object = try #require(try JSONSerialization.jsonObject(with: Data(built.json.utf8)) as? [String: Any])
+        let questions = try #require(object["questions"] as? [String: Any])
+        let gems = try #require((questions[JevClient.questionKey(for: "regional-gems")] as? [String: Any])?["instructions"] as? String)
+        let override = try #require(gems.range(of: "The owner's rules for this mood override any condition or exclusion above"))
+        #expect(gems.range(of: "It fits only when every condition holds")!.lowerBound < override.lowerBound)
+        #expect(gems.contains("A loved mainstream Indian hit counts as regional-gems."))
+        let horror = try #require((questions[JevClient.questionKey(for: "horror-and-unease")] as? [String: Any])?["instructions"] as? String)
+        #expect(!horror.contains("owner's rules"))
+        let pass1 = try #require(questions["primary_pass1"] as? [String: Any])
+        let gemsCriterion = try #require(((pass1["criteria"] as? [String: Any])?["regional-gems"] as? [String: Any])?["covers"] as? String)
+        #expect(gemsCriterion.contains("A loved mainstream Indian hit"))
+    }
+
     @Test func jsonStringEscapes() {
         #expect(JevClient.jsonString("a \"b\"\n\\c\ttab") == "\"a \\\"b\\\"\\n\\\\c\\ttab\"")
         #expect(JevClient.jsonString("\u{1}") == "\"\\u0001\"")

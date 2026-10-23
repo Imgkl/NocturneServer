@@ -42,7 +42,7 @@ import Testing
         let turn = ReaderPrompt.userTurn(learnedRules: "Topic beats kind.", calibration: calibration, textBlock: "# Identity\nTitle: Heat (1995)", maxTags: 5)
         #expect(turn.contains("a short quote from the Film text, a colon, then the condition it satisfies"))
         #expect(turn.contains("up to 3 alternates you considered and set aside"))
-        let learned = turn.range(of: "## Learned from you\nTopic beats kind.")!
+        let learned = turn.range(of: "## Learned from you\nThe owner's rules. Each overrides the named mood's Qualifies when and Does NOT fit lines when they conflict; name that mood when a rule holds.\nTopic beats kind.")!
         let decisions = turn.range(of: "## Your recent decisions")!
         let film = turn.range(of: "## Film\n# Identity")!
         let task = turn.range(of: "## Task")!
@@ -59,7 +59,7 @@ import Testing
 
     @Test func emptyLearnedAndCalibrationRenderAsNone() {
         let turn = ReaderPrompt.userTurn(learnedRules: nil, calibration: [:], textBlock: "x", maxTags: 3)
-        #expect(turn.contains("## Learned from you\n(none)"))
+        #expect(turn.contains("## Learned from you\nThe owner's rules. Each overrides the named mood's Qualifies when and Does NOT fit lines when they conflict; name that mood when a rule holds.\n(none)"))
         #expect(turn.contains("## Your recent decisions\n(none)"))
     }
 }

@@ -31,6 +31,30 @@ enum GuideStore {
     }
 
     /// The learned rules as the prompt's "Learned from you" block, nil when there are none.
+    /// Each learned rule filed under the mood it is about: the boundary slugs the rule text names,
+    /// or both boundary slugs when it names neither. The classifier and the reader read a rule next
+    /// to that mood's own conditions, where it can override them.
+    static func rulesByMood(_ rules: [LearnedRule]) -> [String: [String]] {
+        var out: [String: [String]] = [:]
+        for rule in rules {
+            let slugs = rule.boundary.split(separator: "|").map(String.init)
+            let named = slugs.filter { rule.text.contains($0) }
+            for slug in (named.isEmpty ? slugs : named) { out[slug, default: []].append(rule.text) }
+        }
+        return out
+    }
+
+    static func rulesByMood(settings: SettingsStore) async throws -> [String: [String]] {
+        rulesByMood(try await learned(settings: settings))
+    }
+
+    /// The reader's copy: one line per rule, led by the mood it overrides.
+    static func readerText(_ rules: [LearnedRule]) -> String? {
+        let byMood = rulesByMood(rules)
+        guard !byMood.isEmpty else { return nil }
+        return byMood.keys.sorted().flatMap { slug in byMood[slug]!.map { "- \(slug): \($0)" } }.joined(separator: "\n")
+    }
+
     static func learnedText(settings: SettingsStore) async throws -> String? {
         let rules = try await learned(settings: settings)
         guard !rules.isEmpty else { return nil }

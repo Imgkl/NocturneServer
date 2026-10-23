@@ -254,6 +254,7 @@ import Testing
             let sugg = try await pipeline.tag(jellyfinId: "jf-1", trigger: .manual)
             #expect(classifier.calls == 1)
             #expect(classifier.lastGuide??.contains("Rule 0") == true)
+            #expect(classifier.lastMoodRules.isEmpty)  // no learned rules yet
             #expect(sugg.suggestedTags == ["cat-and-mouse"])
             #expect(sugg.status == "approved")  // ha-ha-ha and heist-energy ride along as suggestions; the passes agree
             let items = try JSONDecoder().decode([SuggestionItem].self, from: Data(try #require(sugg.itemsJson).utf8))

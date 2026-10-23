@@ -90,7 +90,8 @@ final class TaggerPipeline: @unchecked Sendable {
         guard let key = try await classifierKey() else { return (nil, "classifier key missing") }
         let guide = (try? await GuideStore.full(settings: settings, fallback: config.autoTaggingPrompt)) ?? config.autoTaggingPrompt
         do {
-            return (try await classifier.classify(textBlock: textBlock, guide: guide, jellyfinId: jellyfinId, apiKey: key, context: context), nil)
+            let moodRules = (try? await GuideStore.rulesByMood(settings: settings)) ?? [:]
+            return (try await classifier.classify(textBlock: textBlock, guide: guide, moodRules: moodRules, jellyfinId: jellyfinId, apiKey: key, context: context), nil)
         } catch let error as OutboundError where error.isAuthFailure {
             throw error
         } catch {
@@ -185,7 +186,7 @@ final class TaggerPipeline: @unchecked Sendable {
         } else {
             cal = (try? await buildCalibration(fluent: fluent, titles: await titles(), availableTags: config.moodBuckets)) ?? [:]
         }
-        let learned = try? await GuideStore.learnedText(settings: settings)
+        let learned = (try? await GuideStore.learned(settings: settings)).flatMap(GuideStore.readerText)
         let readerResult: ReaderResult
         do {
             readerResult = try await reader.read(textBlock: textBlock, learnedRules: learned, calibration: cal, apiKey: apiKey, context: context)

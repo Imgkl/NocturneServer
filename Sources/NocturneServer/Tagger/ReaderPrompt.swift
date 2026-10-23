@@ -45,6 +45,7 @@ enum ReaderPrompt {
     ) -> String {
         var out: [String] = []
         out.append("## Learned from you")
+        out.append("The owner's rules. Each overrides the named mood's Qualifies when and Does NOT fit lines when they conflict; name that mood when a rule holds.")
         let learned = learnedRules?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         out.append(learned.isEmpty ? "(none)" : learned)
         out.append("")

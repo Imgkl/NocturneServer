@@ -252,7 +252,7 @@ final class TeachService: @unchecked Sendable {
         }
         var user: [String] = []
         user.append("## The boundary\n\(describe(boundary.left))\n\n\(describe(boundary.right))")
-        user.append("## The owner's manual guide (your rules must not contradict it)\n\(manual)")
+        user.append("## The owner's manual guide (context; where the owner's answers contradict a mood's description, the rule wins)\n\(manual)")
         var lines: [String] = []
         for film in films {
             let answer = film.answer == "neither" ? "neither" : (film.answer == boundary.left ? "left (\(boundary.left))" : "right (\(boundary.right))")
@@ -260,7 +260,7 @@ final class TeachService: @unchecked Sendable {
             lines.append("- \(film.title): owner says \(answer). Residue: \(film.residue ?? "(none)"). Model probabilities: \(p).")
         }
         user.append("## The owner's answers\n" + lines.joined(separator: "\n"))
-        user.append("## Task\nWrite at most \(maxRules) rules, one sentence each, that would let a careful reader make the owner's calls on this boundary for films they have not seen. A rule names a concrete, checkable feature of a film (its ending, its register, its country, what reviews say), never a title. Do not restate the mood descriptions. Return JSON: {\"rules\": [\"...\"]}.")
+        user.append("## Task\nWrite at most \(maxRules) rules, one sentence each, that would let a careful reader make the owner's calls on this boundary for films they have not seen. A rule names a concrete, checkable feature of a film (its ending, its register, its country, what reviews say), never a title, and names the mood it is about by its slug (for example regional-gems), because each rule is read inside that mood's own question. Do not restate the mood descriptions; a rule may override them. Return JSON: {\"rules\": [\"...\"]}.")
         let system = "You write filing rules for a film mood taxonomy from an owner's own decisions. You are precise, concrete and brief."
         let bodyObject: [String: Any] = [
             "model": model,

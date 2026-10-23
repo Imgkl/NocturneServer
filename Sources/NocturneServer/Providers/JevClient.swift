@@ -33,7 +33,8 @@ struct JevClient: DecisionClassifying, Sendable {
     }
 
     /// Yes/no instructions for one mood: the residue, the checklist and the redirects.
-    static func moodInstructions(slug: String, bucket: MoodBucket) -> String {
+    /// The owner's learned rules for one mood come last and override the conditions before them.
+    static func moodInstructions(slug: String, bucket: MoodBucket, rules: [String] = []) -> String {
         var lines = ["Does this film fit the mood \"\(bucket.title)\"? Judge the whole film, not one scene."]
         lines.append(bucket.description.trimmingCharacters(in: .whitespacesAndNewlines))
         if let q = bucket.qualifies, !q.isEmpty {
@@ -42,7 +43,12 @@ struct JevClient: DecisionClassifying, Sendable {
         if let misses = bucket.anchorsMiss, !misses.isEmpty {
             lines.append("Not for: " + misses.joined(separator: "; "))
         }
+        lines += overrides(rules)
         return lines.joined(separator: " ")
+    }
+
+    static func overrides(_ rules: [String]) -> [String] {
+        rules.isEmpty ? [] : ["The owner's rules for this mood override any condition or exclusion above when they conflict: " + rules.joined(separator: " ")]
     }
 
     /// Pass 2 order: a deterministic shuffle seeded by the film id whose first option differs from pass 1's.
@@ -64,7 +70,7 @@ struct JevClient: DecisionClassifying, Sendable {
 
     /// The request body as JSON text. Option order matters to the second pass, so the object is
     /// written by hand in order rather than through a dictionary.
-    static func body(buckets: [String: MoodBucket], model: String, textBlock: String, guide: String?, jellyfinId: String) -> (json: String, order1: [String], order2: [String]) {
+    static func body(buckets: [String: MoodBucket], model: String, textBlock: String, guide: String?, moodRules: [String: [String]] = [:], jellyfinId: String) -> (json: String, order1: [String], order2: [String]) {
         let slugs = buckets.keys.sorted()
         let order1 = slugs + [noneOption]
         let order2 = shuffledOrder(order1, seed: jellyfinId)
@@ -78,6 +84,7 @@ struct JevClient: DecisionClassifying, Sendable {
             var covers = b.description.trimmingCharacters(in: .whitespacesAndNewlines)
             if let q = b.qualifies, !q.isEmpty { covers += " Qualifies when: " + q.joined(separator: " ") }
             if let m = b.anchorsMiss, !m.isEmpty { covers += " Not for: " + m.joined(separator: "; ") }
+            for line in overrides(moodRules[slug] ?? []) { covers += " " + line }
             let typical = (b.anchorsFit ?? []).joined(separator: "; ")
             return "{\"covers\":\(jsonString(covers)),\"typical\":\(jsonString(typical))}"
         }
@@ -87,7 +94,7 @@ struct JevClient: DecisionClassifying, Sendable {
         }
         var questions: [String] = []
         for slug in slugs {
-            questions.append("\(jsonString(questionKey(for: slug))):{\"type\":\"noul\",\"instructions\":\(jsonString(moodInstructions(slug: slug, bucket: buckets[slug]!)))}")
+            questions.append("\(jsonString(questionKey(for: slug))):{\"type\":\"noul\",\"instructions\":\(jsonString(moodInstructions(slug: slug, bucket: buckets[slug]!, rules: moodRules[slug] ?? [])))}")
         }
         questions.append("\"primary_pass1\":\(choice(order1))")
         questions.append("\"primary_pass2\":\(choice(order2))")
@@ -154,8 +161,8 @@ struct JevClient: DecisionClassifying, Sendable {
 
     // MARK: Call
 
-    func classify(textBlock: String, guide: String?, jellyfinId: String, apiKey: String, context: CallContext) async throws -> ClassifierAnswer {
-        let built = Self.body(buckets: buckets, model: model, textBlock: textBlock, guide: guide, jellyfinId: jellyfinId)
+    func classify(textBlock: String, guide: String?, moodRules: [String: [String]], jellyfinId: String, apiKey: String, context: CallContext) async throws -> ClassifierAnswer {
+        let built = Self.body(buckets: buckets, model: model, textBlock: textBlock, guide: guide, moodRules: moodRules, jellyfinId: jellyfinId)
         var request = HTTPClientRequest(url: "\(baseURL)/v1/systemone")
         request.method = .POST
         request.headers.add(name: "authorization", value: "Bearer \(apiKey)")

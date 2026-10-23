@@ -34,5 +34,6 @@ struct ClassifierAnswer: Sendable, Equatable {
 /// Seam over the vendor client so the pipeline and the tests do not care which vendor answers.
 protocol DecisionClassifying: Sendable {
     var provider: String { get }
-    func classify(textBlock: String, guide: String?, jellyfinId: String, apiKey: String, context: CallContext) async throws -> ClassifierAnswer
+    /// `moodRules`: the owner's learned rules per mood, read inside that mood's own question.
+    func classify(textBlock: String, guide: String?, moodRules: [String: [String]], jellyfinId: String, apiKey: String, context: CallContext) async throws -> ClassifierAnswer
 }
