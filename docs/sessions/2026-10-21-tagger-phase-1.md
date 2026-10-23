@@ -181,3 +181,21 @@ On the Pi (v0.3.2 at 12:25): film-school-shelf and modern-masterpieces back to 0
 ## v0.3.3: the spot check draws from watched films (2026-10-21, 13:00 to 13:40)
 
 The owner could not do the first 30: most cards were films they had not seen (471 of 680 are unwatched). v0.3.3 (`feat(check)`) makes the watched films the default scope, with All as the other, and adds a second set for films with no mood at all. On the Pi the watched set holds 167 tagged films (306 moods) and 42 with no mood. A no-mood card shows what AI considered with its evidence and Jev's number; the owner picks from it, from any mood, or says nothing fits. Tagged cards show what AI considered too, so a held-back mood can be added with one tap. Moods AI considered that the owner did not take count as negatives, because they were on the card; precision on the page counts only the moods AI applied. Tests: 163 across 29 suites. Checked locally on a copy of the Pi database: both sets, keys, the save flow.
+
+## The first spot check and v0.3.4 (2026-10-21 to 2026-10-23)
+
+The owner's first 30 watched films: 55 moods AI applied, none wrong, 25 moods added by the owner on 20 of the films. Precision was fine; recall was the gap (69%). Floors went to 0.50 (canon 0.80) and the Jev-only line to 0.70, and four owner rules were accepted (regional-gems takes a loved mainstream Indian hit, ha-ha-ha takes comedy as a main draw, cult-chaos takes a devoted rewatching following, antihero-study takes a cheered-for criminal lead or a central villain). A full Jev regrade then moved Jev by at most 0.03 on the owner's 25 additions: the rules sat at the end of the shared guide while each mood's own question carried the bucket text that excludes exactly those films.
+
+v0.3.4 (`fix(tagger): learned rules reach each mood where it is decided`): each learned rule is filed under the mood it names and appended to that mood's Jev question and primary-pass criterion as overriding the conditions above; the reader gets the same rules per mood with an override line; Teach's rule writer names the mood slug and may override a description. Pre-flight on eight corrected films: Om Shanti Om regional-gems 0.14 to 0.83, Premam regional-gems 0.48 to 0.89, Mankatha antihero-study 0.50 to 0.84, Thani Oruvan antihero-study 0.06 to 0.58, Manmadhan Ambu ha-ha-ha 0.31 to 0.73; Mozhi, Virumaandi and Michael Madana Kama Rajan still missed because AI did not name the mood.
+
+Then the 209 watched films were re-read on Sonnet ($4.17 Anthropic, $0.37 Jev) and the 473 unwatched were regraded by Jev ($0.82). Seven unwatched films had no AI answer (sync added them while the cap was hit, and the single-film route returns the existing "budget cap reached" row); they were regenerated.
+
+| On the owner's 30 films, p1 replayed without the per-film cap | Right | Wrong | Missed | Precision | Recall |
+|---|---|---|---|---|---|
+| v0.3.3 answers, floor 0.60 | 55 | 0 | 25 | 100% | 69% |
+| v0.3.3 answers, floor 0.50 | 60 | 4 | 20 | 94% | 75% |
+| v0.3.4 answers, floor 0.50 | 69 | 1 | 11 | 99% | 86% |
+
+Caveat: these are the films the rules were written from, and the reader's calibration block lists the owner's confirmed titles per mood, so this is the training set, not a test. The next 30 unseen watched films are the test. Library now: 2.02 tags per watched film (177 of 209 tagged), 2.14 per unwatched film (435 of 474). Tray 202, Teach 168. Month spend $27.99 against the $15 cap.
+
+Backlog found on the way: the single-film auto-tag route returns an open pending row instead of tagging again, so a film skipped at the cap cannot be re-tagged from the film sheet's "AI again" without regenerate.
