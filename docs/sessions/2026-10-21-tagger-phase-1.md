@@ -199,3 +199,7 @@ Then the 209 watched films were re-read on Sonnet ($4.17 Anthropic, $0.37 Jev) a
 Caveat: these are the films the rules were written from, and the reader's calibration block lists the owner's confirmed titles per mood, so this is the training set, not a test. The next 30 unseen watched films are the test. Library now: 2.02 tags per watched film (177 of 209 tagged), 2.14 per unwatched film (435 of 474). Tray 202, Teach 168. Month spend $27.99 against the $15 cap.
 
 Backlog found on the way: the single-film auto-tag route returns an open pending row instead of tagging again, so a film skipped at the cap cannot be re-tagged from the film sheet's "AI again" without regenerate.
+
+## Second spot check (2026-10-24)
+
+30 unseen watched films after v0.3.4: 66 applied moods, 4 wrong (94%), 11 added (recall 85%), matching the 86% measured on the first batch, so the rules generalise. All 11 additions were moods AI named and Jev held under the floor; three were film-school-shelf at 0.64 to 0.79. A replay over all 60 verdicts: film-school-shelf at 0.70 gives 133 right, 5 wrong, 20 missed against 131, 5, 22 now; raising rainy-day-rewinds or regional-gems loses more right moods than wrong ones. film-school-shelf set to 0.70 and the library replayed for free (682 films, 7 minutes): 100 films now carry it, tray 192, spend unchanged at $27.99. The eval suggests no per-mood floor yet: no mood has five judged films at one floor.
